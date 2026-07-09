@@ -1,6 +1,6 @@
 {
   "name": "steam-bee",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Self-hosted Steam hour booster with a secure management UI.",
@@ -18,7 +18,7 @@
     "steam"
   ],
   "type": "module",
-  "packageManager": "pnpm@11.7.0",
+  "packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620",
   "scripts": {
     "build": "pnpm -r build",
     "check": "pnpm contracts:build && pnpm -r check",

@@ -1,4 +1,10 @@
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { ERROR_CODES } from "@steam-bee/contracts";
 import { config, paths } from "../config.js";
@@ -15,12 +21,15 @@ export function initializeSetupToken(setupComplete: boolean) {
     return;
   }
 
+  const setupTokenFileExists = existsSync(paths.setupToken);
+  if (setupTokenFileExists) setPrivateFileMode(paths.setupToken);
+
   if (config.setupToken) {
     activeToken = config.setupToken;
     return;
   }
 
-  if (existsSync(paths.setupToken)) {
+  if (setupTokenFileExists) {
     const existing = readFileSync(paths.setupToken, "utf8").trim();
     if (existing.length < 16) {
       throw new Error(
@@ -28,7 +37,6 @@ export function initializeSetupToken(setupComplete: boolean) {
       );
     }
     activeToken = existing;
-    setupLogger.warn(`SteamBee setup token: ${existing}`);
     return;
   }
 
@@ -37,6 +45,7 @@ export function initializeSetupToken(setupComplete: boolean) {
     mode: 0o600,
     flag: "wx",
   });
+  setPrivateFileMode(paths.setupToken);
   activeToken = generated;
   setupLogger.warn(`SteamBee setup token: ${generated}`);
 }
@@ -63,6 +72,10 @@ export function isSetupTokenRequired() {
 function removeSetupTokenFile() {
   if (!existsSync(paths.setupToken)) return;
   unlinkSync(paths.setupToken);
+}
+
+function setPrivateFileMode(path: string) {
+  if (process.platform !== "win32") chmodSync(path, 0o600);
 }
 
 function constantTimeEqual(expected: string, candidate: string) {

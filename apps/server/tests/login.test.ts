@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
+type Listener = (...args: unknown[]) => void;
+
 const sessionMock = vi.hoisted(() => {
   const makeToken = () => {
     const payload = Buffer.from(
@@ -11,49 +13,56 @@ const sessionMock = vi.hoisted(() => {
     return `header.${payload}.signature`;
   };
 
-  return {
-    instances: [] as Array<{
-      emit: (event: string, ...args: unknown[]) => void;
-    }>,
-    LoginSession: class FakeLoginSession {
-      accountName = "qr_account";
-      refreshToken = makeToken();
-      steamID = { getSteamID64: () => "76561198000000003" };
-      private listeners = new Map<string, Listener[]>();
+  class FakeLoginSession {
+    accountName = "qr_account";
+    refreshToken = makeToken();
+    steamID = { getSteamID64: () => "76561198000000003" };
+    private listeners = new Map<string, Listener[]>();
+    cancelLoginAttempt = vi.fn(() => true);
+    removeAllListeners = vi.fn((event?: string) => {
+      if (event) this.listeners.delete(event);
+      else this.listeners.clear();
+      return this;
+    });
 
-      constructor() {
-        sessionMock.instances.push(this);
-      }
+    constructor() {
+      instances.push(this);
+    }
 
-      on(event: string, callback: Listener) {
-        this.listeners.set(event, [
-          ...(this.listeners.get(event) ?? []),
-          callback,
-        ]);
-        return this;
-      }
+    on(event: string, callback: Listener) {
+      this.listeners.set(event, [
+        ...(this.listeners.get(event) ?? []),
+        callback,
+      ]);
+      return this;
+    }
 
-      async startWithQR() {
-        return { qrChallengeUrl: "steam://qr-login" };
-      }
+    async startWithQR() {
+      return { qrChallengeUrl: "steam://qr-login" };
+    }
 
-      async startWithCredentials() {
-        return {};
-      }
+    async startWithCredentials() {
+      return {};
+    }
 
-      emit(event: string, ...args: unknown[]) {
-        for (const callback of this.listeners.get(event) ?? [])
-          callback(...args);
+    listenersFor(event: string) {
+      return [...(this.listeners.get(event) ?? [])];
+    }
+
+    emit(event: string, ...args: unknown[]) {
+      for (const callback of this.listeners.get(event) ?? []) {
+        callback(...args);
       }
-    },
-  };
+    }
+  }
+
+  const instances: FakeLoginSession[] = [];
+  return { instances, LoginSession: FakeLoginSession };
 });
 
 const managerMock = vi.hoisted(() => ({
   start: vi.fn(async () => undefined),
 }));
-
-type Listener = (...args: unknown[]) => void;
 
 vi.mock("steam-session", () => ({
   EAuthTokenPlatformType: { SteamClient: 1 },
@@ -76,6 +85,7 @@ import {
 describe("Steam login flows", () => {
   beforeEach(() => {
     migrate();
+    sessionMock.instances.length = 0;
     managerMock.start.mockClear();
     sqlite.exec(`
       DELETE FROM steam_event;
@@ -85,7 +95,8 @@ describe("Steam login flows", () => {
 
   it("persists QR login SteamID and starts the worker automatically", async () => {
     const { loginId } = await startQrLogin();
-    sessionMock.instances.at(-1)?.emit("authenticated");
+    const session = sessionMock.instances.at(-1)!;
+    session.emit("authenticated");
 
     await vi.waitFor(() => {
       expect(managerMock.start).toHaveBeenCalledTimes(1);
@@ -109,6 +120,8 @@ describe("Steam login flows", () => {
     expect(managerMock.start).toHaveBeenCalledWith(account.id, {
       action: "steam-login-qr",
     });
+    expect(session.cancelLoginAttempt).toHaveBeenCalledTimes(1);
+    expect(session.removeAllListeners).toHaveBeenCalledTimes(1);
 
     expect(getQrLogin(loginId)).toEqual(state);
   });
@@ -116,15 +129,73 @@ describe("Steam login flows", () => {
   it("retains an expired QR terminal state before cleaning it up", async () => {
     const startedAt = Date.now();
     const { loginId } = await startQrLogin();
+    const session = sessionMock.instances.at(-1)!;
 
     cleanupQrLogins(startedAt + 11 * 60_000);
-    expect(getQrLogin(loginId)).toMatchObject({
+    const state = getQrLogin(loginId);
+    expect(state).toMatchObject({
       status: "error",
       message: "Login session expired.",
     });
+    expect(getQrLogin(loginId)).toEqual(state);
+    expect(session.cancelLoginAttempt).toHaveBeenCalledTimes(1);
+    expect(session.removeAllListeners).toHaveBeenCalledTimes(1);
+
+    cleanupQrLogins(startedAt + 12 * 60_000);
+    expect(session.cancelLoginAttempt).toHaveBeenCalledTimes(1);
+    expect(session.removeAllListeners).toHaveBeenCalledTimes(1);
 
     cleanupQrLogins(startedAt + 22 * 60_000);
     expect(getQrLogin(loginId)).toBeNull();
+  });
+
+  it("rejects authentication received after the QR pending TTL", async () => {
+    const startedAt = Date.now();
+    const { loginId } = await startQrLogin();
+    const session = sessionMock.instances.at(-1)!;
+    const [staleAuthenticated] = session.listenersFor("authenticated");
+    const expiredAt = startedAt + 11 * 60_000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(expiredAt);
+
+    session.emit("authenticated");
+    now.mockRestore();
+    staleAuthenticated?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(getQrLogin(loginId)).toEqual({
+      status: "error",
+      message: "Login session expired.",
+    });
+    expect(session.cancelLoginAttempt).toHaveBeenCalledTimes(1);
+    expect(session.removeAllListeners).toHaveBeenCalledTimes(1);
+    expect(managerMock.start).not.toHaveBeenCalled();
+    expect(
+      sqlite.prepare("SELECT count(*) as count FROM steam_account").get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("ignores stale authentication after a terminal QR state", async () => {
+    const { loginId } = await startQrLogin();
+    const session = sessionMock.instances.at(-1)!;
+    const [staleAuthenticated] = session.listenersFor("authenticated");
+
+    session.emit("timeout");
+    const state = getQrLogin(loginId);
+    staleAuthenticated?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(state).toEqual({
+      status: "error",
+      message: "QR login timed out.",
+    });
+    expect(getQrLogin(loginId)).toEqual(state);
+    expect(getQrLogin(loginId)).toEqual(state);
+    expect(session.cancelLoginAttempt).toHaveBeenCalledTimes(1);
+    expect(session.removeAllListeners).toHaveBeenCalledTimes(1);
+    expect(managerMock.start).not.toHaveBeenCalled();
+    expect(
+      sqlite.prepare("SELECT count(*) as count FROM steam_account").get(),
+    ).toEqual({ count: 0 });
   });
 
   it("persists credential authentication exactly once", async () => {

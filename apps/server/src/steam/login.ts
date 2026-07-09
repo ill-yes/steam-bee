@@ -19,12 +19,15 @@ type LoginState =
     }
   | { status: "error"; message: string };
 
+type LoginPhase = "pending" | "completing" | "terminal";
+
 type LoginRecord = {
   session: LoginSession;
   state: LoginState;
+  phase: LoginPhase;
   createdAt: number;
   terminalAt: number | null;
-  completion: Promise<void> | null;
+  cleanedUp: boolean;
   context: OperationContext;
 };
 
@@ -34,6 +37,52 @@ const qrPendingTtlMs = 10 * 60_000;
 const qrTerminalTtlMs = 10 * 60_000;
 const qrCleanupInterval = setInterval(() => cleanupQrLogins(), 60_000);
 qrCleanupInterval.unref();
+
+function cleanupQrLoginSession(loginId: string, record: LoginRecord) {
+  if (record.cleanedUp) return;
+  record.cleanedUp = true;
+
+  try {
+    record.session.cancelLoginAttempt();
+  } catch (error) {
+    loginLogger.warn(
+      errorLogFields(error, { loginId }),
+      "Failed to cancel QR Steam login polling",
+    );
+  } finally {
+    record.session.removeAllListeners();
+  }
+}
+
+function setQrLoginTerminal(
+  loginId: string,
+  record: LoginRecord,
+  state: Exclude<LoginState, { status: "pending" }>,
+  now = Date.now(),
+) {
+  if (record.phase === "terminal") return false;
+
+  record.phase = "terminal";
+  record.state = state;
+  record.terminalAt ??= now;
+  cleanupQrLoginSession(loginId, record);
+  return true;
+}
+
+function expireQrLogin(loginId: string, record: LoginRecord, now: number) {
+  if (record.phase !== "pending" || record.state.status !== "pending") {
+    return false;
+  }
+
+  const expired = setQrLoginTerminal(
+    loginId,
+    record,
+    { status: "error", message: "Login session expired." },
+    now,
+  );
+  if (expired) loginLogger.warn({ loginId }, "QR login record expired");
+  return expired;
+}
 
 export class CredentialLoginFlow {
   readonly id = randomUUID();
@@ -149,27 +198,35 @@ export async function startQrLogin(context: OperationContext = {}) {
       qrUrl: challenge.qrChallengeUrl,
       message: "QR-Code mit der Steam Mobile App scannen.",
     },
+    phase: "pending",
     createdAt: Date.now(),
     terminalAt: null,
-    completion: null,
+    cleanedUp: false,
     context,
   };
 
   qrLogins.set(loginId, record);
 
   session.on("authenticated", () => {
-    if (record.completion) return;
-    record.completion = (async () => {
+    const now = Date.now();
+    if (record.phase !== "pending" || record.state.status !== "pending") return;
+    if (now - record.createdAt >= qrPendingTtlMs) {
+      expireQrLogin(loginId, record, now);
+      return;
+    }
+
+    record.phase = "completing";
+    cleanupQrLoginSession(loginId, record);
+    void (async () => {
       if (!session.refreshToken) {
         loginLogger.warn(
           { loginId },
           "QR Steam login authenticated without token",
         );
-        record.state = {
+        setQrLoginTerminal(loginId, record, {
           status: "error",
           message: "No refresh token received.",
-        };
-        record.terminalAt = Date.now();
+        });
         return;
       }
 
@@ -192,35 +249,42 @@ export async function startQrLogin(context: OperationContext = {}) {
         },
         "QR Steam login authenticated",
       );
-      record.state = {
+      setQrLoginTerminal(loginId, record, {
         status: "authenticated",
         message: "Connection saved. Steam is connecting.",
         ...result,
-      };
-      record.terminalAt = Date.now();
+      });
     })().catch((error) => {
       loginLogger.error(
         errorLogFields(error, { loginId }),
         "Failed to persist QR Steam login",
       );
-      record.state = { status: "error", message: safeErrorMessage(error) };
-      record.terminalAt = Date.now();
+      setQrLoginTerminal(loginId, record, {
+        status: "error",
+        message: safeErrorMessage(error),
+      });
     });
   });
 
   session.on("timeout", () => {
+    if (record.phase !== "pending" || record.state.status !== "pending") return;
     loginLogger.warn({ loginId }, "QR Steam login timeout");
-    record.state = { status: "error", message: "QR login timed out." };
-    record.terminalAt ??= Date.now();
+    setQrLoginTerminal(loginId, record, {
+      status: "error",
+      message: "QR login timed out.",
+    });
   });
 
   session.on("error", (error) => {
+    if (record.phase !== "pending" || record.state.status !== "pending") return;
     loginLogger.error(
       errorLogFields(error, { loginId }),
       "QR Steam login error",
     );
-    record.state = { status: "error", message: safeErrorMessage(error) };
-    record.terminalAt ??= Date.now();
+    setQrLoginTerminal(loginId, record, {
+      status: "error",
+      message: safeErrorMessage(error),
+    });
   });
 
   return {
@@ -240,12 +304,11 @@ export function getQrLogin(loginId: string): LoginState | null {
 export function cleanupQrLogins(now = Date.now()) {
   for (const [loginId, record] of qrLogins) {
     if (
+      record.phase === "pending" &&
       record.state.status === "pending" &&
       now - record.createdAt >= qrPendingTtlMs
     ) {
-      record.state = { status: "error", message: "Login session expired." };
-      record.terminalAt = now;
-      loginLogger.warn({ loginId }, "QR login record expired");
+      expireQrLogin(loginId, record, now);
       continue;
     }
 

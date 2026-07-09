@@ -1,16 +1,65 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+
+const privateDirectoryMode = 0o700;
+const privateFileMode = 0o600;
+const trueProxyAliases = new Set(["true", "yes", "on"]);
+const falseProxyAliases = new Set(["false", "no", "off", "0"]);
+
+process.umask(0o077);
+
+export type TrustProxyConfig = false | number | string[];
+
+export function parseTrustProxy(value: string | undefined): TrustProxyConfig {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (normalized === "" || falseProxyAliases.has(normalized)) return false;
+  if (trueProxyAliases.has(normalized)) return 1;
+
+  if (/^\d+$/.test(normalized)) {
+    const hops = Number(normalized);
+    if (Number.isSafeInteger(hops)) return hops === 0 ? false : hops;
+  }
+
+  const addresses = normalized.split(",").map((address) => address.trim());
+  if (addresses.length > 0 && addresses.every(isValidProxyAddress)) {
+    return addresses;
+  }
+
+  throw new Error(
+    "TRUST_PROXY must be false, a true alias, a non-negative integer hop count, or a comma-separated list of IP addresses/CIDRs.",
+  );
+}
+
+const trustProxySchema = z
+  .string()
+  .optional()
+  .transform((value, context) => {
+    try {
+      return parseTrustProxy(value);
+    } catch (error) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          error instanceof Error ? error.message : "Invalid TRUST_PROXY.",
+      });
+      return z.NEVER;
+    }
+  });
 
 const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(3000),
   DATA_DIR: z.string().default("./data"),
-  TRUST_PROXY: z
-    .string()
-    .optional()
-    .transform((value) => value === "true"),
+  TRUST_PROXY: trustProxySchema,
   COOKIE_SECURE: z
     .string()
     .optional()
@@ -63,7 +112,7 @@ export const config = {
       : resolve(process.cwd(), "apps/web/dist")),
 };
 
-mkdirSync(config.dataDir, { recursive: true });
+ensurePrivateDirectory(config.dataDir);
 
 export const paths = {
   database: join(config.dataDir, "steam-bee.sqlite"),
@@ -72,7 +121,7 @@ export const paths = {
   steamData: join(config.dataDir, "steam-data"),
 };
 
-mkdirSync(paths.steamData, { recursive: true });
+ensurePrivateDirectory(paths.steamData);
 
 let instanceSecret: Buffer | null = null;
 
@@ -80,6 +129,7 @@ export function getInstanceSecret(): Buffer {
   if (instanceSecret) return instanceSecret;
 
   try {
+    setPrivateMode(paths.secret, privateFileMode);
     const encoded = readFileSync(paths.secret, "utf8").trim();
     const decoded = Buffer.from(encoded, "base64");
     const canonical = decoded.toString("base64").replace(/=+$/, "");
@@ -100,9 +150,10 @@ export function getInstanceSecret(): Buffer {
 
     const secret = randomBytes(32);
     writeFileSync(paths.secret, secret.toString("base64"), {
-      mode: 0o600,
+      mode: privateFileMode,
       flag: "wx",
     });
+    setPrivateMode(paths.secret, privateFileMode);
     instanceSecret = secret;
     return secret;
   }
@@ -110,6 +161,28 @@ export function getInstanceSecret(): Buffer {
 
 function isMissingFile(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function isValidProxyAddress(value: string) {
+  const [address, prefix, ...extra] = value.split("/");
+  if (!address || extra.length > 0) return false;
+
+  const version = isIP(address);
+  if (version === 0) return false;
+  if (prefix === undefined) return true;
+  if (!/^\d+$/.test(prefix)) return false;
+
+  const prefixLength = Number(prefix);
+  return prefixLength <= (version === 4 ? 32 : 128);
+}
+
+function ensurePrivateDirectory(path: string) {
+  mkdirSync(path, { recursive: true, mode: privateDirectoryMode });
+  setPrivateMode(path, privateDirectoryMode);
+}
+
+function setPrivateMode(path: string, mode: number) {
+  if (process.platform !== "win32") chmodSync(path, mode);
 }
 
 getInstanceSecret();

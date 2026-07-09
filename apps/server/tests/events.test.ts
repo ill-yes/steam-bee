@@ -40,6 +40,43 @@ describe("event logging", () => {
     });
   });
 
+  it("redacts Bearer tokens, JWTs and assigned secrets from event text", async () => {
+    const bearerToken = "steam-access-token-1234567890";
+    const jwt = [
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+      "eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+      "very-secret-signature",
+    ].join(".");
+    const plainSecret = "do-not-store-this";
+    const dottedSecret = `${"a".repeat(32)}.${"b".repeat(16)}`;
+
+    const saved = await recordEvent({
+      level: "error",
+      type: "test.message-redaction",
+      message: `Login failed with Bearer ${bearerToken}; jwt=${jwt}; secret=${plainSecret}; ${dottedSecret}`,
+      metadata: {
+        details: `Upstream returned Bearer ${bearerToken} and ${jwt}`,
+      },
+    });
+
+    const [stored] = await db
+      .select()
+      .from(steamEvent)
+      .orderBy(desc(steamEvent.createdAt))
+      .limit(1);
+    const serialized = JSON.stringify({
+      message: stored.message,
+      metadata: JSON.parse(stored.metadataJson),
+    });
+
+    expect(saved.message).toBe(stored.message);
+    expect(serialized).toContain("[redacted]");
+    expect(serialized).not.toContain(bearerToken);
+    expect(serialized).not.toContain(jwt);
+    expect(serialized).not.toContain(plainSecret);
+    expect(serialized).not.toContain(dottedSecret);
+  });
+
   it("removes only events older than the configured retention window", async () => {
     const originalRetentionDays = config.eventRetentionDays;
     config.eventRetentionDays = 90;

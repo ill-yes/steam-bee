@@ -4,9 +4,9 @@ SteamBee is a self-hosted, single-user tool. Do not expose it directly to the
 internet without HTTPS, a reverse proxy, and host-level firewall rules.
 
 Fresh instances require the one-time setup token written to `/data/setup.token`
-and printed in the container logs. The generated file uses mode `0600` and is
-removed after successful setup. A setup token protects the first-admin flow but
-does not replace HTTPS or network access controls.
+and printed once when it is generated. The generated file uses mode `0600` and
+is removed after successful setup. A setup token protects the first-admin flow
+but does not replace HTTPS or network access controls.
 
 ## Supported Versions
 
@@ -44,5 +44,7 @@ Never share or commit:
 
 The supported deployment path is Docker Compose with persistent `/data`
 storage. Public internet deployments should put SteamBee behind a reverse
-proxy and set `TRUST_PROXY=true` and `COOKIE_SECURE=true` when served over
-HTTPS.
+proxy and set `TRUST_PROXY=1` and `COOKIE_SECURE=true` when served over HTTPS
+through one trusted proxy. Keep the application port inaccessible from
+untrusted networks and use an exact hop count or trusted CIDR list for more
+complex proxy chains.

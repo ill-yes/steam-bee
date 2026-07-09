@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-slim AS base
+FROM node:22.23.1-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -29,8 +29,18 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @steam-bee
 RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
-FROM node:22-slim AS runtime
-ARG VERSION=1.0.2-dev
+FROM node:22.23.1-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS runtime
+RUN rm -rf \
+  /usr/local/lib/node_modules/npm \
+  /usr/local/lib/node_modules/corepack \
+  /opt/yarn-v1.22.22 \
+  && rm -f \
+  /usr/local/bin/npm \
+  /usr/local/bin/npx \
+  /usr/local/bin/corepack \
+  /usr/local/bin/yarn \
+  /usr/local/bin/yarnpkg
+ARG VERSION=1.0.3-dev
 ARG REVISION=unknown
 ARG BUILD_DATE=unknown
 ARG SOURCE_URL=https://github.com/ill-yes/steam-bee

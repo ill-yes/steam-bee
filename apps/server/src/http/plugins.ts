@@ -41,8 +41,14 @@ export async function registerPlugins(app: FastifyInstance) {
   });
 
   app.addHook("onSend", async (request, reply) => {
+    if (isApiRequest(request)) reply.header("cache-control", "no-store");
     reply.header("x-correlation-id", request.id);
   });
+}
+
+function isApiRequest(request: FastifyRequest) {
+  const pathname = request.url.split("?")[0] ?? request.url;
+  return pathname === "/api" || pathname.startsWith("/api/");
 }
 
 export async function requireAuth(

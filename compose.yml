@@ -3,6 +3,8 @@ services:
     build: .
     restart: unless-stopped
     init: true
+    user: "10001:10001"
+    pids_limit: 256
     stop_grace_period: 30s
     ports:
       - "${STEAM_BEE_BIND:-127.0.0.1}:${STEAM_BEE_PORT:-3000}:3000"

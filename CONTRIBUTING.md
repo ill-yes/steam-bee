@@ -20,8 +20,10 @@ pnpm install
 pnpm format:check
 pnpm check
 pnpm test
+pnpm audit --audit-level=high
 docker compose config
 docker compose -f compose.image.yml config
+pnpm compose:check
 ```
 
 For Docker changes, also run:

@@ -1,13 +1,16 @@
+import { chmodSync } from "node:fs";
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { paths } from "../config.js";
 import * as schema from "./schema.js";
 
 export const sqlite = new Database(paths.database);
+secureDatabaseFiles();
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 sqlite.pragma("busy_timeout = 5000");
 sqlite.pragma("synchronous = NORMAL");
+secureDatabaseFiles();
 
 export const db = drizzle(sqlite, { schema });
 
@@ -267,4 +270,25 @@ export function checkDatabaseReady() {
     ok: migrationState.pending.length === 0,
     migrationState,
   };
+}
+
+function secureDatabaseFiles() {
+  if (process.platform === "win32") return;
+
+  for (const path of [
+    paths.database,
+    `${paths.database}-wal`,
+    `${paths.database}-shm`,
+    `${paths.database}-journal`,
+  ]) {
+    try {
+      chmodSync(path, 0o600);
+    } catch (error) {
+      if (!isMissingFile(error)) throw error;
+    }
+  }
+}
+
+function isMissingFile(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }

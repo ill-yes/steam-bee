@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { db, sqlite } from "../db/client.js";
 import { steamEvent } from "../db/schema.js";
 import { createLogger, errorLogFields } from "../util/logger.js";
-import { redact } from "../util/redact.js";
+import { redact, redactText } from "../util/redact.js";
 
 export type EventPayload = {
   id?: number;
@@ -33,6 +33,7 @@ let heartbeatTimer: NodeJS.Timeout | null = null;
 
 export async function recordEvent(event: EventPayload) {
   const createdAt = event.createdAt ?? Date.now();
+  const message = redactText(event.message);
   const metadata = redact(event.metadata ?? {});
   const result = await db
     .insert(steamEvent)
@@ -40,7 +41,7 @@ export async function recordEvent(event: EventPayload) {
       accountId: event.accountId ?? null,
       level: event.level,
       type: event.type,
-      message: event.message,
+      message,
       metadataJson: JSON.stringify(metadata),
       createdAt,
     })
@@ -53,7 +54,7 @@ export async function recordEvent(event: EventPayload) {
     accountId: row?.accountId ?? event.accountId ?? null,
     level: event.level,
     type: row?.type ?? event.type,
-    message: row?.message ?? event.message,
+    message: row?.message ?? message,
     metadataJson: row?.metadataJson ?? JSON.stringify(metadata),
     createdAt: row?.createdAt ?? createdAt,
   };
@@ -80,7 +81,7 @@ export function broadcast(type: string, payload: unknown) {
 export function registerSseClient(reply: FastifyReply) {
   reply.raw.writeHead(200, {
     "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache, no-transform",
+    "Cache-Control": "no-store, no-cache, no-transform",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
   });

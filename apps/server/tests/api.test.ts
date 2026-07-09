@@ -1,5 +1,7 @@
+import { statSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { db, getMigrationState, migrate, sqlite } from "../src/db/client.js";
+import { config, parseTrustProxy, paths } from "../src/config.js";
 import {
   adminSession,
   boostSession,
@@ -22,6 +24,105 @@ describe("api auth flow", () => {
       DELETE FROM admin_session;
       DELETE FROM admin_user;
     `);
+  });
+
+  it("parses trusted proxy aliases, hop counts and CIDRs safely", () => {
+    for (const alias of ["true", "TRUE", " yes ", "on", "1"]) {
+      expect(parseTrustProxy(alias)).toBe(1);
+    }
+    expect(parseTrustProxy(undefined)).toBe(false);
+    expect(parseTrustProxy("off")).toBe(false);
+    expect(parseTrustProxy("3")).toBe(3);
+    expect(parseTrustProxy("10.0.0.0/8, fd00::/8")).toEqual([
+      "10.0.0.0/8",
+      "fd00::/8",
+    ]);
+    expect(() => parseTrustProxy("10.0.0.0/99")).toThrow(/TRUST_PROXY/);
+    expect(() => parseTrustProxy("anywhere")).toThrow(/TRUST_PROXY/);
+  });
+
+  it("does not let forwarded IP rotation bypass the admin auth limit", async () => {
+    const originalTrustProxy = config.trustProxy;
+    config.trustProxy = 1;
+    const app = await buildApp({ initSteam: false });
+
+    try {
+      const setup = await app.inject({
+        method: "POST",
+        url: "/api/setup",
+        headers: { "x-forwarded-for": "198.51.100.1" },
+        payload: {
+          password: "correct horse battery staple",
+          setupToken: "steam-bee-test-setup-token",
+        },
+      });
+      expect(setup.statusCode).toBe(200);
+
+      const attempts = [];
+      for (let index = 2; index <= 7; index += 1) {
+        attempts.push(
+          await app.inject({
+            method: "POST",
+            url: "/api/login",
+            headers: { "x-forwarded-for": `198.51.100.${index}` },
+            payload: { password: "wrong password" },
+          }),
+        );
+      }
+
+      expect(attempts.at(-1)?.statusCode).toBe(429);
+      expect(attempts.at(-1)?.json()).toMatchObject({
+        code: "RATE_LIMITED",
+      });
+    } finally {
+      config.trustProxy = originalTrustProxy;
+      await app.close();
+    }
+  });
+
+  it("bounds correlation IDs and prevents API responses from being cached", async () => {
+    const app = await buildApp({ initSteam: false });
+
+    try {
+      const accepted = await app.inject({
+        method: "GET",
+        url: "/api/me",
+        headers: { "x-correlation-id": "request_01:child" },
+      });
+      expect(accepted.headers["x-correlation-id"]).toBe("request_01:child");
+      expect(accepted.headers["cache-control"]).toBe("no-store");
+
+      for (const unsafeId of ["<script>alert(1)</script>", "a".repeat(129)]) {
+        const response = await app.inject({
+          method: "GET",
+          url: "/api/me",
+          headers: { "x-correlation-id": unsafeId },
+        });
+        expect(response.headers["x-correlation-id"]).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+        expect(response.headers["x-correlation-id"]).not.toBe(unsafeId);
+      }
+
+      const missing = await app.inject({
+        method: "GET",
+        url: "/api/not-a-route",
+      });
+      expect(missing.statusCode).toBe(404);
+      expect(missing.headers["cache-control"]).toBe("no-store");
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("uses private Unix modes for server data", () => {
+    if (process.platform === "win32") return;
+
+    expect(process.umask()).toBe(0o077);
+    expect(statSync(config.dataDir).mode & 0o777).toBe(0o700);
+    expect(statSync(paths.steamData).mode & 0o777).toBe(0o700);
+    expect(statSync(paths.secret).mode & 0o777).toBe(0o600);
+    expect(statSync(paths.database).mode & 0o777).toBe(0o600);
   });
 
   it("sets up admin auth and protects account APIs with csrf", async () => {

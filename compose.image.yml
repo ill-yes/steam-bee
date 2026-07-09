@@ -1,8 +1,10 @@
 services:
   steam-bee:
-    image: "${STEAM_BEE_IMAGE:-ghcr.io/ill-yes/steam-bee:1.0.2}"
+    image: "${STEAM_BEE_IMAGE:-ghcr.io/ill-yes/steam-bee:1.0.3}"
     restart: unless-stopped
     init: true
+    user: "10001:10001"
+    pids_limit: 256
     stop_grace_period: 30s
     ports:
       - "${STEAM_BEE_BIND:-127.0.0.1}:${STEAM_BEE_PORT:-3000}:3000"

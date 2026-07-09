@@ -115,8 +115,15 @@ docker compose -f compose.image.yml logs steam-bee | grep "SteamBee setup token"
 ```
 
 The generated token is also stored as `/data/setup.token` with mode `0600` and
-is removed after successful setup. Set `SETUP_TOKEN` only for automated
-provisioning; environment-provided tokens are deliberately not printed.
+is removed after successful setup. It is printed only when first generated;
+read the file after a later restart with:
+
+```bash
+docker compose -f compose.image.yml exec steam-bee cat /data/setup.token
+```
+
+Set `SETUP_TOKEN` only for automated provisioning; environment-provided tokens
+are deliberately not printed.
 
 ## Optional Configuration
 
@@ -145,11 +152,11 @@ For a LAN-accessible Unraid or VPS setup without a local reverse proxy, only set
 
 ## Image Versions
 
-`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.2`. Override the
+`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.3`. Override the
 pin in `.env` when you want to select another release:
 
 ```bash
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.2
+STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.3
 ```
 
 Exact version tags are recommended for repeatable deployments. Image tags do
@@ -157,11 +164,20 @@ not include the Git tag's `v` prefix: `1.0` tracks the latest `1.0.x` patch,
 `latest` tracks the newest stable release, and `edge` tracks `main`.
 
 The included GitHub Actions workflow verifies formatting, types, tests,
-Compose parity, runtime UID/GID, an amd64 image smoke test, and
-multi-architecture builds. `main` publishes only `edge` and `sha-*`; a Git tag
-such as `v1.0.2` publishes `1.0.2`, `1.0`, and `latest` for `linux/amd64` and
-`linux/arm64`. Manual workflow runs build but does not publish. The GHCR package
-is public and can be pulled without authentication.
+dependency and image vulnerabilities, Compose parity, runtime UID/GID, an
+amd64 image smoke test, and multi-architecture builds. `main` publishes only
+`edge` and `sha-*`; a Git tag such as `v1.0.3` publishes `1.0.3`, `1.0`, and
+`latest` for `linux/amd64` and `linux/arm64`. Published images include SBOM,
+provenance, and a GitHub artifact attestation. Manual workflow runs build but
+does not publish. The GHCR package is public and can be pulled without
+authentication.
+
+Verify a published image against this repository with the GitHub CLI:
+
+```bash
+gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.0.3 \
+  --repo ill-yes/steam-bee
+```
 
 ## Reverse Proxy
 
@@ -193,12 +209,18 @@ docker compose -f compose.image.yml -f compose.proxy.yml up -d
 Use the existing external network name instead of `proxy` when your Caddy,
 Nginx Proxy Manager, SWAG, or Traefik installation already provides one.
 
-When the public URL uses HTTPS, set these values in `.env`:
+When the public URL uses HTTPS behind exactly one reverse proxy, set these
+values in `.env`:
 
 ```bash
-TRUST_PROXY=true
+TRUST_PROXY=1
 COOKIE_SECURE=true
 ```
+
+`TRUST_PROXY` accepts a positive proxy-hop count or a comma-separated list of
+trusted IP addresses/CIDRs. Do not expose the application port directly when
+proxy trust is enabled, and configure the proxy to replace forwarded headers
+instead of appending untrusted client values.
 
 Keep response buffering disabled in Nginx-compatible proxies so SSE status and
 log updates are delivered immediately. SteamBee also sends
@@ -228,11 +250,12 @@ data and should be stored securely outside the repository after creation.
 Create a backup while the service is stopped:
 
 ```bash
-mkdir -p backups
+mkdir -m 700 -p backups
 docker compose -f compose.image.yml stop steam-bee
 docker compose -f compose.image.yml run --rm --no-deps --user 0:0 \
+  --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
   -v "$PWD/backups:/backup" steam-bee \
-  sh -c 'tar czf /backup/steam-bee-data-$(date +%Y%m%d-%H%M%S).tgz -C /data .'
+  sh -c 'umask 077; tar czf /backup/steam-bee-data-$(date +%Y%m%d-%H%M%S).tgz -C /data .'
 docker compose -f compose.image.yml up -d
 ```
 
@@ -241,7 +264,8 @@ Restore a backup:
 ```bash
 docker compose -f compose.image.yml down
 docker compose -f compose.image.yml run --rm --no-deps --user 0:0 \
-  -v "$PWD/backups:/backup" steam-bee \
+  --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+  -v "$PWD/backups:/backup:ro" steam-bee \
   sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar xzf /backup/<backup-file>.tgz -C /data && chown -R 10001:10001 /data'
 docker compose -f compose.image.yml up -d
 ```

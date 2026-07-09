@@ -21,6 +21,7 @@ const authRateLimit = {
       max: 5,
       timeWindow: "1 minute",
       groupId: "admin-auth",
+      keyGenerator: () => "admin-auth",
     },
   },
 };

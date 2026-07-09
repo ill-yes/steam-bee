@@ -12,7 +12,11 @@ import { registerPlugins } from "./http/plugins.js";
 import { registerRoutes } from "./http/routes.js";
 import { registerEventRetention } from "./http/events.js";
 import { steamManager } from "./steam/manager.js";
-import { fastifyLoggerOptions } from "./util/logger.js";
+import { errorLogFields, fastifyLoggerOptions } from "./util/logger.js";
+import { safeErrorMessage } from "./util/redact.js";
+
+const maxCorrelationIdLength = 128;
+const correlationIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 
 export async function buildApp(options: { initSteam?: boolean } = {}) {
   migrate();
@@ -26,9 +30,9 @@ export async function buildApp(options: { initSteam?: boolean } = {}) {
         ? shouldDisableRequestLogging
         : false,
     }),
-    requestIdHeader: "x-correlation-id",
     genReqId: (request) =>
-      normalizeHeader(request.headers["x-correlation-id"]) ?? randomUUID(),
+      sanitizeCorrelationId(request.headers["x-correlation-id"]) ??
+      randomUUID(),
     trustProxy: config.trustProxy,
   });
 
@@ -42,9 +46,9 @@ export async function buildApp(options: { initSteam?: boolean } = {}) {
       statusCode >= 400 && statusCode < 600 ? statusCode : 500;
 
     if (normalizedStatusCode >= 500) {
-      request.log.error({ err: error }, "Unhandled API error");
+      request.log.error(errorLogFields(error), "Unhandled API error");
     } else {
-      request.log.warn({ err: error }, "API request rejected");
+      request.log.warn(errorLogFields(error), "API request rejected");
     }
 
     return reply.code(normalizedStatusCode).send({
@@ -72,7 +76,7 @@ export async function buildApp(options: { initSteam?: boolean } = {}) {
 }
 
 function readableErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Request failed.";
+  return error instanceof Error ? safeErrorMessage(error) : "Request failed.";
 }
 
 function errorCode(error: unknown, statusCode: number) {
@@ -95,7 +99,17 @@ function shouldDisableRequestLogging(request: FastifyRequest) {
   );
 }
 
-function normalizeHeader(value: string | string[] | undefined) {
-  if (Array.isArray(value)) return value[0];
-  return value;
+function sanitizeCorrelationId(value: string | string[] | undefined) {
+  if (typeof value !== "string") return undefined;
+
+  const normalized = value.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > maxCorrelationIdLength ||
+    !correlationIdPattern.test(normalized)
+  ) {
+    return undefined;
+  }
+
+  return normalized;
 }

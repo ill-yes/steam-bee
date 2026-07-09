@@ -39,6 +39,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
       - name: Check formatting
         run: pnpm format:check
 
@@ -96,12 +99,21 @@ jobs:
             BUILD_DATE=${{ steps.build-date.outputs.value }}
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
 
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: steam-bee:ci
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
       - name: Smoke-test image
         run: |
           docker volume create steam-bee-ci-data
           trap 'docker rm -f steam-bee-ci >/dev/null 2>&1 || true; docker volume rm steam-bee-ci-data >/dev/null 2>&1 || true' EXIT
           docker run -d --name steam-bee-ci --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m -v steam-bee-ci-data:/data -e SETUP_TOKEN=steam-bee-ci-setup-token steam-bee:ci
-          for attempt in $(seq 1 30); do
+          for _attempt in $(seq 1 30); do
             docker exec steam-bee-ci node -e "if(process.getuid()!==10001||process.getgid()!==10001)throw new Error('unexpected runtime identity');Promise.all([fetch('http://127.0.0.1:3000/readyz').then(r=>{if(!r.ok)throw new Error('not ready')}),fetch('http://127.0.0.1:3000/').then(async r=>{if(!r.ok||!(await r.text()).includes('SteamBee'))throw new Error('ui unavailable')})]).then(()=>process.exit(0)).catch(()=>process.exit(1))" && exit 0
             sleep 1
           done
@@ -117,6 +129,8 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -169,12 +183,21 @@ jobs:
             BUILD_DATE=${{ steps.build-date.outputs.value }}
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
 
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: steam-bee:smoke
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
       - name: Smoke-test amd64 image
         run: |
           docker volume create steam-bee-smoke-data
           trap 'docker rm -f steam-bee-smoke >/dev/null 2>&1 || true; docker volume rm steam-bee-smoke-data >/dev/null 2>&1 || true' EXIT
           docker run -d --name steam-bee-smoke --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m -v steam-bee-smoke-data:/data -e SETUP_TOKEN=steam-bee-ci-setup-token steam-bee:smoke
-          for attempt in $(seq 1 30); do
+          for _attempt in $(seq 1 30); do
             docker exec steam-bee-smoke node -e "if(process.getuid()!==10001||process.getgid()!==10001)throw new Error('unexpected runtime identity');Promise.all([fetch('http://127.0.0.1:3000/readyz').then(r=>{if(!r.ok)throw new Error('not ready')}),fetch('http://127.0.0.1:3000/').then(async r=>{if(!r.ok||!(await r.text()).includes('SteamBee'))throw new Error('ui unavailable')})]).then(()=>process.exit(0)).catch(()=>process.exit(1))" && exit 0
             sleep 1
           done
@@ -182,6 +205,7 @@ jobs:
           exit 1
 
       - name: Build and push multi-arch image
+        id: push
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
@@ -198,3 +222,10 @@ jobs:
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
           provenance: true
           sbom: true
+
+      - name: Attest image
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-name: ghcr.io/${{ github.repository }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
