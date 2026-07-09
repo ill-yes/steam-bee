@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">SteamBee</title>
+  <rect width="512" height="512" rx="96" fill="#101720"/>
+  <g>
+    <ellipse cx="175" cy="247" rx="70" ry="105" transform="rotate(-28 175 247)" fill="#f6f8fb" stroke="#d99821" stroke-width="16"/>
+    <ellipse cx="337" cy="247" rx="70" ry="105" transform="rotate(28 337 247)" fill="#f6f8fb" stroke="#d99821" stroke-width="16"/>
+    <path d="M219 149c-13-31-37-45-62-49" fill="none" stroke="#ffc857" stroke-width="18" stroke-linecap="round"/>
+    <path d="M293 149c13-31 37-45 62-49" fill="none" stroke="#ffc857" stroke-width="18" stroke-linecap="round"/>
+    <path d="M256 158c-56 0-87 43-79 109 8 65 42 119 79 140 37-21 71-75 79-140 8-66-23-109-79-109Z" fill="#ffc857"/>
+    <path d="M180 245h152c2 16 1 33-2 50H182c-3-17-4-34-2-50Z" fill="#101720"/>
+    <path d="M195 329h122c-4 16-10 31-17 44h-88c-7-13-13-28-17-44Z" fill="#101720"/>
+    <circle cx="256" cy="158" r="65" fill="#ffc857"/>
+    <circle cx="232" cy="151" r="8" fill="#101720"/>
+    <circle cx="280" cy="151" r="8" fill="#101720"/>
+    <path d="M232 181c14 12 34 12 48 0" fill="none" stroke="#101720" stroke-width="12" stroke-linecap="round"/>
+  </g>
+</svg>

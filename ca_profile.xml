@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CommunityApplications>
+  <Profile>
+    SteamBee is a self-hosted, single-user Steam hour booster with a browser-based management UI. This repository contains the source, container image configuration, and official Community Apps template. Use GitHub Issues for support.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/ill-yes/steam-bee/main/icon.png</Icon>
+  <WebPage>https://github.com/ill-yes/steam-bee</WebPage>
+  <Forum>https://github.com/ill-yes/steam-bee/issues</Forum>
+  <DonateLink>https://buymeacoffee.com/ill_yes</DonateLink>
+  <DonateText>Support SteamBee</DonateText>
+</CommunityApplications>
