@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-slim AS base
+FROM node:26-slim AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -29,7 +29,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @steam-bee
 RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
-FROM node:22-slim AS runtime
+FROM node:26-slim AS runtime
 ARG VERSION=1.0.0-dev
 ARG REVISION=unknown
 ARG BUILD_DATE=unknown
