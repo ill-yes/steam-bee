@@ -136,6 +136,10 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}
+          labels: |
+            org.opencontainers.image.title=SteamBee
+            org.opencontainers.image.description=Self-hosted Steam hour booster with a secure Docker management UI.
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
           tags: |
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}

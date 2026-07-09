@@ -1,6 +1,6 @@
 services:
   steam-bee:
-    image: "${STEAM_BEE_IMAGE:?Set STEAM_BEE_IMAGE, for example ghcr.io/ill-yes/steam-bee:1.0.0}"
+    image: "${STEAM_BEE_IMAGE:?Set STEAM_BEE_IMAGE, for example ghcr.io/ill-yes/steam-bee:1.0.1}"
     restart: unless-stopped
     init: true
     stop_grace_period: 30s

@@ -30,7 +30,7 @@ RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
 FROM node:22-slim AS runtime
-ARG VERSION=1.0.0-dev
+ARG VERSION=1.0.1-dev
 ARG REVISION=unknown
 ARG BUILD_DATE=unknown
 ARG SOURCE_URL=https://github.com/ill-yes/steam-bee

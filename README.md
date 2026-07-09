@@ -122,15 +122,15 @@ For a LAN-accessible Unraid or VPS setup without a local reverse proxy, only set
 
 The default `compose.yml` builds locally from source. To run a published image from GitHub Container Registry instead, use `compose.image.yml`.
 
-Prefer a version tag such as `1.0.0` for repeatable deployments. Image tags do not include the Git tag's `v` prefix; `latest` is the newest stable release and `edge` tracks `main`:
+Prefer a version tag such as `1.0.1` for repeatable deployments. Image tags do not include the Git tag's `v` prefix; `latest` is the newest stable release and `edge` tracks `main`:
 
 ```bash
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.0 docker compose -f compose.image.yml up -d
+STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.1 docker compose -f compose.image.yml up -d
 ```
 
-For ongoing use, set `STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.0` in `.env` so follow-up commands such as `logs`, `ps`, and `down` use the same image reference.
+For ongoing use, set `STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.1` in `.env` so follow-up commands such as `logs`, `ps`, and `down` use the same image reference.
 
-The included GitHub Actions workflow verifies formatting, types, tests, Compose parity, an amd64 image smoke test, and multi-architecture builds. `main` publishes only `edge` and `sha-*`; a Git tag such as `v1.0.0` publishes `1.0.0`, `1.0`, and `latest` for `linux/amd64` and `linux/arm64`. Manual workflow runs build but do not publish. After the first successful publish, check the GitHub package visibility if you want other users to pull the image without authentication.
+The included GitHub Actions workflow verifies formatting, types, tests, Compose parity, an amd64 image smoke test, and multi-architecture builds. `main` publishes only `edge` and `sha-*`; a Git tag such as `v1.0.1` publishes `1.0.1`, `1.0`, and `latest` for `linux/amd64` and `linux/arm64`. Manual workflow runs build but do not publish. The GHCR package is public and can be pulled without authentication.
 
 ## Reverse Proxy
 
