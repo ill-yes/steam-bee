@@ -1,0 +1,36 @@
+{
+  "name": "steam-bee",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Self-hosted Steam hour booster with a secure management UI.",
+  "homepage": "https://github.com/ill-yes/steam-bee#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ill-yes/steam-bee.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ill-yes/steam-bee/issues"
+  },
+  "keywords": [
+    "docker",
+    "self-hosted",
+    "steam"
+  ],
+  "type": "module",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "check": "pnpm -r check",
+    "compose:check": "node scripts/check-compose-parity.mjs",
+    "dev": "pnpm --filter @steam-bee/server dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

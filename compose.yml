@@ -1,0 +1,46 @@
+services:
+  steam-bee:
+    build: .
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    ports:
+      - "${STEAM_BEE_BIND:-127.0.0.1}:${STEAM_BEE_PORT:-3000}:3000"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      DATA_DIR: "/data"
+      TRUST_PROXY: "${TRUST_PROXY:-false}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      LOG_REQUESTS: "${LOG_REQUESTS:-true}"
+      LOG_QUIET_REQUESTS: "${LOG_QUIET_REQUESTS:-true}"
+      SETUP_TOKEN: "${SETUP_TOKEN:-}"
+      EVENT_RETENTION_DAYS: "${EVENT_RETENTION_DAYS:-90}"
+    volumes:
+      - steam-bee-data:/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+        max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  steam-bee-data:
