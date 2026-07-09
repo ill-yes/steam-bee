@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Container version="2">
+  <Name>SteamBee</Name>
+  <Repository>ghcr.io/ill-yes/steam-bee:latest</Repository>
+  <Registry>https://github.com/ill-yes/steam-bee/pkgs/container/steam-bee</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/ill-yes/steam-bee/issues</Support>
+  <Project>https://github.com/ill-yes/steam-bee</Project>
+  <Overview>SteamBee is a self-hosted, single-user Steam hour booster with a browser-based management UI, multi-account control, QR/mobile approval, encrypted refresh-token storage, schedules, presets, and local logs.</Overview>
+  <Category>Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/ill-yes/steam-bee/main/templates/steam-bee.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/ill-yes/steam-bee/main/icon.png</Icon>
+  <ReadMe>https://raw.githubusercontent.com/ill-yes/steam-bee/main/README.md</ReadMe>
+  <ExtraSearchTerms>steam idler idle hour booster automation</ExtraSearchTerms>
+  <License>AGPL-3.0-or-later</License>
+  <Screenshot>https://raw.githubusercontent.com/ill-yes/steam-bee/main/docs/screenshots/steambee-dashboard.jpg</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/ill-yes/steam-bee/main/docs/screenshots/steambee-admin.jpg</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/ill-yes/steam-bee/main/docs/screenshots/steambee-sign-in.jpg</Screenshot>
+  <DonateLink>https://buymeacoffee.com/ill_yes</DonateLink>
+  <DonateText>Support SteamBee</DonateText>
+  <ExtraParams>--init --user=10001:10001 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges=true --read-only --tmpfs=/tmp:rw,noexec,nosuid,size=64m --stop-timeout=30 --log-opt=max-size=10m --log-opt=max-file=3</ExtraParams>
+  <Requires>Internet access and a persistent appdata directory writable by UID/GID 10001. Use only with Steam accounts you own. Use an HTTPS reverse proxy when exposing SteamBee beyond a trusted LAN or VPN.</Requires>
+
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="HTTP port for the SteamBee management UI." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/steambee" Mode="rw" Description="Persistent database, encrypted refresh tokens, instance secret, and Steam client data. The directory must be writable by UID/GID 10001." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Trust Proxy" Target="TRUST_PROXY" Default="false" Description="Set to 1 for exactly one trusted reverse proxy, or provide trusted IP addresses/CIDRs." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Secure Cookie" Target="COOKIE_SECURE" Default="false" Description="Set to true when SteamBee is served through HTTPS." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Log Level" Target="LOG_LEVEL" Default="info" Description="Logging level: fatal, error, warn, info, debug, trace, or silent." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Request Logging" Target="LOG_REQUESTS" Default="true" Description="Log incoming HTTP requests." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Quiet Request Logging" Target="LOG_QUIET_REQUESTS" Default="true" Description="Suppress routine health and status requests in the logs." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Setup Token" Target="SETUP_TOKEN" Default="" Description="Optional fixed setup token of 16 to 256 characters. Leave empty to generate one automatically." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Event Retention Days" Target="EVENT_RETENTION_DAYS" Default="90" Description="Days to retain events. Set to 0 to disable automatic cleanup." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

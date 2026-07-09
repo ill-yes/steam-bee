@@ -8,6 +8,10 @@ The repository and container image still use the stable technical slug `steam-be
 
 SteamBee is not affiliated with, endorsed by, or sponsored by Valve Corporation or Steam.
 
+**Quick links:** [📸 Screenshots](#screenshots) · [✨ Features](#features) ·
+[🐳 Docker](#docker-deployment) · [⚙️ Configuration](#optional-configuration) ·
+[☕ Support](#support-steambee) · [🔒 Security](#security)
+
 ## Screenshots
 
 These screenshots use synthetic demo accounts and fake SteamIDs.
@@ -312,6 +316,12 @@ Public documentation screenshots belong in `docs/screenshots/` and must use synt
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md) before opening a
 pull request.
+
+## Support SteamBee
+
+If SteamBee is useful to you, you can support its continued development on
+[Buy Me a Coffee](https://buymeacoffee.com/ill_yes). Support is entirely
+optional.
 
 ## Project Documentation
 
