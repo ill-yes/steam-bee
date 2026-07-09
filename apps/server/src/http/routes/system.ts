@@ -10,6 +10,12 @@ import { steamManager } from "../../steam/manager.js";
 import { getSseClientCount, registerSseClient } from "../events.js";
 import { requireAuth } from "../plugins.js";
 
+const systemReadRateLimit = {
+  max: 60,
+  timeWindow: "1 minute",
+  groupId: "system-read",
+};
+
 export async function registerSystemRoutes(app: FastifyInstance) {
   app.get("/healthz", async () => ({ ok: true }));
 
@@ -25,50 +31,71 @@ export async function registerSystemRoutes(app: FastifyInstance) {
     return { ok: true, code: "READY" };
   });
 
-  app.get("/api/diagnostics", { preHandler: requireAuth }, async () => {
-    const recentEvents = await db
-      .select({
-        level: steamEvent.level,
-        type: steamEvent.type,
-        createdAt: steamEvent.createdAt,
-      })
-      .from(steamEvent)
-      .orderBy(desc(steamEvent.createdAt))
-      .limit(500);
-    const accounts = await db.select().from(steamAccount);
+  app.get(
+    "/api/diagnostics",
+    {
+      preHandler: requireAuth,
+      config: { rateLimit: systemReadRateLimit },
+    },
+    async () => {
+      const recentEvents = await db
+        .select({
+          level: steamEvent.level,
+          type: steamEvent.type,
+          createdAt: steamEvent.createdAt,
+        })
+        .from(steamEvent)
+        .orderBy(desc(steamEvent.createdAt))
+        .limit(500);
+      const accounts = await db.select().from(steamAccount);
 
-    return {
-      build: config.build,
-      logging: {
-        level: config.logLevel,
-        requests: config.logRequests,
-        quietRequests: config.logQuietRequests,
-      },
-      runtime: {
-        dataDir: config.dataDir,
-        publicDir: config.publicDir,
-        sseClients: getSseClientCount(),
-      },
-      migrations: getMigrationState(),
-      events: summarizeEvents(recentEvents),
-      accounts: {
-        total: accounts.length,
-        desiredRunning: accounts.filter(
-          (account) => account.desiredState === "running",
-        ).length,
-      },
-    };
-  });
+      return {
+        build: config.build,
+        logging: {
+          level: config.logLevel,
+          requests: config.logRequests,
+          quietRequests: config.logQuietRequests,
+        },
+        runtime: {
+          dataDir: config.dataDir,
+          publicDir: config.publicDir,
+          sseClients: getSseClientCount(),
+        },
+        migrations: getMigrationState(),
+        events: summarizeEvents(recentEvents),
+        accounts: {
+          total: accounts.length,
+          desiredRunning: accounts.filter(
+            (account) => account.desiredState === "running",
+          ).length,
+        },
+      };
+    },
+  );
 
-  app.get("/api/events/recent", { preHandler: requireAuth }, async () => {
-    return db
-      .select()
-      .from(steamEvent)
-      .orderBy(desc(steamEvent.createdAt))
-      .limit(100);
-  });
+  app.get(
+    "/api/events/recent",
+    {
+      preHandler: requireAuth,
+      config: { rateLimit: systemReadRateLimit },
+    },
+    async () => {
+      return db
+        .select()
+        .from(steamEvent)
+        .orderBy(desc(steamEvent.createdAt))
+        .limit(100);
+    },
+  );
 
-  app.get("/api/system/status", { preHandler: requireAuth }, getSystemStatus);
+  app.get(
+    "/api/system/status",
+    {
+      preHandler: requireAuth,
+      config: { rateLimit: systemReadRateLimit },
+    },
+    getSystemStatus,
+  );
 
   app.get(
     "/api/events",

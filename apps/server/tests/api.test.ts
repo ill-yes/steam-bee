@@ -11,6 +11,7 @@ import {
   steamAppCache,
 } from "../src/db/schema.js";
 import { buildApp } from "../src/app.js";
+import { readXmlTag } from "../src/http/routes/accounts.js";
 
 describe("api auth flow", () => {
   beforeEach(() => {
@@ -39,6 +40,18 @@ describe("api auth flow", () => {
     ]);
     expect(() => parseTrustProxy("10.0.0.0/99")).toThrow(/TRUST_PROXY/);
     expect(() => parseTrustProxy("anywhere")).toThrow(/TRUST_PROXY/);
+  });
+
+  it("decodes XML text once and preserves CDATA content", () => {
+    expect(readXmlTag("<steamID>&lt;Admin&gt;</steamID>", "steamID")).toBe(
+      "<Admin>",
+    );
+    expect(
+      readXmlTag("<steamID>&amp;lt;Admin&amp;gt;</steamID>", "steamID"),
+    ).toBe("&lt;Admin&gt;");
+    expect(
+      readXmlTag("<steamID><![CDATA[A &amp; B]]></steamID>", "steamID"),
+    ).toBe("A &amp; B");
   });
 
   it("does not let forwarded IP rotation bypass the admin auth limit", async () => {

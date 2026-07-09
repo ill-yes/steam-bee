@@ -27,22 +27,14 @@ import { createLogger } from "../../util/logger.js";
 
 const routeLogger = createLogger("routes");
 const qrLoginRateLimit = {
-  config: {
-    rateLimit: {
-      max: 10,
-      timeWindow: "1 minute",
-      groupId: "steam-qr-login",
-    },
-  },
+  max: 10,
+  timeWindow: "1 minute",
+  groupId: "steam-qr-login",
 };
 const credentialLoginRateLimit = {
-  config: {
-    rateLimit: {
-      max: 3,
-      timeWindow: "1 minute",
-      groupId: "steam-credential-login",
-    },
-  },
+  max: 3,
+  timeWindow: "1 minute",
+  groupId: "steam-credential-login",
 };
 
 type SteamProfile = {
@@ -84,7 +76,10 @@ export async function registerAccountRoutes(app: FastifyInstance) {
 
   app.post(
     "/api/steam/login/qr/start",
-    { preHandler: requireAuth, ...qrLoginRateLimit },
+    {
+      preHandler: requireAuth,
+      config: { rateLimit: qrLoginRateLimit },
+    },
     async (request) => {
       return startQrLogin(operationContext(request, "steam-login-qr"));
     },
@@ -109,7 +104,10 @@ export async function registerAccountRoutes(app: FastifyInstance) {
 
   app.post(
     "/api/steam/login/credentials",
-    { preHandler: requireAuth, ...credentialLoginRateLimit },
+    {
+      preHandler: requireAuth,
+      config: { rateLimit: credentialLoginRateLimit },
+    },
     async (request) => {
       const body = credentialsLoginSchema.parse(request.body);
       const { CredentialLoginFlow } = await import("../../steam/login.js");
@@ -463,7 +461,7 @@ async function getSteamProfile(
   }
 }
 
-function readXmlTag(xml: string, tag: string) {
+export function readXmlTag(xml: string, tag: string) {
   const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = xml.match(
     new RegExp(
@@ -471,13 +469,22 @@ function readXmlTag(xml: string, tag: string) {
       "i",
     ),
   );
-  const rawValue = match?.[1] ?? match?.[2];
-  if (!rawValue) return null;
-  return rawValue
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
+  const cdataValue = match?.[1];
+  if (cdataValue !== undefined) return cdataValue.trim() || null;
+
+  const escapedValue = match?.[2];
+  if (!escapedValue) return null;
+  return escapedValue
+    .replace(/&(amp|lt|gt|quot|#39);/g, (entity) => {
+      return xmlEntityValues[entity] ?? entity;
+    })
     .trim();
 }
+
+const xmlEntityValues: Record<string, string> = {
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+};
