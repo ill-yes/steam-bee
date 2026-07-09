@@ -1,6 +1,7 @@
 import {
-  chmodSync,
-  existsSync,
+  closeSync,
+  fchmodSync,
+  openSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
@@ -21,33 +22,23 @@ export function initializeSetupToken(setupComplete: boolean) {
     return;
   }
 
-  const setupTokenFileExists = existsSync(paths.setupToken);
-  if (setupTokenFileExists) setPrivateFileMode(paths.setupToken);
-
   if (config.setupToken) {
     activeToken = config.setupToken;
     return;
   }
 
-  if (setupTokenFileExists) {
-    const existing = readFileSync(paths.setupToken, "utf8").trim();
-    if (existing.length < 16) {
-      throw new Error(
-        `Setup token at ${paths.setupToken} is invalid. Remove it to generate a new token.`,
-      );
-    }
-    activeToken = existing;
+  const generated = randomBytes(32).toString("base64url");
+  if (createSetupTokenFile(generated)) {
+    activeToken = generated;
+    setupLogger.warn(`SteamBee setup token: ${generated}`);
     return;
   }
 
-  const generated = randomBytes(32).toString("base64url");
-  writeFileSync(paths.setupToken, `${generated}\n`, {
-    mode: 0o600,
-    flag: "wx",
-  });
-  setPrivateFileMode(paths.setupToken);
-  activeToken = generated;
-  setupLogger.warn(`SteamBee setup token: ${generated}`);
+  const existing = readSetupTokenFile();
+  if (!existing) {
+    throw new Error("Setup token file disappeared before it could be read.");
+  }
+  activeToken = existing;
 }
 
 export function assertSetupToken(candidate: string) {
@@ -70,12 +61,60 @@ export function isSetupTokenRequired() {
 }
 
 function removeSetupTokenFile() {
-  if (!existsSync(paths.setupToken)) return;
-  unlinkSync(paths.setupToken);
+  try {
+    unlinkSync(paths.setupToken);
+  } catch (error) {
+    if (!isFileError(error, "ENOENT")) throw error;
+  }
 }
 
-function setPrivateFileMode(path: string) {
-  if (process.platform !== "win32") chmodSync(path, 0o600);
+function readSetupTokenFile() {
+  let descriptor: number;
+  try {
+    descriptor = openSync(paths.setupToken, "r");
+  } catch (error) {
+    if (isFileError(error, "ENOENT")) return null;
+    throw error;
+  }
+
+  try {
+    setPrivateDescriptorMode(descriptor);
+    const token = readFileSync(descriptor, "utf8").trim();
+    if (token.length < 16) {
+      throw new Error(
+        `Setup token at ${paths.setupToken} is invalid. Remove it to generate a new token.`,
+      );
+    }
+    return token;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function createSetupTokenFile(token: string) {
+  let descriptor: number;
+  try {
+    descriptor = openSync(paths.setupToken, "wx", 0o600);
+  } catch (error) {
+    if (isFileError(error, "EEXIST")) return false;
+    throw error;
+  }
+
+  try {
+    writeFileSync(descriptor, `${token}\n`, "utf8");
+    setPrivateDescriptorMode(descriptor);
+    return true;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function setPrivateDescriptorMode(descriptor: number) {
+  if (process.platform !== "win32") fchmodSync(descriptor, 0o600);
+}
+
+function isFileError(error: unknown, code: string) {
+  return error instanceof Error && "code" in error && error.code === code;
 }
 
 function constantTimeEqual(expected: string, candidate: string) {
