@@ -21,7 +21,7 @@ pnpm format:check
 pnpm check
 pnpm test
 docker compose config
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:test docker compose -f compose.image.yml config
+docker compose -f compose.image.yml config
 ```
 
 For Docker changes, also run:

@@ -25,3 +25,4 @@ sqlite.db
 *.sqlite-wal
 
 screenshots
+backups

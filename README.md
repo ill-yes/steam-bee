@@ -64,7 +64,27 @@ pnpm --filter @steam-bee/web dev
 
 ## Docker Deployment
 
-Fresh clone:
+Requirements:
+
+- Docker Engine with the Docker Compose v2 plugin.
+- A Docker host capable of running `linux/amd64` or `linux/arm64` images.
+- An HTTPS reverse proxy when SteamBee is exposed beyond a trusted LAN or VPN.
+
+### Prebuilt Image (Recommended)
+
+The public GHCR image is the shortest path for VPS and Unraid deployments. The
+included image Compose file is pinned to the current stable release and works
+without a `.env` file:
+
+```bash
+git clone https://github.com/ill-yes/steam-bee.git
+cd steam-bee
+docker compose -f compose.image.yml up -d
+```
+
+### Build From Source
+
+To build the same runtime image locally instead of pulling it from GHCR:
 
 ```bash
 git clone https://github.com/ill-yes/steam-bee.git
@@ -72,21 +92,26 @@ cd steam-bee
 docker compose up --build -d
 ```
 
-The app is available on `http://127.0.0.1:3000` by default. Compose binds to localhost so the container can sit behind Nginx, Caddy, Traefik, or another reverse proxy on the same host.
+The app is available on `http://127.0.0.1:3000` by default. Compose binds to
+localhost so a host-based reverse proxy can publish it safely.
+
+The commands below use the recommended prebuilt-image Compose file. If you
+built from source, omit `-f compose.image.yml`.
 
 Useful runtime commands:
 
 ```bash
-docker compose logs -f steam-bee
+docker compose -f compose.image.yml ps
+docker compose -f compose.image.yml logs -f steam-bee
 curl -fsS http://127.0.0.1:3000/readyz
-docker compose down
+docker compose -f compose.image.yml down
 ```
 
 On a fresh instance, read the one-time setup token from the logs and enter it
 with the new admin password:
 
 ```bash
-docker compose logs steam-bee | grep "SteamBee setup token"
+docker compose -f compose.image.yml logs steam-bee | grep "SteamBee setup token"
 ```
 
 The generated token is also stored as `/data/setup.token` with mode `0600` and
@@ -118,23 +143,55 @@ Container-internal values stay fixed at `HOST=0.0.0.0`, `PORT=3000`, and `DATA_D
 
 For a LAN-accessible Unraid or VPS setup without a local reverse proxy, only set `STEAM_BEE_BIND=0.0.0.0` on a trusted LAN or VPN. The setup token prevents an unauthenticated first visitor from claiming a fresh instance, but the login endpoint still belongs behind an HTTPS reverse proxy for internet access.
 
-## Prebuilt Image
+## Image Versions
 
-The default `compose.yml` builds locally from source. To run a published image from GitHub Container Registry instead, use `compose.image.yml`.
-
-Prefer a version tag such as `1.0.1` for repeatable deployments. Image tags do not include the Git tag's `v` prefix; `latest` is the newest stable release and `edge` tracks `main`:
+`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.2`. Override the
+pin in `.env` when you want to select another release:
 
 ```bash
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.1 docker compose -f compose.image.yml up -d
+STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.2
 ```
 
-For ongoing use, set `STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.1` in `.env` so follow-up commands such as `logs`, `ps`, and `down` use the same image reference.
+Exact version tags are recommended for repeatable deployments. Image tags do
+not include the Git tag's `v` prefix: `1.0` tracks the latest `1.0.x` patch,
+`latest` tracks the newest stable release, and `edge` tracks `main`.
 
-The included GitHub Actions workflow verifies formatting, types, tests, Compose parity, an amd64 image smoke test, and multi-architecture builds. `main` publishes only `edge` and `sha-*`; a Git tag such as `v1.0.1` publishes `1.0.1`, `1.0`, and `latest` for `linux/amd64` and `linux/arm64`. Manual workflow runs build but do not publish. The GHCR package is public and can be pulled without authentication.
+The included GitHub Actions workflow verifies formatting, types, tests,
+Compose parity, runtime UID/GID, an amd64 image smoke test, and
+multi-architecture builds. `main` publishes only `edge` and `sha-*`; a Git tag
+such as `v1.0.2` publishes `1.0.2`, `1.0`, and `latest` for `linux/amd64` and
+`linux/arm64`. Manual workflow runs build but does not publish. The GHCR package
+is public and can be pulled without authentication.
 
 ## Reverse Proxy
 
-For HTTPS behind Nginx, Caddy, Traefik, or another reverse proxy, keep the default localhost binding and point the proxy at `127.0.0.1:3000`.
+For a reverse proxy running directly on the Docker host, keep the default
+localhost binding and point the proxy at `127.0.0.1:3000`.
+
+For a reverse proxy running in another container, attach both services to the
+same external Docker network and use `steam-bee:3000` as the upstream. For
+example, create `compose.proxy.yml`:
+
+```yaml
+services:
+  steam-bee:
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+```
+
+Create the network once and include the override when starting SteamBee:
+
+```bash
+docker network create proxy
+docker compose -f compose.image.yml -f compose.proxy.yml up -d
+```
+
+Use the existing external network name instead of `proxy` when your Caddy,
+Nginx Proxy Manager, SWAG, or Traefik installation already provides one.
 
 When the public URL uses HTTPS, set these values in `.env`:
 
@@ -142,6 +199,10 @@ When the public URL uses HTTPS, set these values in `.env`:
 TRUST_PROXY=true
 COOKIE_SECURE=true
 ```
+
+Keep response buffering disabled in Nginx-compatible proxies so SSE status and
+log updates are delivered immediately. SteamBee also sends
+`X-Accel-Buffering: no` on SSE responses.
 
 ## Persistent Data
 
@@ -159,23 +220,30 @@ volumes:
 
 The container runs as UID/GID `10001`. Make sure the bind-mounted directory is writable by that user, and never point `/data` at the checked-out repository.
 
+The commands below use `compose.image.yml`. If you built from source, omit
+`-f compose.image.yml`. The local `backups/` directory is ignored by Git and
+the Docker build context, but backup archives still contain sensitive instance
+data and should be stored securely outside the repository after creation.
+
 Create a backup while the service is stopped:
 
 ```bash
 mkdir -p backups
-docker compose stop steam-bee
-docker compose run --rm --no-deps --user 0:0 -v "$PWD/backups:/backup" steam-bee \
+docker compose -f compose.image.yml stop steam-bee
+docker compose -f compose.image.yml run --rm --no-deps --user 0:0 \
+  -v "$PWD/backups:/backup" steam-bee \
   sh -c 'tar czf /backup/steam-bee-data-$(date +%Y%m%d-%H%M%S).tgz -C /data .'
-docker compose up -d
+docker compose -f compose.image.yml up -d
 ```
 
 Restore a backup:
 
 ```bash
-docker compose down
-docker compose run --rm --no-deps --user 0:0 -v "$PWD/backups:/backup" steam-bee \
-  sh -c 'rm -rf /data/* && tar xzf /backup/<backup-file>.tgz -C /data && chown -R 10001:10001 /data'
-docker compose up -d
+docker compose -f compose.image.yml down
+docker compose -f compose.image.yml run --rm --no-deps --user 0:0 \
+  -v "$PWD/backups:/backup" steam-bee \
+  sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar xzf /backup/<backup-file>.tgz -C /data && chown -R 10001:10001 /data'
+docker compose -f compose.image.yml up -d
 ```
 
 ## Updates
@@ -190,7 +258,12 @@ docker compose logs -f steam-bee
 
 Prebuilt image:
 
+If you rely on the pinned default in `compose.image.yml`, run `git pull` to
+receive the new release pin. If `.env` sets `STEAM_BEE_IMAGE`, update that value
+to the desired version before pulling.
+
 ```bash
+git pull
 docker compose -f compose.image.yml pull
 docker compose -f compose.image.yml up -d
 docker compose -f compose.image.yml logs -f steam-bee
@@ -198,11 +271,13 @@ docker compose -f compose.image.yml logs -f steam-bee
 
 ## Git Hygiene
 
-Never commit local runtime state or secrets. `.env`, `data/`, SQLite files, Steam client data, build outputs, and local screenshots are ignored. Before committing, these checks should be clean:
+Never commit local runtime state or secrets. `.env`, `data/`, `backups/`,
+SQLite files, Steam client data, build outputs, and local screenshots are
+ignored. Before committing, these checks should be clean:
 
 ```bash
-git check-ignore -v .env .env.local data apps/server/data screenshots
-git ls-files -- data .env apps/server/data screenshots
+git check-ignore -v .env .env.local data apps/server/data screenshots backups
+git ls-files -- data .env apps/server/data screenshots backups
 ```
 
 The second command should print nothing.

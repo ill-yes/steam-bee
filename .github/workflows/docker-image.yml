@@ -52,7 +52,7 @@ jobs:
         run: docker compose config --quiet
 
       - name: Validate image Compose file
-        run: STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:test docker compose -f compose.image.yml config --quiet
+        run: docker compose -f compose.image.yml config --quiet
 
       - name: Check Compose runtime parity
         run: pnpm compose:check
@@ -102,7 +102,7 @@ jobs:
           trap 'docker rm -f steam-bee-ci >/dev/null 2>&1 || true; docker volume rm steam-bee-ci-data >/dev/null 2>&1 || true' EXIT
           docker run -d --name steam-bee-ci --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m -v steam-bee-ci-data:/data -e SETUP_TOKEN=steam-bee-ci-setup-token steam-bee:ci
           for attempt in $(seq 1 30); do
-            docker exec steam-bee-ci node -e "Promise.all([fetch('http://127.0.0.1:3000/readyz').then(r=>{if(!r.ok)throw new Error('not ready')}),fetch('http://127.0.0.1:3000/').then(async r=>{if(!r.ok||!(await r.text()).includes('SteamBee'))throw new Error('ui unavailable')})]).then(()=>process.exit(0)).catch(()=>process.exit(1))" && exit 0
+            docker exec steam-bee-ci node -e "if(process.getuid()!==10001||process.getgid()!==10001)throw new Error('unexpected runtime identity');Promise.all([fetch('http://127.0.0.1:3000/readyz').then(r=>{if(!r.ok)throw new Error('not ready')}),fetch('http://127.0.0.1:3000/').then(async r=>{if(!r.ok||!(await r.text()).includes('SteamBee'))throw new Error('ui unavailable')})]).then(()=>process.exit(0)).catch(()=>process.exit(1))" && exit 0
             sleep 1
           done
           docker logs steam-bee-ci
@@ -175,7 +175,7 @@ jobs:
           trap 'docker rm -f steam-bee-smoke >/dev/null 2>&1 || true; docker volume rm steam-bee-smoke-data >/dev/null 2>&1 || true' EXIT
           docker run -d --name steam-bee-smoke --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m -v steam-bee-smoke-data:/data -e SETUP_TOKEN=steam-bee-ci-setup-token steam-bee:smoke
           for attempt in $(seq 1 30); do
-            docker exec steam-bee-smoke node -e "Promise.all([fetch('http://127.0.0.1:3000/readyz').then(r=>{if(!r.ok)throw new Error('not ready')}),fetch('http://127.0.0.1:3000/').then(async r=>{if(!r.ok||!(await r.text()).includes('SteamBee'))throw new Error('ui unavailable')})]).then(()=>process.exit(0)).catch(()=>process.exit(1))" && exit 0
+            docker exec steam-bee-smoke node -e "if(process.getuid()!==10001||process.getgid()!==10001)throw new Error('unexpected runtime identity');Promise.all([fetch('http://127.0.0.1:3000/readyz').then(r=>{if(!r.ok)throw new Error('not ready')}),fetch('http://127.0.0.1:3000/').then(async r=>{if(!r.ok||!(await r.text()).includes('SteamBee'))throw new Error('ui unavailable')})]).then(()=>process.exit(0)).catch(()=>process.exit(1))" && exit 0
             sleep 1
           done
           docker logs steam-bee-smoke

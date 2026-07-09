@@ -30,7 +30,7 @@ RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
 FROM node:22-slim AS runtime
-ARG VERSION=1.0.1-dev
+ARG VERSION=1.0.2-dev
 ARG REVISION=unknown
 ARG BUILD_DATE=unknown
 ARG SOURCE_URL=https://github.com/ill-yes/steam-bee
@@ -49,11 +49,12 @@ ENV BUILD_VERSION=${VERSION}
 ENV BUILD_REVISION=${REVISION}
 ENV BUILD_DATE=${BUILD_DATE}
 WORKDIR /app
-RUN useradd --system --uid 10001 --create-home steambee \
+RUN groupadd --gid 10001 steambee \
+  && useradd --uid 10001 --gid steambee --create-home --no-log-init --shell /usr/sbin/nologin steambee \
   && mkdir -p /data \
   && chown -R steambee:steambee /data /app
 COPY --from=build --chown=steambee:steambee /prod ./
-USER steambee
+USER 10001:10001
 EXPOSE 3000
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
