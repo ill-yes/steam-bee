@@ -21,12 +21,13 @@
   "packageManager": "pnpm@11.7.0",
   "scripts": {
     "build": "pnpm -r build",
-    "check": "pnpm -r check",
+    "check": "pnpm contracts:build && pnpm -r check",
     "compose:check": "node scripts/check-compose-parity.mjs",
+    "contracts:build": "pnpm --filter @steam-bee/contracts build",
     "dev": "pnpm --filter @steam-bee/server dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "pnpm -r test"
+    "test": "pnpm contracts:build && pnpm -r test"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
