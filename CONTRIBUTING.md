@@ -5,11 +5,26 @@ Thanks for taking the time to improve SteamBee.
 ## Before You Start
 
 - Use SteamBee only with accounts you own.
-- Do not include real Steam account names, SteamIDs, refresh tokens, `.env`
-  files, SQLite databases, or screenshots containing private account data.
-- Public screenshots must use synthetic accounts and fake data.
 - Security issues should follow [SECURITY.md](SECURITY.md), not public issue
   threads.
+
+## Repository Hygiene
+
+Never commit local runtime state, secrets, or private account data. This
+includes real Steam account names, SteamIDs, refresh tokens, `.env` files,
+`data/`, `backups/`, SQLite files, Steam client data, build outputs, and local
+screenshots. These paths are ignored where applicable. Before committing, these
+checks should be clean:
+
+```bash
+git check-ignore -v .env .env.local data apps/server/data screenshots backups
+git ls-files -- data .env apps/server/data screenshots backups
+```
+
+The second command should print nothing.
+
+Public documentation screenshots belong in `docs/screenshots/` and must use
+synthetic accounts and fake data only.
 
 ## Local Checks
 

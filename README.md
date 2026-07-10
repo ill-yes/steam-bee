@@ -1,16 +1,24 @@
 # SteamBee
 
-SteamBee is a self-hosted, single-user Steam hour booster with a Docker-friendly management UI.
+[![Docker Image](https://github.com/ill-yes/steam-bee/actions/workflows/docker-image.yml/badge.svg?branch=main)](https://github.com/ill-yes/steam-bee/actions/workflows/docker-image.yml) [![CodeQL](https://github.com/ill-yes/steam-bee/actions/workflows/github-code-scanning/codeql/badge.svg?branch=main)](https://github.com/ill-yes/steam-bee/actions/workflows/github-code-scanning/codeql) [![GitHub Release](https://img.shields.io/github/v/release/ill-yes/steam-bee?display_name=tag)](https://github.com/ill-yes/steam-bee/releases/latest) [![GitHub Release Date](https://img.shields.io/github/release-date/ill-yes/steam-bee)](https://github.com/ill-yes/steam-bee/releases/latest) [![GitHub Last Commit](https://img.shields.io/github/last-commit/ill-yes/steam-bee/main)](https://github.com/ill-yes/steam-bee/commits/main) [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
-It is built for your own Steam accounts in your own container. SteamBee does not store Steam passwords or Steam Guard shared secrets. Steam login uses QR/mobile approval first, with a one-time credential fallback only to obtain an encrypted refresh token.
+[![Container: GHCR](https://img.shields.io/badge/container-GHCR-2496ED?logo=docker&logoColor=white)](https://github.com/ill-yes/steam-bee/pkgs/container/steam-bee) [![Platforms](https://img.shields.io/badge/platform-linux%2Famd64%20%7C%20linux%2Farm64-blue?logo=linux)](docs/DEPLOYMENT.md#image-versions-and-verification) [![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/ill_yes)
 
-The repository and container image still use the stable technical slug `steam-bee` for package names, Compose services, volumes, and image tags. The public product name is `SteamBee`.
+SteamBee is a self-hosted, single-user Steam hour booster with a Docker-friendly
+management UI for your own Steam accounts.
 
-SteamBee is not affiliated with, endorsed by, or sponsored by Valve Corporation or Steam.
+Steam login prioritizes QR/mobile approval. A one-time credential fallback is
+available only to obtain an encrypted refresh token; SteamBee does not store
+Steam passwords or Steam Guard shared secrets.
 
-**Quick links:** [📸 Screenshots](#screenshots) · [✨ Features](#features) ·
-[🐳 Docker](#docker-deployment) · [⚙️ Configuration](#optional-configuration) ·
-[☕ Support](#support-steambee) · [🔒 Security](#security)
+The repository and container image keep the stable technical slug `steam-bee`
+for package names, Compose services, volumes, and image tags. The public product
+name is `SteamBee`.
+
+SteamBee is not affiliated with, endorsed by, or sponsored by Valve Corporation
+or Steam.
+
+**Quick links:** [Screenshots](#screenshots) · [✨ Features](#-features) · [🚀 Quick Start](#-quick-start) · [Deployment](docs/DEPLOYMENT.md) · [Operations](docs/OPERATIONS.md) · [Development](#development--contributing) · [🔒 Security](#-security) · [☕ Support](#-support-steambee)
 
 ## Screenshots
 
@@ -18,16 +26,24 @@ These screenshots use synthetic demo accounts and fake SteamIDs.
 
 ![SteamBee dashboard](docs/screenshots/steambee-dashboard.jpg)
 
-![SteamBee admin area](docs/screenshots/steambee-admin.jpg)
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/steambee-admin.jpg" alt="SteamBee admin area" />
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/steambee-sign-in.jpg" alt="SteamBee sign-in" />
+    </td>
+  </tr>
+</table>
 
-![SteamBee sign-in](docs/screenshots/steambee-sign-in.jpg)
-
-## Features
+## ✨ Features
 
 - One-time-token-protected admin setup with a cookie-based management UI.
 - Multiple own Steam accounts in one container.
 - QR login via `steam-session`.
-- One-time username/password + Steam Guard fallback without password persistence.
+- One-time username/password + Steam Guard fallback without password
+  persistence.
 - Encrypted refresh-token storage in `/data`.
 - Library import with manual AppID fallback.
 - Start, pause, resume, and stop per account.
@@ -37,42 +53,14 @@ These screenshots use synthetic demo accounts and fake SteamIDs.
 - Docker Compose setup for a VPS, Unraid, or any generic Docker host.
 - Optional prebuilt image deployment through GitHub Container Registry.
 
-## License
-
-SteamBee is licensed under the GNU Affero General Public License v3.0 or later
-(`AGPL-3.0-or-later`). The AGPL is a network-copyleft license: if you modify
-SteamBee and let users interact with it over a network, you must make the
-corresponding source code of that modified version available under the same
-license.
-
-Commercial use is allowed when the AGPL is followed. If you need to use,
-modify, distribute, host, rebrand, or embed SteamBee without AGPL obligations,
-contact the [project owner](https://github.com/ill-yes) for a separate
-commercial license.
-
-See [LICENSE](LICENSE), [NOTICE](NOTICE), and
-[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
-
-## Local Development
-
-```bash
-pnpm install
-pnpm dev
-```
-
-The server listens on `http://localhost:3000` and serves the built web app in production. In development, run the web app separately if you want Vite HMR:
-
-```bash
-pnpm --filter @steam-bee/web dev
-```
-
-## Docker Deployment
+## 🚀 Quick Start
 
 Requirements:
 
 - Docker Engine with the Docker Compose v2 plugin.
 - A Docker host capable of running `linux/amd64` or `linux/arm64` images.
-- An HTTPS reverse proxy when SteamBee is exposed beyond a trusted LAN or VPN.
+- An HTTPS reverse proxy when SteamBee is exposed beyond a trusted LAN or VPN;
+  see [Deployment and Configuration](docs/DEPLOYMENT.md).
 
 ### Prebuilt Image (Recommended)
 
@@ -86,30 +74,13 @@ cd steam-bee
 docker compose -f compose.image.yml up -d
 ```
 
-### Build From Source
-
-To build the same runtime image locally instead of pulling it from GHCR:
-
-```bash
-git clone https://github.com/ill-yes/steam-bee.git
-cd steam-bee
-docker compose up --build -d
-```
-
-The app is available on `http://127.0.0.1:3000` by default. Compose binds to
+SteamBee is available on `http://127.0.0.1:3000` by default. Compose binds to
 localhost so a host-based reverse proxy can publish it safely.
 
-The commands below use the recommended prebuilt-image Compose file. If you
-built from source, omit `-f compose.image.yml`.
+### First-Time Setup
 
-Useful runtime commands:
-
-```bash
-docker compose -f compose.image.yml ps
-docker compose -f compose.image.yml logs -f steam-bee
-curl -fsS http://127.0.0.1:3000/readyz
-docker compose -f compose.image.yml down
-```
+The commands below use `compose.image.yml`. If you built from source, omit
+`-f compose.image.yml`.
 
 On a fresh instance, read the one-time setup token from the logs and enter it
 with the new admin password:
@@ -129,234 +100,56 @@ docker compose -f compose.image.yml exec steam-bee cat /data/setup.token
 Set `SETUP_TOKEN` only for automated provisioning. Configured tokens must have
 8 to 256 characters and are deliberately not printed.
 
-## Optional Configuration
+SteamBee stores its database, encryption secret, encrypted refresh tokens, and
+Steam client data in persistent `/data` storage. The default Compose setup uses
+the named volume `steam-bee-data`; preserve it across updates, include it in
+your backup plan, and never bind `/data` to the checked-out repository. See
+[Operations and Data](docs/OPERATIONS.md) for storage and backup guidance.
 
-The Compose file works without a `.env` file. Copy `.env.example` to `.env` only when you need local overrides:
+## 📚 Documentation
 
-```bash
-cp .env.example .env
-```
+- [Deployment and Configuration](docs/DEPLOYMENT.md) covers source builds,
+  image tags and verification, environment settings, and reverse proxies.
+- [Operations and Data](docs/OPERATIONS.md) covers runtime commands, persistent
+  storage, Unraid, backups, restores, and updates.
+- [Back Up and Restore](docs/OPERATIONS.md#back-up-and-restore) links directly
+  to the recovery procedures.
+- [Security Policy](SECURITY.md) documents supported deployment boundaries and
+  vulnerability reporting.
+- [Contributing](CONTRIBUTING.md) covers repository hygiene, local checks, and
+  contribution licensing.
+- [Translations](docs/TRANSLATIONS.md) explains locale ownership and the
+  community-translation status.
+- [Product Context](PRODUCT.md) and [Design](DESIGN.md) define the product
+  boundaries and visual system.
 
-Runtime defaults:
+## Development & Contributing
 
-- `STEAM_BEE_BIND=127.0.0.1`
-- `STEAM_BEE_PORT=3000`
-- `TRUST_PROXY=false`
-- `COOKIE_SECURE=false`
-- `LOG_LEVEL=info`
-- `LOG_REQUESTS=true`
-- `LOG_QUIET_REQUESTS=true`
-- `EVENT_RETENTION_DAYS=90` (`0` disables cleanup)
-- `DOCKER_LOG_MAX_SIZE=10m`
-- `DOCKER_LOG_MAX_FILE=3`
+### Local Development
 
-Container-internal values stay fixed at `HOST=0.0.0.0`, `PORT=3000`, and `DATA_DIR=/data`.
+Requirements:
 
-For a LAN-accessible Unraid or VPS setup without a local reverse proxy, only set `STEAM_BEE_BIND=0.0.0.0` on a trusted LAN or VPN. The setup token prevents an unauthenticated first visitor from claiming a fresh instance, but the login endpoint still belongs behind an HTTPS reverse proxy for internet access.
-
-## Image Versions
-
-`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.5`. Override the
-pin in `.env` when you want to select another release:
-
-```bash
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.5
-```
-
-Exact version tags are recommended for repeatable deployments. Image tags do
-not include the Git tag's `v` prefix: `1.0` tracks the latest `1.0.x` patch,
-`latest` tracks the newest stable release, and `edge` tracks `main`.
-
-The included GitHub Actions workflow verifies formatting, types, tests,
-dependency and image vulnerabilities, Compose parity, runtime UID/GID, an
-Unraid template check, both standard and PUID/PGID image smoke tests, and
-multi-architecture builds. `main` publishes only
-`edge` and `sha-*`; a Git tag such as `v1.0.5` publishes `1.0.5`, `1.0`, and
-`latest` for `linux/amd64` and `linux/arm64`. Published images include SBOM,
-provenance, and a GitHub artifact attestation. Manual workflow runs build but
-does not publish. The GHCR package is public and can be pulled without
-authentication.
-
-Verify a published image against this repository with the GitHub CLI:
+- Node.js 22.
+- Corepack with the repository-pinned pnpm version.
+- Docker Engine with Docker Compose v2 for container-related changes.
 
 ```bash
-gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.0.5 \
-  --repo ill-yes/steam-bee
+corepack enable
+pnpm install
+pnpm dev
 ```
 
-## Reverse Proxy
-
-For a reverse proxy running directly on the Docker host, keep the default
-localhost binding and point the proxy at `127.0.0.1:3000`.
-
-For a reverse proxy running in another container, attach both services to the
-same external Docker network and use `steam-bee:3000` as the upstream. For
-example, create `compose.proxy.yml`:
-
-```yaml
-services:
-  steam-bee:
-    networks:
-      - proxy
-
-networks:
-  proxy:
-    external: true
-```
-
-Create the network once and include the override when starting SteamBee:
+The server listens on `http://localhost:3000` and serves the built web app in
+production. In development, run the web app separately if you want Vite HMR:
 
 ```bash
-docker network create proxy
-docker compose -f compose.image.yml -f compose.proxy.yml up -d
+pnpm --filter @steam-bee/web dev
 ```
 
-Use the existing external network name instead of `proxy` when your Caddy,
-Nginx Proxy Manager, SWAG, or Traefik installation already provides one.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for repository hygiene and local checks,
+and [CLA.md](CLA.md) before opening a pull request.
 
-When the public URL uses HTTPS behind exactly one reverse proxy, set these
-values in `.env`:
-
-```bash
-TRUST_PROXY=1
-COOKIE_SECURE=true
-```
-
-`TRUST_PROXY` accepts a positive proxy-hop count or a comma-separated list of
-trusted IP addresses/CIDRs. Do not expose the application port directly when
-proxy trust is enabled, and configure the proxy to replace forwarded headers
-instead of appending untrusted client values.
-
-Keep response buffering disabled in Nginx-compatible proxies so SSE status and
-log updates are delivered immediately. SteamBee also sends
-`X-Accel-Buffering: no` on SSE responses.
-
-## Persistent Data
-
-Compose mounts `/data` as the named volume `steam-bee-data`. It contains SQLite state, the instance encryption secret, encrypted Steam refresh tokens, and Steam client data. Do not bind this to the repository unless you know exactly what you are doing.
-
-The container root filesystem is read-only. Only `/data` and the bounded `/tmp`
-tmpfs are writable, and Docker's `json-file` logs rotate by default.
-
-Named volumes are the supported default. On Unraid, you can replace the volume with an appdata bind mount if you want direct host-side backups:
-
-```yaml
-volumes:
-  - /mnt/user/appdata/steambee:/data
-```
-
-The standard image and both Compose files run as UID/GID `10001` exactly as
-before. Make sure custom bind mounts are writable by that user, and never point
-`/data` at the checked-out repository.
-
-The official Unraid template uses Unraid's conventional `PUID=99` and
-`PGID=100`. Its restricted startup helper changes ownership only inside
-`/data`, clears every inherited, permitted, effective, bounding, and ambient
-capability, and then replaces itself with the Node process as that unprivileged
-user. New Unraid installations therefore require no host-side `chown` command.
-Changing PUID or PGID in the template automatically migrates existing appdata
-ownership on the next start.
-
-Keep the template's Appdata mapping pointed at one dedicated SteamBee
-directory (the default is `/mnt/user/appdata/steambee`). Before changing any
-ownership, the helper requires an empty, previously marked, or recognizable
-SteamBee data directory and rejects unexpected top-level entries, hardlinks,
-symlinks, special files, and nested mounts. This prevents an accidentally
-broad mapping such as `/mnt/user/appdata` from rewriting other containers'
-data.
-
-The commands below use `compose.image.yml`. If you built from source, omit
-`-f compose.image.yml`. The local `backups/` directory is ignored by Git and
-the Docker build context, but backup archives still contain sensitive instance
-data and should be stored securely outside the repository after creation.
-
-Create a backup while the service is stopped:
-
-```bash
-mkdir -m 700 -p backups
-docker compose -f compose.image.yml stop steam-bee
-docker compose -f compose.image.yml run --rm --no-deps --user 0:0 \
-  --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
-  -v "$PWD/backups:/backup" steam-bee \
-  sh -c 'umask 077; tar czf /backup/steam-bee-data-$(date +%Y%m%d-%H%M%S).tgz -C /data .'
-docker compose -f compose.image.yml up -d
-```
-
-Restore a backup:
-
-```bash
-docker compose -f compose.image.yml down
-docker compose -f compose.image.yml run --rm --no-deps --user 0:0 \
-  --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
-  -v "$PWD/backups:/backup:ro" steam-bee \
-  sh -c 'find /data -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + && tar xzf /backup/<backup-file>.tgz -C /data && chown -R 10001:10001 /data'
-docker compose -f compose.image.yml up -d
-```
-
-## Updates
-
-Source build:
-
-```bash
-git pull
-docker compose up --build -d
-docker compose logs -f steam-bee
-```
-
-Prebuilt image:
-
-If you rely on the pinned default in `compose.image.yml`, run `git pull` to
-receive the new release pin. If `.env` sets `STEAM_BEE_IMAGE`, update that value
-to the desired version before pulling.
-
-```bash
-git pull
-docker compose -f compose.image.yml pull
-docker compose -f compose.image.yml up -d
-docker compose -f compose.image.yml logs -f steam-bee
-```
-
-Unraid stores an installed container's template locally and does not overwrite
-it with later template revisions. Containers installed before `1.0.5` must be
-recreated once from the current Community Apps template, keeping the same
-Appdata path. The appdata itself remains persistent, and the new template
-adopts it automatically without terminal commands. New installations already
-receive the automatic PUID/PGID initialization.
-
-## Git Hygiene
-
-Never commit local runtime state or secrets. `.env`, `data/`, `backups/`,
-SQLite files, Steam client data, build outputs, and local screenshots are
-ignored. Before committing, these checks should be clean:
-
-```bash
-git check-ignore -v .env .env.local data apps/server/data screenshots backups
-git ls-files -- data .env apps/server/data screenshots backups
-```
-
-The second command should print nothing.
-
-Public documentation screenshots belong in `docs/screenshots/` and must use synthetic accounts only.
-
-## Contributing
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md) before opening a
-pull request.
-
-## Support SteamBee
-
-If SteamBee is useful to you, you can support its continued development on
-[Buy Me a Coffee](https://buymeacoffee.com/ill_yes). Support is entirely
-optional.
-
-## Project Documentation
-
-- [PRODUCT.md](PRODUCT.md) defines the target users, product boundaries, and operating model.
-- [DESIGN.md](DESIGN.md) documents the interface principles and visual system.
-- [docs/TRANSLATIONS.md](docs/TRANSLATIONS.md) explains locale ownership and the community-translation status.
-- [SECURITY.md](SECURITY.md) covers supported deployment boundaries and vulnerability reporting.
-
-## Security
+## 🔒 Security
 
 Read [SECURITY.md](SECURITY.md) before exposing SteamBee outside localhost.
 
@@ -367,6 +160,29 @@ Security boundaries:
 - No Steam Guard shared-secret persistence.
 - No Docker socket or shell command surface.
 - No forced kicking of real Steam sessions.
-- No Valve or Steam affiliation.
 
-Use at your own risk. Steam and game-specific rules can change, and automation may have account or platform consequences.
+Use at your own risk. Steam and game-specific rules can change, and automation
+may have account or platform consequences.
+
+## License
+
+SteamBee is licensed under the GNU Affero General Public License v3.0 or later
+(`AGPL-3.0-or-later`). The AGPL is a network-copyleft license: if you modify
+SteamBee and let users interact with it over a network, you must make the
+corresponding source code of that modified version available under the same
+license.
+
+Commercial use is allowed when the AGPL is followed. If you need to use,
+modify, distribute, host, rebrand, or embed SteamBee without AGPL obligations,
+contact the [project owner](https://github.com/ill-yes) for a separate
+commercial license.
+
+See [LICENSE](LICENSE), [NOTICE](NOTICE), and
+[COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
+
+## ☕ Support SteamBee
+
+If SteamBee is useful to you, you can support its continued development on Buy
+Me a Coffee. Support is entirely optional.
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy_Me_a_Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000)](https://buymeacoffee.com/ill_yes)
