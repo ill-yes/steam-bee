@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { ERROR_CODES } from "@steam-bee/contracts";
-import { config, paths } from "../config.js";
+import { config, MIN_SETUP_TOKEN_LENGTH, paths } from "../config.js";
 import { appError } from "../http/errors.js";
 import { createLogger } from "../util/logger.js";
 
@@ -80,7 +80,7 @@ function readSetupTokenFile() {
   try {
     setPrivateDescriptorMode(descriptor);
     const token = readFileSync(descriptor, "utf8").trim();
-    if (token.length < 16) {
+    if (token.length < MIN_SETUP_TOKEN_LENGTH) {
       throw new Error(
         `Setup token at ${paths.setupToken} is invalid. Remove it to generate a new token.`,
       );

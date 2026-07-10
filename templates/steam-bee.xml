@@ -32,6 +32,6 @@
   <Config Name="Log Level" Target="LOG_LEVEL" Default="info" Description="Logging level: fatal, error, warn, info, debug, trace, or silent." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Request Logging" Target="LOG_REQUESTS" Default="true" Description="Log incoming HTTP requests." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Quiet Request Logging" Target="LOG_QUIET_REQUESTS" Default="true" Description="Suppress routine health and status requests in the logs." Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Setup Token" Target="SETUP_TOKEN" Default="" Description="Optional fixed setup token of 16 to 256 characters. Leave empty to generate one automatically." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Setup Token" Target="SETUP_TOKEN" Default="" Description="Optional fixed setup token of 8 to 256 characters. Leave empty to generate one automatically." Type="Variable" Display="advanced" Required="false" Mask="true"/>
   <Config Name="Event Retention Days" Target="EVENT_RETENTION_DAYS" Default="90" Description="Days to retain events. Set to 0 to disable automatic cleanup." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 </Container>

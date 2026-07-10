@@ -12,6 +12,7 @@ import { z } from "zod";
 
 const privateDirectoryMode = 0o700;
 const privateFileMode = 0o600;
+export const MIN_SETUP_TOKEN_LENGTH = 8;
 const trueProxyAliases = new Set(["true", "yes", "on"]);
 const falseProxyAliases = new Set(["false", "no", "off", "0"]);
 
@@ -55,6 +56,11 @@ const trustProxySchema = z
     }
   });
 
+const configuredSetupTokenSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(MIN_SETUP_TOKEN_LENGTH).max(256).optional(),
+);
+
 const envSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -77,10 +83,7 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((value) => (value === undefined ? true : value === "true")),
-  SETUP_TOKEN: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().min(16).max(256).optional(),
-  ),
+  SETUP_TOKEN: configuredSetupTokenSchema,
   EVENT_RETENTION_DAYS: z.coerce.number().int().min(0).default(90),
   BUILD_VERSION: z.string().default("0.1.0-dev"),
   BUILD_REVISION: z.string().default("unknown"),
