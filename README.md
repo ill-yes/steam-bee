@@ -126,8 +126,8 @@ read the file after a later restart with:
 docker compose -f compose.image.yml exec steam-bee cat /data/setup.token
 ```
 
-Set `SETUP_TOKEN` only for automated provisioning; environment-provided tokens
-are deliberately not printed.
+Set `SETUP_TOKEN` only for automated provisioning. Configured tokens must have
+8 to 256 characters and are deliberately not printed.
 
 ## Optional Configuration
 
@@ -156,11 +156,11 @@ For a LAN-accessible Unraid or VPS setup without a local reverse proxy, only set
 
 ## Image Versions
 
-`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.3`. Override the
+`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.4`. Override the
 pin in `.env` when you want to select another release:
 
 ```bash
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.3
+STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.4
 ```
 
 Exact version tags are recommended for repeatable deployments. Image tags do
@@ -170,7 +170,7 @@ not include the Git tag's `v` prefix: `1.0` tracks the latest `1.0.x` patch,
 The included GitHub Actions workflow verifies formatting, types, tests,
 dependency and image vulnerabilities, Compose parity, runtime UID/GID, an
 amd64 image smoke test, and multi-architecture builds. `main` publishes only
-`edge` and `sha-*`; a Git tag such as `v1.0.3` publishes `1.0.3`, `1.0`, and
+`edge` and `sha-*`; a Git tag such as `v1.0.4` publishes `1.0.4`, `1.0`, and
 `latest` for `linux/amd64` and `linux/arm64`. Published images include SBOM,
 provenance, and a GitHub artifact attestation. Manual workflow runs build but
 does not publish. The GHCR package is public and can be pulled without
@@ -179,7 +179,7 @@ authentication.
 Verify a published image against this repository with the GitHub CLI:
 
 ```bash
-gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.0.3 \
+gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.0.4 \
   --repo ill-yes/steam-bee
 ```
 

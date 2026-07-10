@@ -40,7 +40,7 @@ RUN rm -rf \
   /usr/local/bin/corepack \
   /usr/local/bin/yarn \
   /usr/local/bin/yarnpkg
-ARG VERSION=1.0.3-dev
+ARG VERSION=1.0.4-dev
 ARG REVISION=unknown
 ARG BUILD_DATE=unknown
 ARG SOURCE_URL=https://github.com/ill-yes/steam-bee
