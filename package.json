@@ -1,6 +1,6 @@
 {
   "name": "steam-bee",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Self-hosted Steam hour booster with a secure management UI.",
@@ -23,6 +23,7 @@
     "build": "pnpm -r build",
     "check": "pnpm contracts:build && pnpm -r check",
     "compose:check": "node scripts/check-compose-parity.mjs",
+    "unraid:check": "node scripts/check-unraid-template.mjs",
     "contracts:build": "pnpm --filter @steam-bee/contracts build",
     "dev": "pnpm --filter @steam-bee/server dev",
     "format": "prettier --write .",
