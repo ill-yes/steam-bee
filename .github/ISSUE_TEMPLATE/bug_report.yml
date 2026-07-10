@@ -1,0 +1,211 @@
+name: Bug report
+description: Report a reproducible problem with SteamBee.
+title: "[Bug]: "
+labels:
+  - bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve SteamBee. Complete every required field so the problem can be reproduced and diagnosed.
+
+        If this may be a security vulnerability, **do not continue with a public issue**. Use [private vulnerability reporting](https://github.com/ill-yes/steam-bee/security/advisories/new) instead. See the [security policy](https://github.com/ill-yes/steam-bee/security/policy) and [operations guide](https://github.com/ill-yes/steam-bee/blob/main/docs/OPERATIONS.md) before sharing diagnostics.
+
+        This issue and all attachments are public. Paste logs as text, not only as screenshots. Never paste or attach `.env`, anything from `/data`, `steam-bee.sqlite*` files, `instance.secret`, Steam client data, or complete `docker inspect` output. Remove setup tokens (including values in `SteamBee setup token: ...` log lines), passwords, refresh/session/CSRF tokens, cookies, Steam Guard codes or QR codes, real Steam account names or SteamIDs, and identifying hostnames, IP addresses, domains, browser URLs, and local paths.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      description: Confirm each item before opening this public issue.
+      options:
+        - label: I searched the [existing issues](https://github.com/ill-yes/steam-bee/issues?q=is%3Aissue) for this problem.
+          required: true
+        - label: This is not a suspected security vulnerability; security reports belong in [private vulnerability reporting](https://github.com/ill-yes/steam-bee/security/advisories/new).
+          required: true
+        - label: I sanitized all text and attachments, and I did not include `.env`, `/data` or Steam client files, SQLite files, complete `docker inspect` output, secrets, or identifying infrastructure details.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Select the part of SteamBee where the problem occurs.
+      options:
+        - Installation or startup
+        - Update, backup, or restore
+        - First-time setup or admin sign-in
+        - Steam sign-in or Steam Guard
+        - Accounts or library import
+        - Boosting or session control
+        - Presets or schedules
+        - Web UI or browser
+        - Reverse proxy or networking
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior, when it began, and the exact error shown.
+      placeholder: SteamBee failed to start after ... The first error was ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Describe the behavior you expected instead.
+      placeholder: SteamBee should have ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest numbered sequence that reliably triggers the problem.
+      placeholder: |
+        1. Start from ...
+        2. Configure ...
+        3. Run ...
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      description: How consistently can you reproduce the problem?
+      options:
+        - Every time
+        - Intermittently
+        - Once
+        - Unknown or not retested
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: SteamBee version and image
+      description: Provide the exact SteamBee version plus the image tag and digest/image ID, or the source commit. `latest` alone is not enough.
+      placeholder: SteamBee 1.0.5; ghcr.io/ill-yes/steam-bee:1.0.5; sha256:...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment method
+      options:
+        - Unraid Community Apps
+        - Docker Compose with the prebuilt image
+        - Docker Compose built from source
+        - Custom container or docker run
+        - Local development
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation_state
+    attributes:
+      label: Installation state
+      description: Select the change that most closely preceded the problem.
+      options:
+        - Fresh installation
+        - Upgraded from an earlier SteamBee version
+        - Existing installation after a template or configuration change
+        - Restored or migrated data
+        - No recent change
+        - Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: installation_history
+    attributes:
+      label: Installation and update history
+      description: Describe how this installation reached its current state and when the problem first appeared.
+      placeholder: |
+        Fresh install, upgrade, restore, or migration:
+        First installed SteamBee version and approximate date:
+        Previous SteamBee version:
+        Update or reinstall method:
+        Container recreated from the current template after updating: yes / no / not applicable
+        Problem first appeared:
+    validations:
+      required: true
+
+  - type: dropdown
+    id: data_storage
+    attributes:
+      label: Data storage
+      description: How is the container's `/data` directory stored?
+      options:
+        - Docker named volume
+        - Local bind mount
+        - Network-backed mount or share (NFS, SMB, CIFS, or FUSE)
+        - Other or unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Host and runtime details
+      description: |
+        Fill in every applicable line and use `unknown` or `not applicable` where needed. For Unraid, include PUID, PGID, `STEAM_BEE_DATA_INIT`, and the targeted runtime details below. Do not paste `.env` or complete `docker inspect` output.
+      placeholder: |
+        Host OS and version:
+        Docker Engine version:
+        Docker Compose version (if applicable):
+        Unraid version (if applicable):
+        CPU architecture:
+        Configured container --user value:
+        Configured entrypoint and command (values only; no full docker run or inspect output):
+        DATA_DIR:
+        Storage filesystem:
+        /data mapping (redacted):
+        /data mount-root owner UID:GID and mode (do not list /data contents):
+        PUID:
+        PGID:
+        STEAM_BEE_DATA_INIT:
+        Browser and version (for UI problems):
+        Reverse proxy (for networking problems):
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >-
+        Paste approximately 100-200 relevant lines from process startup through the first failure, including the complete stack trace, as text. Replace the value in every `SteamBee setup token: ...` line with `<redacted>` before pasting. Remove all other secrets and identifying details listed above. If SteamBee produced no logs, state that explicitly.
+      placeholder: Paste sanitized log text here. Do not include secrets or identifying data.
+      render: shell
+    validations:
+      required: true
+
+  - type: upload
+    id: attachments
+    attributes:
+      label: Sanitized screenshots
+      description: Optionally attach screenshots after removing setup tokens, passwords, cookies, Steam Guard codes or QR codes, real account names or SteamIDs, hostnames, IP addresses, domains, browser URLs, and local paths. Screenshots do not replace the required text logs.
+    validations:
+      required: false
+      accept: ".png,.jpg,.jpeg,.webp"
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Optionally describe a regression, last known working version, workaround, or other relevant observation.
+    validations:
+      required: false
