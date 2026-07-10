@@ -24,12 +24,14 @@ pnpm audit --audit-level=high
 docker compose config
 docker compose -f compose.image.yml config
 pnpm compose:check
+pnpm unraid:check
 ```
 
 For Docker changes, also run:
 
 ```bash
 docker build --pull=false -t steam-bee:local .
+sh scripts/smoke-test-image.sh steam-bee:local steam-bee-local
 ```
 
 ## Contribution Licensing

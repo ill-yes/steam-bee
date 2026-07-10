@@ -48,3 +48,11 @@ proxy and set `TRUST_PROXY=1` and `COOKIE_SECURE=true` when served over HTTPS
 through one trusted proxy. Keep the application port inaccessible from
 untrusted networks and use an exact hop count or trusted CIDR list for more
 complex proxy chains.
+
+The standard image runs as UID/GID `10001`; the supported Compose files also
+drop all capabilities. The Unraid template starts a restricted ownership
+helper for `/data`, then drops to its configured PUID/PGID with an empty
+capability set before Node starts. Its healthcheck applies the same privilege
+drop. Ownership initialization is fail-closed: `/data` must be a dedicated,
+empty or recognizable SteamBee mount without nested mounts, hardlinks,
+symlinks, special files, or unrelated top-level entries.

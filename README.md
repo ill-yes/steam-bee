@@ -156,11 +156,11 @@ For a LAN-accessible Unraid or VPS setup without a local reverse proxy, only set
 
 ## Image Versions
 
-`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.4`. Override the
+`compose.image.yml` defaults to `ghcr.io/ill-yes/steam-bee:1.0.5`. Override the
 pin in `.env` when you want to select another release:
 
 ```bash
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.4
+STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.5
 ```
 
 Exact version tags are recommended for repeatable deployments. Image tags do
@@ -169,8 +169,9 @@ not include the Git tag's `v` prefix: `1.0` tracks the latest `1.0.x` patch,
 
 The included GitHub Actions workflow verifies formatting, types, tests,
 dependency and image vulnerabilities, Compose parity, runtime UID/GID, an
-amd64 image smoke test, and multi-architecture builds. `main` publishes only
-`edge` and `sha-*`; a Git tag such as `v1.0.4` publishes `1.0.4`, `1.0`, and
+Unraid template check, both standard and PUID/PGID image smoke tests, and
+multi-architecture builds. `main` publishes only
+`edge` and `sha-*`; a Git tag such as `v1.0.5` publishes `1.0.5`, `1.0`, and
 `latest` for `linux/amd64` and `linux/arm64`. Published images include SBOM,
 provenance, and a GitHub artifact attestation. Manual workflow runs build but
 does not publish. The GHCR package is public and can be pulled without
@@ -179,7 +180,7 @@ authentication.
 Verify a published image against this repository with the GitHub CLI:
 
 ```bash
-gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.0.4 \
+gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.0.5 \
   --repo ill-yes/steam-bee
 ```
 
@@ -244,7 +245,25 @@ volumes:
   - /mnt/user/appdata/steambee:/data
 ```
 
-The container runs as UID/GID `10001`. Make sure the bind-mounted directory is writable by that user, and never point `/data` at the checked-out repository.
+The standard image and both Compose files run as UID/GID `10001` exactly as
+before. Make sure custom bind mounts are writable by that user, and never point
+`/data` at the checked-out repository.
+
+The official Unraid template uses Unraid's conventional `PUID=99` and
+`PGID=100`. Its restricted startup helper changes ownership only inside
+`/data`, clears every inherited, permitted, effective, bounding, and ambient
+capability, and then replaces itself with the Node process as that unprivileged
+user. New Unraid installations therefore require no host-side `chown` command.
+Changing PUID or PGID in the template automatically migrates existing appdata
+ownership on the next start.
+
+Keep the template's Appdata mapping pointed at one dedicated SteamBee
+directory (the default is `/mnt/user/appdata/steambee`). Before changing any
+ownership, the helper requires an empty, previously marked, or recognizable
+SteamBee data directory and rejects unexpected top-level entries, hardlinks,
+symlinks, special files, and nested mounts. This prevents an accidentally
+broad mapping such as `/mnt/user/appdata` from rewriting other containers'
+data.
 
 The commands below use `compose.image.yml`. If you built from source, omit
 `-f compose.image.yml`. The local `backups/` directory is ignored by Git and
@@ -296,6 +315,13 @@ docker compose -f compose.image.yml pull
 docker compose -f compose.image.yml up -d
 docker compose -f compose.image.yml logs -f steam-bee
 ```
+
+Unraid stores an installed container's template locally and does not overwrite
+it with later template revisions. Containers installed before `1.0.5` must be
+recreated once from the current Community Apps template, keeping the same
+Appdata path. The appdata itself remains persistent, and the new template
+adopts it automatically without terminal commands. New installations already
+receive the automatic PUID/PGID initialization.
 
 ## Git Hygiene
 

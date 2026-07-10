@@ -40,7 +40,7 @@ RUN rm -rf \
   /usr/local/bin/corepack \
   /usr/local/bin/yarn \
   /usr/local/bin/yarnpkg
-ARG VERSION=1.0.4-dev
+ARG VERSION=1.0.5-dev
 ARG REVISION=unknown
 ARG BUILD_DATE=unknown
 ARG SOURCE_URL=https://github.com/ill-yes/steam-bee
@@ -64,8 +64,10 @@ RUN groupadd --gid 10001 steambee \
   && mkdir -p /data \
   && chown -R steambee:steambee /data /app
 COPY --from=build --chown=steambee:steambee /prod ./
+COPY --chmod=0755 docker/steam-bee-entrypoint.sh /usr/local/bin/steam-bee-entrypoint
 USER 10001:10001
 EXPOSE 3000
 VOLUME ["/data"]
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+ENTRYPOINT ["/usr/local/bin/steam-bee-entrypoint"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD ["/usr/local/bin/steam-bee-entrypoint", "--healthcheck", "node", "-e", "if(process.getuid?.()===0||process.getgid?.()===0)process.exit(1);fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 CMD ["node", "dist/index.js"]

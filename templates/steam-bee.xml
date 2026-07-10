@@ -22,11 +22,15 @@
   <Screenshot>https://raw.githubusercontent.com/ill-yes/steam-bee/main/docs/screenshots/steambee-sign-in.jpg</Screenshot>
   <DonateLink>https://buymeacoffee.com/ill_yes</DonateLink>
   <DonateText>Support SteamBee</DonateText>
-  <ExtraParams>--init --user=10001:10001 --pids-limit=256 --cap-drop=ALL --security-opt=no-new-privileges=true --read-only --tmpfs=/tmp:rw,noexec,nosuid,size=64m --stop-timeout=30 --log-opt=max-size=10m --log-opt=max-file=3</ExtraParams>
-  <Requires>Internet access and a persistent appdata directory writable by UID/GID 10001. Use only with Steam accounts you own. Use an HTTPS reverse proxy when exposing SteamBee beyond a trusted LAN or VPN.</Requires>
+  <ExtraParams>--entrypoint=/usr/local/bin/steam-bee-entrypoint --user=0:0 --pids-limit=256 --cap-drop=ALL --cap-add=CHOWN --cap-add=DAC_READ_SEARCH --cap-add=SETGID --cap-add=SETPCAP --cap-add=SETUID --security-opt=no-new-privileges=true --read-only --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m --stop-timeout=30 --log-opt=max-size=10m --log-opt=max-file=3</ExtraParams>
+  <PostArgs>node dist/index.js</PostArgs>
+  <Requires>Internet access and one dedicated persistent appdata directory. The template validates and initializes appdata ownership automatically, then runs SteamBee without root privileges as PUID/PGID. Do not map the appdata parent directory. Use only with Steam accounts you own. Use an HTTPS reverse proxy when exposing SteamBee beyond a trusted LAN or VPN.</Requires>
 
   <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="HTTP port for the SteamBee management UI." Type="Port" Display="always" Required="true" Mask="false"/>
-  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/steambee" Mode="rw" Description="Persistent database, encrypted refresh tokens, instance secret, and Steam client data. The directory must be writable by UID/GID 10001." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/steambee" Mode="rw" Description="Dedicated SteamBee data directory. Ownership is validated and initialized automatically for PUID/PGID; do not select the appdata parent." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="PUID" Target="PUID" Default="99" Description="Numeric user ID used after appdata initialization. Unraid default: 99 (nobody)." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="PGID" Target="PGID" Default="100" Description="Numeric group ID used after appdata initialization. Unraid default: 100 (users)." Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Automatic Appdata Permissions" Target="STEAM_BEE_DATA_INIT" Default="true" Description="Initialize /data ownership for PUID/PGID, then permanently drop root privileges. Keep enabled on Unraid." Type="Variable" Display="advanced" Required="true" Mask="false"/>
   <Config Name="Trust Proxy" Target="TRUST_PROXY" Default="false" Description="Set to 1 for exactly one trusted reverse proxy, or provide trusted IP addresses/CIDRs." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Secure Cookie" Target="COOKIE_SECURE" Default="false" Description="Set to true when SteamBee is served through HTTPS." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Log Level" Target="LOG_LEVEL" Default="info" Description="Logging level: fatal, error, warn, info, debug, trace, or silent." Type="Variable" Display="advanced" Required="false" Mask="false"/>
