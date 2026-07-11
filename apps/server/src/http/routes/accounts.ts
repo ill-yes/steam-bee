@@ -1,5 +1,9 @@
-import { ERROR_CODES } from "@steam-bee/contracts";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import {
+  ACCOUNT_STATUS_CAPABILITIES,
+  ERROR_CODES,
+  type Account,
+} from "@steam-bee/contracts";
+import type { FastifyInstance } from "fastify";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../../db/client.js";
@@ -9,12 +13,13 @@ import {
   steamAccountLibrary,
   steamAppCache,
 } from "../../db/schema.js";
-import { recordInfoEvent } from "../events.js";
+import { recordInfoEventSafely } from "../events.js";
 import { requireAuth } from "../plugins.js";
 import { appError } from "../errors.js";
 import { getQrLogin, startQrLogin } from "../../steam/login.js";
-import { type OperationContext, steamManager } from "../../steam/manager.js";
+import { steamManager } from "../../steam/manager.js";
 import { replaceSelectedGames } from "../../steam/repository.js";
+import { getAccountOrThrow } from "../../steam/account-repository.js";
 import {
   accountIdParams,
   credentialsLoginSchema,
@@ -24,6 +29,12 @@ import {
   settingsSchema,
 } from "../../steam/validation.js";
 import { createLogger } from "../../util/logger.js";
+import { parseStringArray } from "../../util/json.js";
+import { presentSteamAccount } from "../presenters.js";
+import {
+  operationContext,
+  type OperationContext,
+} from "../operation-context.js";
 
 const routeLogger = createLogger("routes");
 const qrLoginRateLimit = {
@@ -54,11 +65,19 @@ export async function registerAccountRoutes(app: FastifyInstance) {
   app.get("/api/accounts", { preHandler: requireAuth }, async () => {
     const accounts = await db.select().from(steamAccount);
     const games = await db.select().from(steamAccountGame);
-    return accounts.map((account) => ({
-      ...sanitizeAccount(account),
-      runtimeStatus: steamManager.getStatus(account.id),
-      games: games.filter((game) => game.accountId === account.id),
-    }));
+    return accounts.map(
+      (account) =>
+        ({
+          ...presentSteamAccount(account, steamManager.getStatus(account.id)),
+          games: games
+            .filter((game) => game.accountId === account.id)
+            .map((game) => ({
+              appId: game.appId,
+              enabled: game.enabled,
+              source: game.source,
+            })),
+        }) satisfies Account,
+    );
   });
 
   app.delete(
@@ -66,10 +85,10 @@ export async function registerAccountRoutes(app: FastifyInstance) {
     { preHandler: requireAuth },
     async (request) => {
       const params = accountIdParams.parse(request.params);
-      await steamManager
-        .forget(params.id, operationContext(request, "account-delete"))
-        .catch(() => undefined);
-      await db.delete(steamAccount).where(eq(steamAccount.id, params.id));
+      await steamManager.deleteAccount(
+        params.id,
+        operationContext(request, "account-delete"),
+      );
       return { ok: true };
     },
   );
@@ -144,7 +163,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
           updatedAt: Date.now(),
         })
         .where(eq(steamAccount.id, params.id));
-      await recordInfoEvent({
+      await recordInfoEventSafely({
         accountId: params.id,
         type: "steam.settings.update",
         message: "Display settings saved.",
@@ -199,16 +218,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
     { preHandler: requireAuth },
     async (request) => {
       const params = accountIdParams.parse(request.params);
-      const account = await db.query.steamAccount.findFirst({
-        where: eq(steamAccount.id, params.id),
-      });
-      if (!account) {
-        throw appError(
-          "Steam account was not found.",
-          404,
-          ERROR_CODES.accountNotFound,
-        );
-      }
+      const account = await getAccountOrThrow(params.id);
       return getSteamProfile(account.steamId, account.accountName);
     },
   );
@@ -219,7 +229,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const params = accountIdParams.parse(request.params);
       const status = steamManager.getStatus(params.id);
-      if (status !== "online" && status !== "boosting") {
+      if (!ACCOUNT_STATUS_CAPABILITIES[status].importable) {
         return reply.code(409).send({
           error:
             "The account is not connected to Steam yet. Wait until it is online or restart the session.",
@@ -240,16 +250,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
       const params = accountIdParams.parse(request.params);
       const body = gameUpdateSchema.parse(request.body);
       const appIds = [...new Set(body.appIds)];
-      const account = await db.query.steamAccount.findFirst({
-        where: eq(steamAccount.id, params.id),
-      });
-      if (!account) {
-        throw appError(
-          "Steam account was not found.",
-          404,
-          ERROR_CODES.accountNotFound,
-        );
-      }
+      const account = await getAccountOrThrow(params.id);
       enforceGameLimit(appIds, account.customTitle);
 
       const now = Date.now();
@@ -260,7 +261,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
         activePresetId: null,
         now,
       });
-      await recordInfoEvent({
+      await recordInfoEventSafely({
         accountId: params.id,
         type: "steam.games.update",
         message: `${appIds.length} games saved to the boost selection.`,
@@ -366,42 +367,6 @@ function registerAccountCommands(app: FastifyInstance) {
       },
     );
   }
-}
-
-function operationContext(
-  request: FastifyRequest,
-  action: string,
-): OperationContext {
-  return {
-    correlationId: request.id,
-    source: "api",
-    action,
-  };
-}
-
-function parseStringArray(value: string | null | undefined) {
-  try {
-    const parsed = JSON.parse(value ?? "[]") as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === "string");
-  } catch {
-    return [];
-  }
-}
-
-function sanitizeAccount(account: typeof steamAccount.$inferSelect) {
-  const {
-    tokenCiphertext,
-    tokenIv,
-    tokenAuthTag,
-    tokenKeyVersion,
-    ...safeAccount
-  } = account;
-  void tokenCiphertext;
-  void tokenIv;
-  void tokenAuthTag;
-  void tokenKeyVersion;
-  return safeAccount;
 }
 
 async function getSteamProfile(

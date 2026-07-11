@@ -1,6 +1,6 @@
-import { ERROR_CODES } from "@steam-bee/contracts";
-import type { FastifyInstance, FastifyRequest } from "fastify";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { ERROR_CODES, MAX_STEAM_APP_ID } from "@steam-bee/contracts";
+import type { FastifyInstance } from "fastify";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { z } from "zod";
 import {
   changeAdminPassword,
@@ -8,17 +8,21 @@ import {
   deleteOtherAdminSessions,
   listAdminSessions,
 } from "../../auth/service.js";
-import { db, sqlite } from "../../db/client.js";
+import { db } from "../../db/client.js";
 import {
-  steamAccount,
   steamAccountLibrary,
   steamAppCache,
   steamEvent,
 } from "../../db/schema.js";
-import { steamManager, type OperationContext } from "../../steam/manager.js";
 import { accountIdParams, passwordSchema } from "../../steam/validation.js";
+import { getAccountOrThrow } from "../../steam/account-repository.js";
+import {
+  getAdminOverview,
+  listUnusedAppCacheIds,
+} from "../read-models/admin.js";
 import { appError } from "../errors.js";
-import { recordInfoEvent } from "../events.js";
+import { recordInfoEventSafely } from "../events.js";
+import { operationContext } from "../operation-context.js";
 import { requireAuth } from "../plugins.js";
 
 const adminPasswordChangeSchema = z.object({
@@ -41,10 +45,10 @@ const adminEventCleanupQuery = z
     },
   );
 const adminAppParams = z.object({
-  appId: z.coerce.number().int().positive().max(2_147_483_647),
+  appId: z.coerce.number().int().positive().max(MAX_STEAM_APP_ID),
 });
 const adminAppCacheCleanupQuery = z.object({
-  unused: z.enum(["true"]).optional(),
+  unused: z.literal("true"),
 });
 const authRateLimit = {
   config: {
@@ -173,7 +177,7 @@ export function registerAdminRoutes(app: FastifyInstance) {
     { preHandler: requireAuth },
     async (request) => {
       const params = accountIdParams.parse(request.params);
-      await assertAccountExists(params.id);
+      await getAccountOrThrow(params.id);
       const entries = await db
         .select({ appId: steamAccountLibrary.appId })
         .from(steamAccountLibrary)
@@ -185,7 +189,7 @@ export function registerAdminRoutes(app: FastifyInstance) {
           .where(eq(steamAccountLibrary.accountId, params.id));
       }
 
-      await recordInfoEvent({
+      await recordInfoEventSafely({
         accountId: params.id,
         type: "admin.library.clear",
         message: `${entries.length} library entries removed in the admin area.`,
@@ -199,12 +203,9 @@ export function registerAdminRoutes(app: FastifyInstance) {
     "/api/admin/app-cache",
     { preHandler: requireAuth },
     async (request) => {
-      const query = adminAppCacheCleanupQuery.parse(request.query);
-      if (query.unused !== "true") {
-        throw new Error("Only unused app data cleanup is allowed.");
-      }
+      adminAppCacheCleanupQuery.parse(request.query);
 
-      const unusedAppIds = getUnusedAppCacheIds();
+      const unusedAppIds = listUnusedAppCacheIds();
       if (unusedAppIds.length > 0) {
         await db
           .delete(steamAppCache)
@@ -241,280 +242,4 @@ export function registerAdminRoutes(app: FastifyInstance) {
       };
     },
   );
-}
-
-async function getAdminOverview(currentSessionId: string) {
-  const accounts = await db
-    .select()
-    .from(steamAccount)
-    .orderBy(desc(steamAccount.updatedAt));
-  const events = await db
-    .select()
-    .from(steamEvent)
-    .orderBy(desc(steamEvent.createdAt))
-    .limit(100);
-  const sessions = await listAdminSessions(currentSessionId);
-  const presets = getAdminPresets();
-  const schedules = getAdminSchedules();
-  const apps = getAdminAppCache();
-
-  return {
-    generatedAt: Date.now(),
-    totals: {
-      accounts: accounts.length,
-      sessions: sessions.length,
-      events: countRows("steam_event"),
-      presets: countRows("boost_preset"),
-      schedules: countRows("boost_schedule"),
-      appCache: countRows("steam_app_cache"),
-      libraryEntries: countRows("steam_account_library"),
-      selectedGames: countRows("steam_account_game"),
-    },
-    sessions,
-    accounts: accounts.map((account) => ({
-      ...sanitizeAccount(account),
-      runtimeStatus: steamManager.getStatus(account.id),
-      selectedGameCount: countRows(
-        "steam_account_game",
-        "account_id",
-        account.id,
-      ),
-      libraryAppCount: countRows(
-        "steam_account_library",
-        "account_id",
-        account.id,
-      ),
-      presetCount: countRows("boost_preset", "account_id", account.id),
-      scheduleCount: countRows("boost_schedule", "account_id", account.id),
-      eventCount: countRows("steam_event", "account_id", account.id),
-    })),
-    events,
-    presets,
-    schedules,
-    apps,
-  };
-}
-
-function countRows(table: string, column?: string, value?: string) {
-  const allowedTables = new Set([
-    "admin_session",
-    "boost_preset",
-    "boost_schedule",
-    "steam_account",
-    "steam_account_game",
-    "steam_account_library",
-    "steam_app_cache",
-    "steam_event",
-  ]);
-  const allowedColumns = new Set(["account_id"]);
-  if (!allowedTables.has(table)) throw new Error("Invalid table.");
-  if (column && !allowedColumns.has(column)) throw new Error("Invalid column.");
-
-  const sql = column
-    ? `SELECT count(*) as count FROM ${table} WHERE ${column} = ?`
-    : `SELECT count(*) as count FROM ${table}`;
-  const row = column
-    ? sqlite.prepare(sql).get(value)
-    : sqlite.prepare(sql).get();
-  return Number((row as { count: number } | undefined)?.count ?? 0);
-}
-
-function getAdminPresets() {
-  return sqlite
-    .prepare(
-      `
-      SELECT
-        preset.id,
-        preset.account_id as accountId,
-        account.account_name as accountName,
-        preset.name,
-        preset.persona_state as personaState,
-        preset.custom_title as customTitle,
-        preset.created_at as createdAt,
-        preset.updated_at as updatedAt,
-        count(game.app_id) as appCount
-      FROM boost_preset preset
-      LEFT JOIN steam_account account ON account.id = preset.account_id
-      LEFT JOIN boost_preset_game game ON game.preset_id = preset.id
-      GROUP BY preset.id
-      ORDER BY preset.updated_at DESC
-      LIMIT 200
-      `,
-    )
-    .all()
-    .map((row) => {
-      const item = row as {
-        id: string;
-        accountId: string;
-        accountName: string | null;
-        name: string;
-        personaState: number;
-        customTitle: string | null;
-        createdAt: number;
-        updatedAt: number;
-        appCount: number;
-      };
-      return {
-        ...item,
-        appCount: Number(item.appCount),
-      };
-    });
-}
-
-function getAdminSchedules() {
-  return sqlite
-    .prepare(
-      `
-      SELECT
-        schedule.id,
-        schedule.account_id as accountId,
-        account.account_name as accountName,
-        schedule.preset_id as presetId,
-        preset.name as presetName,
-        schedule.name,
-        schedule.enabled,
-        schedule.weekdays_json as weekdaysJson,
-        schedule.start_time as startTime,
-        schedule.end_time as endTime,
-        schedule.timezone,
-        schedule.created_at as createdAt,
-        schedule.updated_at as updatedAt
-      FROM boost_schedule schedule
-      LEFT JOIN steam_account account ON account.id = schedule.account_id
-      LEFT JOIN boost_preset preset ON preset.id = schedule.preset_id
-      ORDER BY schedule.updated_at DESC
-      LIMIT 200
-      `,
-    )
-    .all()
-    .map((row) => {
-      const item = row as {
-        id: string;
-        accountId: string;
-        accountName: string | null;
-        presetId: string;
-        presetName: string | null;
-        name: string;
-        enabled: 0 | 1 | boolean;
-        weekdaysJson: string;
-        startTime: string;
-        endTime: string;
-        timezone: string;
-        createdAt: number;
-        updatedAt: number;
-      };
-      return {
-        ...item,
-        enabled: Boolean(item.enabled),
-        weekdays: parseNumberArray(item.weekdaysJson),
-        weekdaysJson: undefined,
-      };
-    });
-}
-
-function getAdminAppCache() {
-  return sqlite
-    .prepare(
-      `
-      SELECT
-        app.app_id as appId,
-        app.name,
-        app.playtime_forever as playtimeForever,
-        app.source,
-        app.updated_at as updatedAt,
-        (SELECT count(*) FROM steam_account_library library WHERE library.app_id = app.app_id) as libraryAccountCount,
-        (SELECT count(*) FROM steam_account_game selected WHERE selected.app_id = app.app_id) as selectedAccountCount,
-        (SELECT count(*) FROM boost_preset_game preset_game WHERE preset_game.app_id = app.app_id) as presetCount
-      FROM steam_app_cache app
-      ORDER BY app.updated_at DESC
-      LIMIT 200
-      `,
-    )
-    .all()
-    .map((row) => {
-      const item = row as {
-        appId: number;
-        name: string;
-        playtimeForever: number | null;
-        source: string;
-        updatedAt: number;
-        libraryAccountCount: number;
-        selectedAccountCount: number;
-        presetCount: number;
-      };
-      return {
-        ...item,
-        playtimeForever: Number(item.playtimeForever ?? 0),
-        libraryAccountCount: Number(item.libraryAccountCount),
-        selectedAccountCount: Number(item.selectedAccountCount),
-        presetCount: Number(item.presetCount),
-      };
-    });
-}
-
-function getUnusedAppCacheIds() {
-  return sqlite
-    .prepare(
-      `
-      SELECT app.app_id as appId
-      FROM steam_app_cache app
-      WHERE NOT EXISTS (
-        SELECT 1 FROM steam_account_library library WHERE library.app_id = app.app_id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM steam_account_game selected WHERE selected.app_id = app.app_id
-      )
-      AND NOT EXISTS (
-        SELECT 1 FROM boost_preset_game preset_game WHERE preset_game.app_id = app.app_id
-      )
-      `,
-    )
-    .all()
-    .map((row) => Number((row as { appId: number }).appId));
-}
-
-function operationContext(
-  request: FastifyRequest,
-  action: string,
-): OperationContext {
-  return { correlationId: request.id, source: "api", action };
-}
-
-async function assertAccountExists(accountId: string) {
-  const account = await db.query.steamAccount.findFirst({
-    where: eq(steamAccount.id, accountId),
-  });
-  if (!account) {
-    throw appError(
-      "Steam account was not found.",
-      404,
-      ERROR_CODES.accountNotFound,
-    );
-  }
-  return account;
-}
-
-function parseNumberArray(value: string | null | undefined) {
-  try {
-    const parsed = JSON.parse(value ?? "[]") as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is number => Number.isInteger(item));
-  } catch {
-    return [];
-  }
-}
-
-function sanitizeAccount(account: typeof steamAccount.$inferSelect) {
-  const {
-    tokenCiphertext,
-    tokenIv,
-    tokenAuthTag,
-    tokenKeyVersion,
-    ...safeAccount
-  } = account;
-  void tokenCiphertext;
-  void tokenIv;
-  void tokenAuthTag;
-  void tokenKeyVersion;
-  return safeAccount;
 }

@@ -387,6 +387,18 @@ describe("api auth flow", () => {
       },
     ]);
 
+    const accountsResponse = await app.inject({
+      method: "GET",
+      url: "/api/accounts",
+      cookies: { session: cookie! },
+    });
+    const presentedAccounts =
+      accountsResponse.json<Array<Record<string, unknown>>>();
+    expect(presentedAccounts[0]).not.toHaveProperty("tokenCiphertext");
+    expect(presentedAccounts[0]).not.toHaveProperty("tokenIv");
+    expect(presentedAccounts[0]).not.toHaveProperty("tokenAuthTag");
+    expect(presentedAccounts[0]?.games).toEqual([]);
+
     const libraryA = await app.inject({
       method: "GET",
       url: `/api/accounts/${accountA.id}/library`,

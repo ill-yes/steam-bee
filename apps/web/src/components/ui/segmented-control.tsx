@@ -33,6 +33,7 @@ export function SegmentedControl<T extends string>({
               "bg-[var(--surface)] text-[var(--ink)] shadow-sm",
           )}
           onClick={() => onChange(option.value)}
+          aria-pressed={value === option.value}
         >
           {option.label}
         </button>

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  index,
   integer,
   sqliteTable,
   text,
@@ -81,16 +82,23 @@ export const steamAccountGame = sqliteTable(
       table.accountId,
       table.appId,
     ),
+    appIdx: index("steam_account_game_app_idx").on(table.appId),
   }),
 );
 
-export const steamAppCache = sqliteTable("steam_app_cache", {
-  appId: integer("app_id").primaryKey(),
-  name: text("name").notNull(),
-  playtimeForever: integer("playtime_forever").default(0),
-  source: text("source").notNull().default("manual"),
-  updatedAt: integer("updated_at").notNull(),
-});
+export const steamAppCache = sqliteTable(
+  "steam_app_cache",
+  {
+    appId: integer("app_id").primaryKey(),
+    name: text("name").notNull(),
+    playtimeForever: integer("playtime_forever").default(0),
+    source: text("source").notNull().default("manual"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => ({
+    updatedAtIdx: index("steam_app_cache_updated_at_idx").on(table.updatedAt),
+  }),
+);
 
 export const steamAccountLibrary = sqliteTable(
   "steam_account_library",
@@ -113,6 +121,7 @@ export const steamAccountLibrary = sqliteTable(
       table.accountId,
       table.appId,
     ),
+    appIdx: index("steam_account_library_app_idx").on(table.appId),
   }),
 );
 
@@ -142,6 +151,7 @@ export const boostPresetGame = sqliteTable(
       table.presetId,
       table.appId,
     ),
+    appIdx: index("boost_preset_game_app_idx").on(table.appId),
   }),
 );
 

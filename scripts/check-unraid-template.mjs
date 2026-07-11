@@ -35,6 +35,13 @@ assertConfig("STEAM_BEE_DATA_INIT", {
   Default: "true",
   Required: "true",
 });
+assertConfig("TRUST_PROXY", { Default: "false", Required: "false" });
+assertConfig("COOKIE_SECURE", { Default: "false", Required: "false" });
+assertConfig("LOG_LEVEL", { Default: "info", Required: "false" });
+assertConfig("LOG_REQUESTS", { Default: "true", Required: "false" });
+assertConfig("LOG_QUIET_REQUESTS", { Default: "true", Required: "false" });
+assertConfig("SETUP_TOKEN", { Default: "", Required: "false" });
+assertConfig("EVENT_RETENTION_DAYS", { Default: "90", Required: "false" });
 
 if (readTag("Privileged") !== "false") {
   fail("The Unraid container must not run in privileged mode.");

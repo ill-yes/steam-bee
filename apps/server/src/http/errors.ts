@@ -2,9 +2,9 @@ import { ERROR_CODES, type ErrorCode } from "@steam-bee/contracts";
 
 export class AppError extends Error {
   readonly statusCode: number;
-  readonly code: ErrorCode | string;
+  readonly code: ErrorCode;
 
-  constructor(message: string, statusCode: number, code: ErrorCode | string) {
+  constructor(message: string, statusCode: number, code: ErrorCode) {
     super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
@@ -15,7 +15,7 @@ export class AppError extends Error {
 export function appError(
   message: string,
   statusCode: number,
-  code: ErrorCode | string = ERROR_CODES.conflict,
+  code: ErrorCode = ERROR_CODES.conflict,
 ) {
   return new AppError(message, statusCode, code);
 }

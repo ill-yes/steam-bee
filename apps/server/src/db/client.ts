@@ -213,6 +213,20 @@ const migrations: Migration[] = [
       END;
     `,
   },
+  {
+    id: "005_app_read_model_indexes",
+    description: "App-centric indexes for admin read models and cache cleanup",
+    sql: `
+      CREATE INDEX IF NOT EXISTS steam_account_library_app_idx
+        ON steam_account_library(app_id);
+      CREATE INDEX IF NOT EXISTS steam_account_game_app_idx
+        ON steam_account_game(app_id);
+      CREATE INDEX IF NOT EXISTS boost_preset_game_app_idx
+        ON boost_preset_game(app_id);
+      CREATE INDEX IF NOT EXISTS steam_app_cache_updated_at_idx
+        ON steam_app_cache(updated_at);
+    `,
+  },
 ];
 
 export function migrate() {

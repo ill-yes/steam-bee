@@ -17,9 +17,15 @@ import {
 } from "../util/crypto.js";
 import { createLogger, errorLogFields } from "../util/logger.js";
 import { safeErrorMessage } from "../util/redact.js";
-import type { AccountStatus, OwnedApp } from "./types.js";
+import type {
+  AccountStatus,
+  DesiredState,
+  OwnedApp,
+  WorkerStatusPayload,
+} from "./types.js";
 import { replaceAccountLibrary } from "./repository.js";
 import { enforceGameLimit } from "./validation.js";
+import { steamIdToString } from "./steam-id.js";
 
 type SteamAccountRow = typeof steamAccount.$inferSelect;
 
@@ -452,9 +458,7 @@ export class SteamWorker extends EventEmitter {
     this.logger.info({ steamId }, "Persisted SteamID");
   }
 
-  private async setDesiredState(
-    desiredState: "running" | "paused" | "stopped",
-  ) {
+  private async setDesiredState(desiredState: DesiredState) {
     this.account = { ...this.account, desiredState };
     await db
       .update(steamAccount)
@@ -513,18 +517,7 @@ export class SteamWorker extends EventEmitter {
     this.emit("status", {
       accountId: this.accountId,
       status,
-      error: nextError ?? undefined,
-    });
+      ...(nextError === null ? {} : { error: nextError }),
+    } satisfies WorkerStatusPayload);
   }
-}
-
-function steamIdToString(value: unknown) {
-  if (!value) return null;
-  if (typeof value === "object" && value !== null && "getSteamID64" in value) {
-    const candidate = value as { getSteamID64?: () => string };
-    if (typeof candidate.getSteamID64 === "function") {
-      return String(candidate.getSteamID64());
-    }
-  }
-  return String(value);
 }

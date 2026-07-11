@@ -39,6 +39,7 @@ vi.mock("steam-user", () => {
 
 import { db, migrate, sqlite } from "../src/db/client.js";
 import {
+  boostSession,
   steamAccount,
   steamAccountGame,
   steamAccountLibrary,
@@ -49,7 +50,8 @@ import { SteamWorker } from "../src/steam/worker.js";
 import { encryptSecret } from "../src/util/crypto.js";
 
 describe("SteamWorker", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await steamManager.shutdown();
     migrate();
     steamMock.instances.length = 0;
     sqlite.exec(`
@@ -263,6 +265,104 @@ describe("SteamWorker", () => {
       .from(steamAccount)
       .where(eq(steamAccount.id, account.id));
     expect(updatedAccount?.steamId).toBe("76561198000000001");
+  });
+
+  it("removes a worker even when stopping it fails", async () => {
+    const now = Date.now();
+    const encrypted = encryptSecret("refresh-token");
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `forget-failure-${now}`,
+      steamId: null,
+      status: "disconnected",
+      desiredState: "stopped",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenExpiresAt: null,
+      tokenKeyVersion: encrypted.keyVersion,
+      lastError: null,
+      latestBoostStartedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.insert(steamAccount).values(account);
+    await steamManager.start(account.id);
+    const instanceCount = steamMock.instances.length;
+    const stopSpy = vi
+      .spyOn(SteamWorker.prototype, "stop")
+      .mockRejectedValueOnce(new Error("stop failed"));
+    const shutdownSpy = vi.spyOn(SteamWorker.prototype, "shutdown");
+
+    await expect(steamManager.forget(account.id)).rejects.toThrow(
+      "stop failed",
+    );
+    expect(shutdownSpy).toHaveBeenCalledTimes(1);
+    stopSpy.mockRestore();
+    shutdownSpy.mockRestore();
+
+    await steamManager.start(account.id);
+    expect(steamMock.instances).toHaveLength(instanceCount + 1);
+    await steamManager.forget(account.id);
+  });
+
+  it("removes workers even when graceful shutdown fails", async () => {
+    const now = Date.now();
+    const encrypted = encryptSecret("refresh-token");
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `shutdown-failure-${now}`,
+      steamId: null,
+      status: "boosting",
+      desiredState: "running",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenExpiresAt: null,
+      tokenKeyVersion: encrypted.keyVersion,
+      lastError: null,
+      latestBoostStartedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.insert(steamAccount).values(account);
+    await steamManager.start(account.id);
+    await db.insert(boostSession).values({
+      id: crypto.randomUUID(),
+      accountId: account.id,
+      presetId: null,
+      appIdsJson: "[]",
+      startedAt: now,
+      endedAt: null,
+      stopReason: null,
+      createdAt: now,
+    });
+    const instanceCount = steamMock.instances.length;
+    const shutdownSpy = vi
+      .spyOn(SteamWorker.prototype, "shutdown")
+      .mockRejectedValueOnce(new Error("shutdown failed"));
+
+    const shutdown = steamManager.shutdown();
+    expect(steamManager.shutdown()).toBe(shutdown);
+    await expect(shutdown).resolves.toBeUndefined();
+    shutdownSpy.mockRestore();
+
+    const [closedSession] = await db
+      .select()
+      .from(boostSession)
+      .where(eq(boostSession.accountId, account.id));
+    expect(closedSession).toMatchObject({
+      endedAt: expect.any(Number),
+      stopReason: "disconnected",
+    });
+
+    await steamManager.start(account.id);
+    expect(steamMock.instances).toHaveLength(instanceCount + 1);
+    await steamManager.forget(account.id);
   });
 
   it("preserves library metadata when Steam apps are re-imported", async () => {

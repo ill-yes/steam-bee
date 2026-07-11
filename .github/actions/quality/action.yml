@@ -1,0 +1,52 @@
+name: Run quality gate
+description: Run the shared SteamBee source quality checks
+
+runs:
+  using: composite
+  steps:
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    - name: Set up Node.js
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version: 22
+        cache: pnpm
+        cache-dependency-path: pnpm-lock.yaml
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Audit dependencies
+      shell: bash
+      run: pnpm audit --audit-level=high
+
+    - name: Check formatting
+      shell: bash
+      run: pnpm format:check
+
+    - name: Typecheck
+      shell: bash
+      run: pnpm check
+
+    - name: Test
+      shell: bash
+      run: pnpm test
+
+    - name: Validate source Compose file
+      shell: bash
+      run: docker compose config --quiet
+
+    - name: Validate image Compose file
+      shell: bash
+      run: docker compose -f compose.image.yml config --quiet
+
+    - name: Check Compose runtime parity
+      shell: bash
+      run: pnpm compose:check
+
+    - name: Validate Unraid template runtime
+      shell: bash
+      run: pnpm unraid:check

@@ -3,7 +3,11 @@ import { desc } from "drizzle-orm";
 import { db, migrate, sqlite } from "../src/db/client.js";
 import { steamEvent } from "../src/db/schema.js";
 import { config } from "../src/config.js";
-import { cleanupRetainedEvents, recordEvent } from "../src/http/events.js";
+import {
+  cleanupRetainedEvents,
+  recordEvent,
+  recordInfoEventSafely,
+} from "../src/http/events.js";
 
 describe("event logging", () => {
   beforeEach(() => {
@@ -70,11 +74,35 @@ describe("event logging", () => {
     });
 
     expect(saved.message).toBe(stored.message);
+    expect(saved.metadata).toEqual({
+      details: expect.stringContaining("[redacted]"),
+    });
     expect(serialized).toContain("[redacted]");
     expect(serialized).not.toContain(bearerToken);
     expect(serialized).not.toContain(jwt);
     expect(serialized).not.toContain(plainSecret);
     expect(serialized).not.toContain(dottedSecret);
+  });
+
+  it("keeps best-effort event failures from escaping", async () => {
+    sqlite.exec(`
+      CREATE TRIGGER reject_test_event
+      BEFORE INSERT ON steam_event
+      BEGIN
+        SELECT RAISE(ABORT, 'event insert rejected');
+      END;
+    `);
+
+    try {
+      await expect(
+        recordInfoEventSafely({
+          type: "test.best-effort",
+          message: "This event is expected to fail.",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      sqlite.exec("DROP TRIGGER reject_test_event;");
+    }
   });
 
   it("removes only events older than the configured retention window", async () => {

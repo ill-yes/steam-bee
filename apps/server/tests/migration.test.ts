@@ -15,8 +15,8 @@ describe("database migrations", () => {
     migrate();
 
     expect(getMigrationState()).toMatchObject({
-      current: "004_single_admin_and_preset_integrity",
-      latest: "004_single_admin_and_preset_integrity",
+      current: "005_app_read_model_indexes",
+      latest: "005_app_read_model_indexes",
       pending: [],
     });
     expect(tableColumns("steam_account")).toContain("active_preset_id");
@@ -58,6 +58,10 @@ describe("database migrations", () => {
         "steam_account_account_name_idx",
         "steam_event_created_at_idx",
         "boost_session_account_started_idx",
+        "steam_account_library_app_idx",
+        "steam_account_game_app_idx",
+        "boost_preset_game_app_idx",
+        "steam_app_cache_updated_at_idx",
       ]),
     );
   });
@@ -82,7 +86,41 @@ describe("database migrations", () => {
         .get("historical-account"),
     ).toEqual({ active_preset_id: null });
   });
+
+  it("uses app-centric indexes for admin read-model aggregation", () => {
+    seedInitialSchema();
+    migrate();
+
+    expect(
+      queryPlan(
+        "SELECT app_id, count(*) FROM steam_account_library GROUP BY app_id",
+      ),
+    ).toContain("steam_account_library_app_idx");
+    expect(
+      queryPlan(
+        "SELECT app_id, count(*) FROM steam_account_game GROUP BY app_id",
+      ),
+    ).toContain("steam_account_game_app_idx");
+    expect(
+      queryPlan(
+        "SELECT app_id, count(*) FROM boost_preset_game GROUP BY app_id",
+      ),
+    ).toContain("boost_preset_game_app_idx");
+    expect(
+      queryPlan(
+        "SELECT app_id FROM steam_app_cache ORDER BY updated_at DESC LIMIT 200",
+      ),
+    ).toContain("steam_app_cache_updated_at_idx");
+  });
 });
+
+function queryPlan(sql: string) {
+  return sqlite
+    .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+    .all()
+    .map((row) => String((row as { detail: string }).detail))
+    .join("\n");
+}
 
 function resetDatabase() {
   sqlite.pragma("foreign_keys = OFF");

@@ -1,8 +1,10 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
+import type { SteamEvent } from "@steam-bee/contracts";
 import { config } from "../config.js";
 import { db, sqlite } from "../db/client.js";
 import { steamEvent } from "../db/schema.js";
 import { createLogger, errorLogFields } from "../util/logger.js";
+import { parseJsonRecord } from "../util/json.js";
 import { redact, redactText } from "../util/redact.js";
 
 export type EventPayload = {
@@ -18,7 +20,7 @@ export type EventPayload = {
 type StoredEvent = {
   id?: number;
   accountId: string | null;
-  level: "info" | "warn" | "error";
+  level: string;
   type: string;
   message: string;
   metadataJson?: string | null;
@@ -49,8 +51,11 @@ export async function recordEvent(event: EventPayload) {
 
   const row = result[0];
   const eventId = row?.id ?? event.id;
+  if (eventId === undefined) {
+    throw new Error("Stored event did not receive an ID.");
+  }
   const saved: StoredEvent = {
-    ...(eventId === undefined ? {} : { id: eventId }),
+    id: eventId,
     accountId: row?.accountId ?? event.accountId ?? null,
     level: event.level,
     type: row?.type ?? event.type,
@@ -58,17 +63,22 @@ export async function recordEvent(event: EventPayload) {
     metadataJson: row?.metadataJson ?? JSON.stringify(metadata),
     createdAt: row?.createdAt ?? createdAt,
   };
-  broadcast("event", saved);
+  const presented = presentSteamEvent(saved);
+  broadcast("event", presented);
   logSavedEvent(saved, metadata);
-  return saved;
+  return presented;
 }
 
-export async function recordInfoEvent(event: Omit<EventPayload, "level">) {
-  return recordEvent({ ...event, level: "info" });
+export async function recordInfoEventSafely(
+  event: Omit<EventPayload, "level">,
+) {
+  return recordEventSafely({ ...event, level: "info" });
 }
 
-export async function recordErrorEvent(event: Omit<EventPayload, "level">) {
-  return recordEvent({ ...event, level: "error" });
+export async function recordErrorEventSafely(
+  event: Omit<EventPayload, "level">,
+) {
+  return recordEventSafely({ ...event, level: "error" });
 }
 
 export function broadcast(type: string, payload: unknown) {
@@ -96,6 +106,24 @@ export function registerSseClient(reply: FastifyReply) {
 
 export function getSseClientCount() {
   return clients.size;
+}
+
+export function presentSteamEvent(event: StoredEvent): SteamEvent {
+  if (event.id === undefined) {
+    throw new Error("Cannot present an event without an ID.");
+  }
+  if (!isEventLevel(event.level)) {
+    throw new Error(`Unsupported stored event level: ${event.level}`);
+  }
+  return {
+    id: event.id,
+    accountId: event.accountId,
+    level: event.level,
+    type: event.type,
+    message: event.message,
+    metadata: parseJsonRecord(event.metadataJson),
+    createdAt: event.createdAt,
+  };
 }
 
 export async function registerEventRetention(app: FastifyInstance) {
@@ -181,4 +209,20 @@ function logSavedEvent(event: StoredEvent, metadata: unknown) {
 
 export function logEventFailure(error: unknown, fields = {}) {
   eventLogger.error(errorLogFields(error, fields), "Failed to record event");
+}
+
+async function recordEventSafely(event: EventPayload) {
+  try {
+    return await recordEvent(event);
+  } catch (error) {
+    logEventFailure(error, {
+      accountId: event.accountId ?? null,
+      eventType: event.type,
+    });
+    return null;
+  }
+}
+
+function isEventLevel(value: string): value is SteamEvent["level"] {
+  return value === "info" || value === "warn" || value === "error";
 }

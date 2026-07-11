@@ -1,5 +1,6 @@
 import { Button } from "./button";
 import { Dialog } from "./dialog";
+import { Alert } from "./alert";
 
 export function ConfirmationDialog({
   title,
@@ -7,6 +8,7 @@ export function ConfirmationDialog({
   confirmLabel,
   cancelLabel,
   busyLabel,
+  error,
   busy = false,
   destructive = true,
   onCancel,
@@ -17,6 +19,7 @@ export function ConfirmationDialog({
   confirmLabel: string;
   cancelLabel: string;
   busyLabel?: string;
+  error?: string | null;
   busy?: boolean;
   destructive?: boolean;
   onCancel: () => void;
@@ -28,19 +31,28 @@ export function ConfirmationDialog({
       description={description}
       onClose={busy ? () => undefined : onCancel}
       role="alertdialog"
-      className="max-w-md border-[var(--danger-line)]"
+      className={
+        destructive ? "max-w-md border-[var(--danger-line)]" : "max-w-md"
+      }
     >
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel} disabled={busy}>
-          {cancelLabel}
-        </Button>
-        <Button
-          variant={destructive ? "danger" : "primary"}
-          onClick={() => void onConfirm()}
-          disabled={busy}
-        >
-          {busy ? (busyLabel ?? confirmLabel) : confirmLabel}
-        </Button>
+      <div className="grid gap-4">
+        {error ? (
+          <Alert tone="danger" role="alert">
+            {error}
+          </Alert>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant={destructive ? "danger" : "primary"}
+            onClick={() => void onConfirm()}
+            disabled={busy}
+          >
+            {busy ? (busyLabel ?? confirmLabel) : confirmLabel}
+          </Button>
+        </div>
       </div>
     </Dialog>
   );

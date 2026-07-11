@@ -107,6 +107,7 @@ describe("Steam login flows", () => {
       status: "authenticated",
       accountName: "qr_account",
       steamId: "76561198000000003",
+      connectedAt: expect.any(Number),
     });
 
     const [account] = await db
@@ -199,12 +200,19 @@ describe("Steam login flows", () => {
   });
 
   it("persists credential authentication exactly once", async () => {
+    const connectedAt = 1_800_000_000_000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(connectedAt);
     const flow = new CredentialLoginFlow();
-    const start = flow.start("credential_account", "password");
-    sessionMock.instances.at(-1)?.emit("authenticated");
-    const result = await start;
+    let result: Awaited<ReturnType<CredentialLoginFlow["start"]>>;
+    try {
+      const start = flow.start("credential_account", "password");
+      sessionMock.instances.at(-1)?.emit("authenticated");
+      result = await start;
+    } finally {
+      now.mockRestore();
+    }
 
-    expect(result).toMatchObject({ status: "authenticated" });
+    expect(result).toMatchObject({ status: "authenticated", connectedAt });
     expect(managerMock.start).toHaveBeenCalledTimes(1);
     expect(
       sqlite.prepare("SELECT count(*) as count FROM steam_account").get(),

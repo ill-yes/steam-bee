@@ -1,55 +1,70 @@
 import { execFileSync } from "node:child_process";
-import { isDeepStrictEqual } from "node:util";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  collectComposeInterpolationVariables,
+  isolateComposeEnvironment,
+} from "./compose-environment.mjs";
+import {
+  assertComposeHardening,
+  assertComposeParity,
+  normalizeComposeService,
+} from "./compose-policy.mjs";
 
-const image = "ghcr.io/ill-yes/steam-bee:parity-check";
-const source = composeConfig(["config", "--format", "json"]);
-const prebuilt = composeConfig(
-  ["-f", "compose.image.yml", "config", "--format", "json"],
-  { STEAM_BEE_IMAGE: image },
+const composeFiles = ["compose.yml", "compose.image.yml"];
+const composeVariables = collectComposeInterpolationVariables(
+  composeFiles.map((path) => readFileSync(path, "utf8")),
 );
+const composeEnvironment = isolateComposeEnvironment(
+  process.env,
+  composeVariables,
+);
+const temporaryDirectory = mkdtempSync(join(tmpdir(), "steam-bee-compose-"));
+const emptyEnvironmentFile = join(temporaryDirectory, "empty.env");
+writeFileSync(emptyEnvironmentFile, "");
 
-const sourceService = normalize(source.services["steam-bee"]);
-const imageService = normalize(prebuilt.services["steam-bee"]);
-
-assertHardening(sourceService, "compose.yml");
-assertHardening(imageService, "compose.image.yml");
-
-if (!isDeepStrictEqual(sourceService, imageService)) {
+try {
+  checkComposeParity();
+} catch (error) {
+  process.exitCode = 1;
   process.stderr.write(
-    `Compose runtime settings differ.\n\nsource:\n${JSON.stringify(sourceService, null, 2)}\n\nimage:\n${JSON.stringify(imageService, null, 2)}\n`,
+    `${error instanceof Error ? error.message : "Compose parity check failed."}\n`,
   );
-  process.exit(1);
+} finally {
+  rmSync(temporaryDirectory, { recursive: true, force: true });
 }
 
-process.stdout.write("Compose runtime settings are in parity.\n");
+function checkComposeParity() {
+  const source = composeConfig(["config", "--format", "json"]);
+  const prebuilt = composeConfig([
+    "-f",
+    "compose.image.yml",
+    "config",
+    "--format",
+    "json",
+  ]);
 
-function composeConfig(args, extraEnv = {}) {
+  const sourceService = normalizeComposeService(source.services["steam-bee"]);
+  const imageService = normalizeComposeService(prebuilt.services["steam-bee"]);
+
+  assertComposeHardening(sourceService, "compose.yml");
+  assertComposeHardening(imageService, "compose.image.yml");
+  assertComposeParity(sourceService, imageService);
+
+  process.stdout.write("Compose runtime settings are in parity.\n");
+}
+
+function composeConfig(args) {
   return JSON.parse(
-    execFileSync("docker", ["compose", ...args], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      env: { ...process.env, ...extraEnv },
-    }),
+    execFileSync(
+      "docker",
+      ["compose", "--env-file", emptyEnvironmentFile, ...args],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+        env: composeEnvironment,
+      },
+    ),
   );
-}
-
-function normalize(service) {
-  const copy = structuredClone(service);
-  delete copy.build;
-  delete copy.image;
-  return copy;
-}
-
-function assertHardening(service, filename) {
-  if (
-    service.user !== "10001:10001" ||
-    service.pids_limit !== 256 ||
-    !isDeepStrictEqual(service.cap_drop, ["ALL"]) ||
-    service.cap_add !== undefined
-  ) {
-    process.stderr.write(
-      `${filename} must enforce the runtime user, PID limit, and drop all capabilities.\n`,
-    );
-    process.exit(1);
-  }
 }
