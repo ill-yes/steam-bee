@@ -30,11 +30,10 @@ jobs:
     outputs:
       tag_commit: ${{ steps.release-ref.outputs.tag_commit }}
     steps:
-      - name: Checkout release tag
+      - name: Checkout release workflow
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ format('refs/tags/v{0}', inputs.version) }}
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Verify main dispatch and release ancestry
@@ -48,25 +47,21 @@ jobs:
             exit 1
           fi
 
-          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-            git fetch --force --no-tags --prune --unshallow origin \
-              "+refs/heads/main:refs/remotes/origin/main"
-          else
-            git fetch --force --no-tags --prune origin \
-              "+refs/heads/main:refs/remotes/origin/main"
-          fi
-
-          TAG_REF="refs/tags/v${RELEASE_VERSION}"
-          TAG_COMMIT="$(git rev-parse "${TAG_REF}^{commit}")"
-          CHECKED_OUT_COMMIT="$(git rev-parse HEAD)"
-          if [ "$CHECKED_OUT_COMMIT" != "$TAG_COMMIT" ]; then
-            echo "Checked out $CHECKED_OUT_COMMIT instead of $TAG_REF at $TAG_COMMIT." >&2
+          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Release version must use stable semver without a v prefix." >&2
             exit 1
           fi
+
+          git fetch --force --no-tags --prune origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          TAG_REF="refs/tags/v${RELEASE_VERSION}"
+          git fetch --force --no-tags origin "+${TAG_REF}:${TAG_REF}"
+          TAG_COMMIT="$(git rev-parse "${TAG_REF}^{commit}")"
           if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
             echo "$TAG_REF must point to a commit reachable from origin/main." >&2
             exit 1
           fi
+          git checkout --detach "$TAG_COMMIT"
           echo "tag_commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Validate release metadata and latest version
@@ -90,26 +85,12 @@ jobs:
             exit 1
           fi
 
-  quality:
-    name: Quality gate
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout validated release commit
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          ref: ${{ needs.validate.outputs.tag_commit }}
-          persist-credentials: false
-
       - name: Run shared quality checks
         uses: ./.github/actions/quality
 
   publish:
     name: Publish release image
-    needs: [validate, quality]
+    needs: validate
     if: inputs.publish
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -121,17 +102,25 @@ jobs:
       attestations: write
       artifact-metadata: write
     steps:
-      - name: Checkout release tag
+      - name: Checkout release workflow
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ needs.validate.outputs.tag_commit }}
           persist-credentials: false
 
-      - name: Ensure release tag is unchanged
+      - name: Checkout unchanged release tag
         env:
           EXPECTED_TAG_COMMIT: ${{ needs.validate.outputs.tag_commit }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
+          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Release version must use stable semver without a v prefix." >&2
+            exit 1
+          fi
+          if ! printf '%s' "$EXPECTED_TAG_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "Validated tag commit is not a full Git SHA." >&2
+            exit 1
+          fi
+
           TAG_REF="refs/tags/v${RELEASE_VERSION}"
           git fetch --force --no-tags origin "+${TAG_REF}:${TAG_REF}"
           CURRENT_TAG_COMMIT="$(git rev-parse "${TAG_REF}^{commit}")"
@@ -139,6 +128,7 @@ jobs:
             echo "$TAG_REF moved from $EXPECTED_TAG_COMMIT to $CURRENT_TAG_COMMIT." >&2
             exit 1
           fi
+          git checkout --detach "$EXPECTED_TAG_COMMIT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
@@ -246,10 +236,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout validated release commit
+      - name: Checkout release workflow
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ needs.validate.outputs.tag_commit }}
           persist-credentials: false
 
       - name: Ensure release tag is unchanged
