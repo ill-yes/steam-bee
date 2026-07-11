@@ -2,12 +2,22 @@ import { existsSync } from "node:fs";
 import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
 import { and, desc, eq, gte } from "drizzle-orm";
-import { SYSTEM_STATUS_CODES } from "@steam-bee/contracts";
+import {
+  ACCOUNT_STATUS_CAPABILITIES,
+  SYSTEM_STATUS_CODES,
+  isAccountStatus,
+  type SystemStatus,
+  type SystemStatusCode,
+} from "@steam-bee/contracts";
 import { config } from "../../config.js";
 import { checkDatabaseReady, db, getMigrationState } from "../../db/client.js";
 import { steamAccount, steamEvent } from "../../db/schema.js";
 import { steamManager } from "../../steam/manager.js";
-import { getSseClientCount, registerSseClient } from "../events.js";
+import {
+  getSseClientCount,
+  presentSteamEvent,
+  registerSseClient,
+} from "../events.js";
 import { requireAuth } from "../plugins.js";
 
 const systemReadRateLimit = {
@@ -80,11 +90,12 @@ export async function registerSystemRoutes(app: FastifyInstance) {
       config: { rateLimit: systemReadRateLimit },
     },
     async () => {
-      return db
+      const events = await db
         .select()
         .from(steamEvent)
         .orderBy(desc(steamEvent.createdAt))
         .limit(100);
+      return events.map(presentSteamEvent);
     },
   );
 
@@ -137,8 +148,9 @@ async function getSystemStatus() {
   const accountErrors = accounts.filter((account) => {
     const runtimeStatus = steamManager.getStatus(account.id);
     return (
-      ["error", "login_required"].includes(runtimeStatus) ||
-      ["error", "login_required"].includes(account.status) ||
+      ACCOUNT_STATUS_CAPABILITIES[runtimeStatus].attention ||
+      !isAccountStatus(account.status) ||
+      ACCOUNT_STATUS_CAPABILITIES[account.status].attention ||
       Boolean(account.lastError)
     );
   });
@@ -179,14 +191,14 @@ async function getSystemStatus() {
 }
 
 function status(
-  code: string,
+  code: SystemStatusCode,
   label: string,
   tone: "good" | "danger" | "warn",
   detail: string,
   pendingMigrations: number,
   accountErrors: number,
   recentErrors: number,
-) {
+): SystemStatus {
   return {
     code,
     label,

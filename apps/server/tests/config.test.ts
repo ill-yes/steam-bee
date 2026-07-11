@@ -33,4 +33,23 @@ describe("runtime configuration", () => {
 
     expect(config.setupToken).toBeUndefined();
   });
+
+  it("uses safe local and package-derived development defaults", async () => {
+    const originalHost = process.env.HOST;
+    const originalBuildVersion = process.env.BUILD_VERSION;
+    delete process.env.HOST;
+    delete process.env.BUILD_VERSION;
+
+    try {
+      const { config } = await import("../src/config.js");
+
+      expect(config.host).toBe("127.0.0.1");
+      expect(config.build.version).toMatch(/^\d+\.\d+\.\d+-dev$/);
+    } finally {
+      if (originalHost === undefined) delete process.env.HOST;
+      else process.env.HOST = originalHost;
+      if (originalBuildVersion === undefined) delete process.env.BUILD_VERSION;
+      else process.env.BUILD_VERSION = originalBuildVersion;
+    }
+  });
 });

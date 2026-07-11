@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { ERROR_CODES } from "@steam-bee/contracts";
+import {
+  ERROR_CODES,
+  MAX_GAMES,
+  MAX_STEAM_APP_ID,
+  PERSONA_STATE_VALUES,
+  gameSelectionLimit,
+  type PersonaState,
+} from "@steam-bee/contracts";
 import { appError } from "../http/errors.js";
 import { isValidTimeZone } from "./scheduler.js";
 
@@ -17,21 +24,30 @@ export const accountScheduleParams = accountIdParams.extend({
   scheduleId: z.string().uuid(),
 });
 
-export const appIdSchema = z.number().int().positive().max(2_147_483_647);
+export const appIdSchema = z.number().int().positive().max(MAX_STEAM_APP_ID);
+
+export const personaStateSchema = z
+  .number()
+  .int()
+  .refine(
+    (value): value is PersonaState =>
+      PERSONA_STATE_VALUES.includes(value as PersonaState),
+    "Persona state is not supported.",
+  );
 
 export const gameUpdateSchema = z.object({
-  appIds: z.array(appIdSchema).max(32),
+  appIds: z.array(appIdSchema).max(MAX_GAMES),
 });
 
 export const settingsSchema = z.object({
-  personaState: z.number().int().min(0).max(7),
+  personaState: personaStateSchema,
   customTitle: z.string().trim().max(80).nullable(),
 });
 
 export const presetSchema = z.object({
   name: z.string().trim().min(1).max(64),
-  appIds: z.array(appIdSchema).max(32),
-  personaState: z.number().int().min(0).max(7),
+  appIds: z.array(appIdSchema).max(MAX_GAMES),
+  personaState: personaStateSchema,
   customTitle: z.string().trim().max(80).nullable(),
 });
 
@@ -90,7 +106,7 @@ export function enforceGameLimit(
   appIds: number[],
   customTitle?: string | null,
 ) {
-  const limit = customTitle?.trim() ? 31 : 32;
+  const limit = gameSelectionLimit(customTitle);
   if (appIds.length > limit) {
     throw appError(
       `Too many games selected. This configuration allows at most ${limit} entries.`,

@@ -1,15 +1,12 @@
-name: Docker Image
+name: CI
 
 on:
   push:
     branches:
       - main
-    tags:
-      - "v*.*.*"
   pull_request:
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,60 +18,16 @@ concurrency:
 jobs:
   quality:
     name: Quality gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Audit dependencies
-        run: pnpm audit --audit-level=high
-
-      - name: Check formatting
-        run: pnpm format:check
-
-      - name: Typecheck
-        run: pnpm check
-
-      - name: Test
-        run: pnpm test
-
-      - name: Validate source Compose file
-        run: docker compose config --quiet
-
-      - name: Validate image Compose file
-        run: docker compose -f compose.image.yml config --quiet
-
-      - name: Check Compose runtime parity
-        run: pnpm compose:check
-
-      - name: Validate Unraid template runtime
-        run: pnpm unraid:check
-
-      - name: Dependency review
-        if: github.event_name == 'pull_request'
-        continue-on-error: ${{ github.event.repository.private }}
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          fail-on-severity: high
+    permissions:
+      contents: read
+    uses: ./.github/workflows/quality.yml
+    with:
+      checkout_ref: ${{ github.sha }}
 
   image:
-    name: Image build
+    name: PR image validation
     needs: quality
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -115,105 +68,3 @@ jobs:
 
       - name: Smoke-test image
         run: sh scripts/smoke-test-image.sh steam-bee:ci steam-bee-ci
-
-  publish:
-    name: Publish image
-    needs: quality
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
-
-      - name: Capture build date
-        id: build-date
-        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
-        with:
-          images: ghcr.io/${{ github.repository }}
-          labels: |
-            org.opencontainers.image.title=SteamBee
-            org.opencontainers.image.description=Self-hosted Steam hour booster with a secure Docker management UI.
-            org.opencontainers.image.licenses=AGPL-3.0-or-later
-          tags: |
-            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=sha-,enable=${{ github.ref == 'refs/heads/main' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build amd64 smoke image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: steam-bee:smoke
-          cache-from: type=gha
-          build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
-            REVISION=${{ github.sha }}
-            BUILD_DATE=${{ steps.build-date.outputs.value }}
-            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
-
-      - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: steam-bee:smoke
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          ignore-unfixed: true
-
-      - name: Smoke-test amd64 image
-        run: sh scripts/smoke-test-image.sh steam-bee:smoke steam-bee-smoke
-
-      - name: Build and push multi-arch image
-        id: push
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
-            REVISION=${{ github.sha }}
-            BUILD_DATE=${{ steps.build-date.outputs.value }}
-            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
-          provenance: true
-          sbom: true
-
-      - name: Attest image
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
-        with:
-          subject-name: ghcr.io/${{ github.repository }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true

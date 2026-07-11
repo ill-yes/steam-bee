@@ -174,30 +174,42 @@ wait_for_health() {
   return 1
 }
 
-assert_runtime_process() {
+assert_process_security() {
   container=$1
   expected_uid=$2
   expected_gid=$3
   expected_home=$4
+  mode=$5
 
-  docker exec --user "$expected_uid:$expected_gid" -i \
-    "$container" node - "$expected_uid" "$expected_gid" "$expected_home" <<'NODE'
+  if [ "$mode" = "runtime" ]; then
+    set -- docker exec --user "$expected_uid:$expected_gid" -i \
+      "$container" node - "$expected_uid" "$expected_gid" "$expected_home" "$mode"
+  else
+    set -- docker exec -i "$container" \
+      /usr/local/bin/steam-bee-entrypoint --healthcheck \
+      node - "$expected_uid" "$expected_gid" "$expected_home" "$mode"
+  fi
+
+  "$@" <<'NODE'
 const fs = require("node:fs");
 
 const expectedUid = Number(process.argv[2]);
 const expectedGid = Number(process.argv[3]);
 const expectedHome = process.argv[4];
-let runtimePid = null;
+const mode = process.argv[5];
+let runtimePid = mode === "self" ? "self" : null;
 
-for (const entry of fs.readdirSync("/proc")) {
-  if (!/^\d+$/.test(entry)) continue;
-  try {
-    const command = fs.readFileSync(`/proc/${entry}/cmdline`, "utf8");
-    if (command === "node\0dist/index.js\0") {
-      runtimePid = entry;
-      break;
-    }
-  } catch {}
+if (mode === "runtime") {
+  for (const entry of fs.readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const command = fs.readFileSync(`/proc/${entry}/cmdline`, "utf8");
+      if (command === "node\0dist/index.js\0") {
+        runtimePid = entry;
+        break;
+      }
+    } catch {}
+  }
 }
 
 if (!runtimePid) throw new Error("SteamBee Node process was not found.");
@@ -239,18 +251,18 @@ if (readField("NoNewPrivs") !== "1") {
 const environment = fs
   .readFileSync(`/proc/${runtimePid}/environ`, "utf8")
   .split("\0");
-if (!environment.includes(`HOME=${expectedHome}`)) {
+if (expectedHome !== "-" && !environment.includes(`HOME=${expectedHome}`)) {
   throw new Error(`Expected HOME=${expectedHome}.`);
 }
 NODE
 }
 
-assert_healthcheck_drop() {
-  container=$1
-  expected_uid=$2
-  expected_gid=$3
+assert_runtime_process() {
+  assert_process_security "$1" "$2" "$3" "$4" runtime
+}
 
-  docker exec "$container" /usr/local/bin/steam-bee-entrypoint --healthcheck node -e "const fs=require('node:fs');if(process.getuid()!==$expected_uid||process.getgid()!==$expected_gid)process.exit(1);const status=fs.readFileSync('/proc/self/status','utf8');const groups=/^Groups:[ \\t]*(.*)$/m.exec(status);if(!groups||groups[1].trim().split(/\\s+/).filter(Boolean).map(Number).some(group=>group!==$expected_gid))process.exit(1);for(const name of ['CapInh','CapPrm','CapEff','CapBnd','CapAmb']){if(!new RegExp('^'+name+':[ \\t]+0+$','m').test(status))process.exit(1)}if(!/^NoNewPrivs:[ \\t]+1$/m.test(status))process.exit(1)"
+assert_healthcheck_drop() {
+  assert_process_security "$1" "$2" "$3" - self
 }
 
 docker volume create "$default_volume" >/dev/null

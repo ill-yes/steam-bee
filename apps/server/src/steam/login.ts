@@ -3,10 +3,11 @@ import { EAuthTokenPlatformType, LoginSession } from "steam-session";
 import { decodeJwtExpiry, encryptSecret } from "../util/crypto.js";
 import { db } from "../db/client.js";
 import { steamAccount } from "../db/schema.js";
-import { recordEvent } from "../http/events.js";
+import { recordInfoEventSafely } from "../http/events.js";
 import { createLogger, errorLogFields } from "../util/logger.js";
 import { safeErrorMessage } from "../util/redact.js";
-import type { OperationContext } from "./manager.js";
+import type { OperationContext } from "../operation-context.js";
+import { steamIdToString } from "./steam-id.js";
 
 type LoginState =
   | { status: "pending"; qrUrl?: string; message?: string }
@@ -15,6 +16,7 @@ type LoginState =
       accountId: string;
       accountName: string;
       steamId: string | null;
+      connectedAt: number;
       message?: string;
     }
   | { status: "error"; message: string };
@@ -367,9 +369,8 @@ async function persistAccountToken(
     where: (fields, operators) => operators.eq(fields.accountName, accountName),
   });
 
-  await recordEvent({
+  await recordInfoEventSafely({
     accountId: account?.id ?? id,
-    level: "info",
     type: "steam.login",
     message: `Steam account ${accountName} was connected. Steam session is starting.`,
     metadata: {
@@ -395,6 +396,7 @@ async function persistAccountToken(
     accountId: account?.id ?? id,
     accountName,
     steamId: account?.steamId ?? steamId,
+    connectedAt: now,
   };
 }
 
@@ -404,15 +406,4 @@ async function startAccountAfterLogin(
 ) {
   const { steamManager } = await import("./manager.js");
   await steamManager.start(accountId, context);
-}
-
-function steamIdToString(value: unknown) {
-  if (!value) return null;
-  if (typeof value === "object" && value !== null && "getSteamID64" in value) {
-    const candidate = value as { getSteamID64?: () => string };
-    if (typeof candidate.getSteamID64 === "function") {
-      return String(candidate.getSteamID64());
-    }
-  }
-  return String(value);
 }

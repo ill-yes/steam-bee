@@ -32,16 +32,25 @@ STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.5
 
 Exact version tags are recommended for repeatable deployments. Image tags do
 not include the Git tag's `v` prefix: `1.0` tracks the latest `1.0.x` patch,
-`latest` tracks the newest stable release, and `edge` tracks `main`.
+and `latest` tracks the newest stable release.
 
-The GitHub Actions workflow verifies formatting, types, tests, dependency and
+The read-only CI workflow verifies formatting, types, tests, dependency and
 image vulnerabilities, Compose parity, runtime UID/GID, the Unraid template,
-both standard and PUID/PGID image smoke tests, and multi-architecture builds.
-`main` publishes only `edge` and `sha-*`; a Git tag such as `v1.0.5` publishes
-`1.0.5`, `1.0`, and `latest` for `linux/amd64` and `linux/arm64`. Published
-images include SBOM, provenance, and a GitHub artifact attestation. Manual
-workflow runs build but does not publish. The GHCR package is public and can be
-pulled without authentication.
+and both standard and PUID/PGID image smoke tests. Pushes and pull requests never
+publish images. Releases are started explicitly with the **Release** workflow's
+**Run workflow** action on `main`: enter `1.0.5` and enable **Publish the release
+image to GHCR**. The version input selects `refs/tags/v1.0.5` as the exact build
+target. An annotated or signed version tag is recommended, but merely pushing
+the tag does not publish anything. The workflow rejects tags that are not
+reachable from `origin/main`, then runs the same quality gate, image scan, and
+smoke test against the tag before it publishes `1.0.5`, `1.0`, and `latest` for
+`linux/amd64` and `linux/arm64`. It then creates the corresponding GitHub
+Release. Releases are serialized so an older build cannot overwrite `latest`
+after a newer one. Published images include SBOM, provenance, and a GitHub
+artifact attestation. The publish job uses the GitHub `release` environment;
+repository administrators can optionally add required reviewers or other
+deployment protection rules there. The GHCR package is public and can be pulled
+without authentication.
 
 Verify a published image against this repository with the GitHub CLI:
 

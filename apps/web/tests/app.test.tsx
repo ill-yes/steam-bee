@@ -18,6 +18,7 @@ import type {
   Diagnostics,
   SteamApp,
 } from "../src/api";
+import { App } from "../src/App";
 import { AccountDetail } from "../src/features/accounts/AccountDetail";
 import { AccountRail } from "../src/features/accounts/AccountRail";
 import { AdminDialog } from "../src/features/admin/AdminDialog";
@@ -33,10 +34,6 @@ vi.mock("../src/api", async () => {
     api: apiMock,
   };
 });
-
-function Smoke() {
-  return <div>SteamBee</div>;
-}
 
 describe("web smoke", () => {
   afterEach(() => {
@@ -56,9 +53,16 @@ describe("web smoke", () => {
     mockAccountData();
   });
 
-  it("renders", () => {
-    render(<Smoke />);
-    expect(screen.getByText("SteamBee")).toBeInTheDocument();
+  it("renders the real signed-out application root", async () => {
+    renderWithProviders(<App />);
+
+    expect(apiMock).toHaveBeenCalledWith(
+      "/api/me",
+      expect.objectContaining({ signal: expect.anything() }),
+    );
+    expect(
+      await screen.findByRole("button", { name: /Sign in|Anmelden/ }),
+    ).toBeInTheDocument();
   });
 
   it("renders one resume action for a paused account", () => {
@@ -85,11 +89,18 @@ describe("web smoke", () => {
       screen.queryByLabelText("Analytics als JSON exportieren"),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Schedule"));
+    const scheduleTab = screen.getByRole("button", { name: /Schedule/ });
+    expect(scheduleTab).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(scheduleTab);
+    expect(scheduleTab).toHaveAttribute("aria-pressed", "true");
     expect(await screen.findByText("Schedules")).toBeInTheDocument();
     expect(screen.getByText("Choose preset")).toBeInTheDocument();
+    const monday = screen.getByRole("button", { name: "Mon" });
+    expect(monday).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(monday);
+    expect(monday).toHaveAttribute("aria-pressed", "false");
 
-    fireEvent.click(screen.getByText("Analytics"));
+    fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
     expect(await screen.findByText("Top games")).toBeInTheDocument();
     expect(screen.getAllByText("Counter-Strike 2").length).toBeGreaterThan(0);
     expect(screen.queryByText("CSV")).not.toBeInTheDocument();
@@ -133,6 +144,61 @@ describe("web smoke", () => {
     );
   });
 
+  it("filters the imported library without losing the current selection", async () => {
+    renderAccountDetail();
+
+    const search = await screen.findByLabelText("Search library");
+    fireEvent.change(search, { target: { value: "missing game" } });
+    expect(await screen.findByText("No result.")).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "730" } });
+    expect(
+      await screen.findByRole("checkbox", {
+        name: "Select Counter-Strike 2",
+      }),
+    ).toBeChecked();
+  });
+
+  it("adds a valid manual AppID and applies it with the current draft", async () => {
+    renderAccountDetail();
+
+    const input = await screen.findByLabelText("Add AppID");
+    fireEvent.change(input, { target: { value: "440" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(input).toHaveValue("");
+    expect(await screen.findByText("App 440")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply selection" }));
+
+    await waitFor(() => {
+      expect(apiMock).toHaveBeenCalledWith(
+        "/api/accounts/account-1/games",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ appIds: [730, 440] }),
+        }),
+      );
+    });
+  });
+
+  it("blocks another AppID at the game limit while keeping removal available", async () => {
+    const accountAtLimit: Account = {
+      ...pausedAccount,
+      games: Array.from({ length: 32 }, (_, index) => ({
+        appId: index === 0 ? 730 : 10_000 + index,
+        enabled: true,
+        source: "manual" as const,
+      })),
+    };
+    renderAccountDetail(accountAtLimit);
+
+    await screen.findByLabelText("Add AppID");
+    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "Select Counter-Strike 2" }),
+    ).not.toBeDisabled();
+  });
+
   it("keeps library organization simple without tag controls", async () => {
     renderAccountDetail();
 
@@ -163,6 +229,27 @@ describe("web smoke", () => {
         }),
       );
     });
+  });
+
+  it("keeps the account confirmation open when removal fails", async () => {
+    renderAccountDetail();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove account" }));
+    apiMock.mockRejectedValueOnce(new Error("Account removal failed"));
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Remove",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Account removal failed"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("alertdialog")).getByText(
+        "Account removal failed",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows the admin action in the account rail", () => {
@@ -253,6 +340,54 @@ describe("web smoke", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("preserves password input after a failed password change", async () => {
+    renderWithProviders(<AdminDialog onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await screen.findByText("Admin sessions");
+    const currentPassword = screen.getByLabelText("Current password");
+    const newPassword = screen.getByLabelText("New password");
+    const confirmPassword = screen.getByLabelText("Repeat new password");
+    fireEvent.change(currentPassword, {
+      target: { value: "old-password-value" },
+    });
+    fireEvent.change(newPassword, {
+      target: { value: "new-password-value" },
+    });
+    fireEvent.change(confirmPassword, {
+      target: { value: "new-password-value" },
+    });
+    apiMock.mockRejectedValueOnce(new Error("Password update failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Change password" }));
+
+    expect(
+      await screen.findByText("Password update failed"),
+    ).toBeInTheDocument();
+    expect(currentPassword).toHaveValue("old-password-value");
+    expect(newPassword).toHaveValue("new-password-value");
+    expect(confirmPassword).toHaveValue("new-password-value");
+  });
+
+  it("keeps a destructive confirmation open after a failed mutation", async () => {
+    renderWithProviders(<AdminDialog onClose={vi.fn()} onChanged={vi.fn()} />);
+
+    await screen.findByText("Admin sessions");
+    fireEvent.click(screen.getByRole("button", { name: "Logs" }));
+    fireEvent.click((await screen.findAllByLabelText("Delete log"))[0]!);
+    apiMock.mockRejectedValueOnce(new Error("Delete failed"));
+
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Delete log",
+      }),
+    );
+
+    expect(await screen.findByText("Delete failed")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("alertdialog")).getByText("Delete failed"),
+    ).toBeInTheDocument();
+  });
+
   it("offers resume for paused accounts in the admin accounts tab", async () => {
     renderWithProviders(<AdminDialog onClose={vi.fn()} onChanged={vi.fn()} />);
 
@@ -286,6 +421,14 @@ function renderWithProviders(ui: ReactNode) {
 
 function mockAccountData() {
   apiMock.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === "/api/me") {
+      return {
+        setupComplete: true,
+        setupTokenRequired: false,
+        authenticated: false,
+        csrfToken: null,
+      };
+    }
     if (path.endsWith("/library/meta")) return { ok: true };
     if (path === "/api/admin/overview") return adminOverview;
     if (path === "/api/admin/sessions") return adminSessions;
@@ -306,7 +449,7 @@ const pausedAccount: Account = {
   id: "account-1",
   accountName: "tester",
   steamId: "76561198000000000",
-  status: "ok",
+  status: "paused_manual",
   runtimeStatus: "paused_manual",
   desiredState: "paused",
   personaState: 7,
@@ -466,7 +609,7 @@ const adminOverview: AdminOverview = {
       level: "info",
       type: "admin.test",
       message: "Current test log",
-      metadataJson: "{}",
+      metadata: {},
       createdAt: Date.now(),
     },
   ],

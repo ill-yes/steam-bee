@@ -273,6 +273,9 @@ describe("admin api", () => {
       overview.json<{ accounts: Array<{ libraryAppCount: number }> }>()
         .accounts[0]?.libraryAppCount,
     ).toBe(1);
+    expect(
+      overview.json<{ accounts: Array<Record<string, unknown>> }>().accounts[0],
+    ).not.toHaveProperty("games");
 
     const deleteOldEvents = await app.inject({
       method: "DELETE",
@@ -291,6 +294,17 @@ describe("admin api", () => {
     });
     expect(clearLibrary.statusCode).toBe(200);
     expect(clearLibrary.json()).toMatchObject({ deleted: 1 });
+
+    const rejectedUnscopedCleanup = await app.inject({
+      method: "DELETE",
+      url: "/api/admin/app-cache",
+      cookies: { session: auth.cookie },
+      headers: { "x-csrf-token": auth.csrfToken },
+    });
+    expect(rejectedUnscopedCleanup.statusCode).toBe(400);
+    expect(rejectedUnscopedCleanup.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
 
     const clearUnusedApps = await app.inject({
       method: "DELETE",

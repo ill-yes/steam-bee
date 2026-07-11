@@ -1,9 +1,10 @@
+import type { AccountStatus } from "@steam-bee/contracts";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/utils";
 import { statusLabel, statusTone } from "../../lib/status";
 import { useI18n } from "../../i18n";
 
-export function StatusDot({ status }: { status: string }) {
+export function StatusDot({ status }: { status: AccountStatus }) {
   return (
     <span
       className={cn(
@@ -19,7 +20,7 @@ export function StatusDot({ status }: { status: string }) {
   );
 }
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status }: { status: AccountStatus }) {
   const { messages: t } = useI18n();
   return (
     <Badge tone={statusTone(status)} className="pl-1.5">

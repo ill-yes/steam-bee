@@ -13,6 +13,7 @@ import { z } from "zod";
 const privateDirectoryMode = 0o700;
 const privateFileMode = 0o600;
 export const MIN_SETUP_TOKEN_LENGTH = 8;
+const packageVersion = readPackageVersion();
 const trueProxyAliases = new Set(["true", "yes", "on"]);
 const falseProxyAliases = new Set(["false", "no", "off", "0"]);
 
@@ -62,7 +63,7 @@ const configuredSetupTokenSchema = z.preprocess(
 );
 
 const envSchema = z.object({
-  HOST: z.string().default("0.0.0.0"),
+  HOST: z.string().default("127.0.0.1"),
   PORT: z.coerce.number().int().positive().default(3000),
   DATA_DIR: z.string().default("./data"),
   TRUST_PROXY: trustProxySchema,
@@ -85,7 +86,7 @@ const envSchema = z.object({
     .transform((value) => (value === undefined ? true : value === "true")),
   SETUP_TOKEN: configuredSetupTokenSchema,
   EVENT_RETENTION_DAYS: z.coerce.number().int().min(0).default(90),
-  BUILD_VERSION: z.string().default("0.1.0-dev"),
+  BUILD_VERSION: z.string().default(`${packageVersion}-dev`),
   BUILD_REVISION: z.string().default("unknown"),
   BUILD_DATE: z.string().default("unknown"),
 });
@@ -186,6 +187,16 @@ function ensurePrivateDirectory(path: string) {
 
 function setPrivateMode(path: string, mode: number) {
   if (process.platform !== "win32") chmodSync(path, mode);
+}
+
+function readPackageVersion() {
+  const metadata = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { version?: unknown };
+  if (typeof metadata.version !== "string" || metadata.version.length === 0) {
+    throw new Error("Server package version is missing.");
+  }
+  return metadata.version;
 }
 
 getInstanceSecret();

@@ -1,13 +1,21 @@
 import type { ReactNode } from "react";
+import {
+  ACCOUNT_STATUSES,
+  ACCOUNT_STATUS_CAPABILITIES,
+  SELECTABLE_PERSONA_STATE_VALUES,
+  isAccountStatus,
+  type AccountStatus,
+  type DesiredState,
+} from "@steam-bee/contracts";
 import type { Account, SteamEvent } from "../api";
 import { interpolate, type Messages } from "../i18n";
 
-const personaValues = [1, 2, 3, 7] as const;
+const personaValues = SELECTABLE_PERSONA_STATE_VALUES;
 
-export const activeStates = new Set(["boosting", "online"]);
-export const pausedStates = new Set(["paused_manual", "paused_other_session"]);
-export const busyStates = new Set(["connecting", "reconnecting"]);
-export const importableStates = new Set(["online", "boosting"]);
+export const activeStates = statusSet("active");
+export const pausedStates = statusSet("paused");
+export const busyStates = statusSet("busy");
+export const importableStates = statusSet("importable");
 export const maxVisibleLibraryRows = 120;
 
 export type EventFilterMode =
@@ -60,13 +68,13 @@ export function eventFilterModes(messages: Messages): Array<{
   ];
 }
 
-export function statusLabel(status: string, messages: Messages) {
+export function statusLabel(status: AccountStatus, messages: Messages) {
   const labels: Record<string, string> = messages.status.runtime;
   return labels[status] ?? status;
 }
 
 export function statusSummary(
-  status: string,
+  status: AccountStatus,
   selectedCount: number,
   messages: Messages,
 ) {
@@ -76,7 +84,7 @@ export function statusSummary(
   return statusLabel(status, messages);
 }
 
-export function desiredLabel(desiredState: string, messages: Messages) {
+export function desiredLabel(desiredState: DesiredState, messages: Messages) {
   const labels: Record<string, string> = messages.status.desired;
   return labels[desiredState] ?? desiredState;
 }
@@ -88,6 +96,14 @@ export function personaLabel(value: number, messages: Messages) {
 
 export function eventDisplay(event: SteamEvent, messages: Messages) {
   if (event.type === "steam.status") {
+    const metadataStatus = event.metadata.status;
+    if (isAccountStatus(metadataStatus)) {
+      return {
+        title: statusEventTitle(metadataStatus, messages),
+        body: statusEventBody(metadataStatus, event.message, messages),
+      };
+    }
+
     const parsedStatus =
       event.message.match(/^Status geandert: (.+)$/)?.[1] ??
       event.message.match(/^Status geändert: (.+)$/)?.[1] ??
@@ -139,7 +155,7 @@ export function eventMatchesFilter(event: SteamEvent, filter: EventFilterMode) {
 }
 
 export function getPrimaryCommand(
-  status: string,
+  status: AccountStatus,
   selectedCount: number,
   messages: Messages,
 ): {
@@ -189,7 +205,7 @@ export function getPrimaryCommand(
 }
 
 export function nextStepMessage(
-  status: string,
+  status: AccountStatus,
   libraryCount: number,
   selectedCount: number,
   messages: Messages,
@@ -223,7 +239,7 @@ export function nextStepMessage(
 }
 
 export function selectionApplyCopy(
-  status: string,
+  status: AccountStatus,
   appliedCount: number,
   draftCount: number,
   dirty: boolean,
@@ -301,7 +317,7 @@ export function selectionApplyCopy(
   };
 }
 
-export function libraryEmptyState(status: string, messages: Messages) {
+export function libraryEmptyState(status: AccountStatus, messages: Messages) {
   const copy = messages.status.libraryEmpty;
   if (busyStates.has(status)) {
     return {
@@ -333,23 +349,24 @@ export function libraryEmptyState(status: string, messages: Messages) {
 export function accountStats(accounts: Account[]) {
   return {
     total: accounts.length,
-    active: accounts.filter((account) =>
-      activeStates.has(account.runtimeStatus),
+    active: accounts.filter(
+      (account) => ACCOUNT_STATUS_CAPABILITIES[account.runtimeStatus].active,
     ).length,
-    paused: accounts.filter((account) =>
-      pausedStates.has(account.runtimeStatus),
+    paused: accounts.filter(
+      (account) => ACCOUNT_STATUS_CAPABILITIES[account.runtimeStatus].paused,
     ).length,
-    attention: accounts.filter((account) =>
-      ["error", "login_required"].includes(account.runtimeStatus),
+    attention: accounts.filter(
+      (account) => ACCOUNT_STATUS_CAPABILITIES[account.runtimeStatus].attention,
     ).length,
   };
 }
 
-export function statusTone(status: string) {
-  if (status === "boosting" || status === "online") return "good";
-  if (busyStates.has(status)) return "info";
-  if (pausedStates.has(status)) return "warn";
-  if (status === "error" || status === "login_required") return "danger";
+export function statusTone(status: AccountStatus) {
+  const capability = ACCOUNT_STATUS_CAPABILITIES[status];
+  if (capability.active) return "good";
+  if (capability.busy) return "info";
+  if (capability.paused) return "warn";
+  if (capability.attention) return "danger";
   return "neutral";
 }
 
@@ -408,3 +425,16 @@ export type SummaryItemConfig = {
   value: string;
   detail: string;
 };
+
+function statusSet(
+  capability: keyof Pick<
+    (typeof ACCOUNT_STATUS_CAPABILITIES)[AccountStatus],
+    "active" | "paused" | "busy" | "importable"
+  >,
+) {
+  return new Set<AccountStatus>(
+    ACCOUNT_STATUSES.filter(
+      (status) => ACCOUNT_STATUS_CAPABILITIES[status][capability],
+    ),
+  );
+}
