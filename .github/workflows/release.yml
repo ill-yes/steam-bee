@@ -93,11 +93,19 @@ jobs:
   quality:
     name: Quality gate
     needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
-    uses: ./.github/workflows/quality.yml
-    with:
-      checkout_ref: ${{ needs.validate.outputs.tag_commit }}
+    steps:
+      - name: Checkout validated release commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.validate.outputs.tag_commit }}
+          persist-credentials: false
+
+      - name: Run shared quality checks
+        uses: ./.github/actions/quality
 
   publish:
     name: Publish release image

@@ -2,11 +2,6 @@ name: Quality Gate
 
 on:
   workflow_call:
-    inputs:
-      checkout_ref:
-        description: Commit or tag ref to validate
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -20,45 +15,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ inputs.checkout_ref }}
           persist-credentials: false
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Audit dependencies
-        run: pnpm audit --audit-level=high
-
-      - name: Check formatting
-        run: pnpm format:check
-
-      - name: Typecheck
-        run: pnpm check
-
-      - name: Test
-        run: pnpm test
-
-      - name: Validate source Compose file
-        run: docker compose config --quiet
-
-      - name: Validate image Compose file
-        run: docker compose -f compose.image.yml config --quiet
-
-      - name: Check Compose runtime parity
-        run: pnpm compose:check
-
-      - name: Validate Unraid template runtime
-        run: pnpm unraid:check
+      - name: Run shared quality checks
+        uses: ./.github/actions/quality
 
       - name: Dependency review
         if: github.event_name == 'pull_request'
