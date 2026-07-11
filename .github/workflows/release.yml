@@ -1,17 +1,18 @@
 name: Release
+run-name: ${{ format('Release {0} from main', inputs.bump) }}
 
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Stable version from package.json (for example 1.0.6)
+      bump:
+        description: Version increment from the latest stable GitHub Release
         required: true
-        type: string
-      publish:
-        description: Publish the release image to GHCR
-        required: true
-        default: false
-        type: boolean
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: read
@@ -21,14 +22,64 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
-    name: Validate release target
+  plan:
+    name: Plan release
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
     outputs:
-      tag_commit: ${{ steps.release-ref.outputs.tag_commit }}
+      status: ${{ steps.final-status.outputs.status }}
+      version: ${{ steps.release-plan.outputs.version }}
+      tag: ${{ steps.release-plan.outputs.tag }}
+      source_commit: ${{ steps.release-plan.outputs.source_commit }}
+      release_exists: ${{ steps.release-plan.outputs.release_exists }}
+      build_date: ${{ steps.release-plan.outputs.build_date }}
+    steps:
+      - name: Checkout release workflow
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Resolve release plan
+        id: release-plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BUMP: ${{ inputs.bump }}
+        run: node scripts/plan-release.mjs
+
+      - name: Set up Docker Buildx for completed-release verification
+        if: steps.release-plan.outputs.status == 'complete'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Verify completed release image
+        id: final-status
+        env:
+          PLANNED_STATUS: ${{ steps.release-plan.outputs.status }}
+          RELEASE_VERSION: ${{ steps.release-plan.outputs.version }}
+        run: |
+          STATUS="$PLANNED_STATUS"
+          if [ "$STATUS" = "complete" ]; then
+            IMAGE="ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_VERSION}"
+            if docker buildx imagetools inspect "$IMAGE" >/dev/null 2>&1; then
+              echo "Release ${RELEASE_VERSION} and its image already exist; nothing to do."
+            else
+              echo "Release ${RELEASE_VERSION} exists without its image; repairing it."
+              STATUS="resume"
+            fi
+          fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+  quality:
+    name: Quality gate
+    needs: plan
+    if: needs.plan.outputs.status != 'complete'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     steps:
       - name: Checkout release workflow
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
@@ -36,62 +87,150 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify main dispatch and release ancestry
-        id: release-ref
+      - name: Checkout validated release source
         env:
-          RELEASE_DISPATCH_REF: ${{ github.ref }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_COMMIT: ${{ needs.plan.outputs.source_commit }}
         run: |
-          if [ "$RELEASE_DISPATCH_REF" != "refs/heads/main" ]; then
-            echo "Release workflow must be dispatched from main; received $RELEASE_DISPATCH_REF." >&2
+          if ! printf '%s' "$SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "Release source is not a full Git SHA." >&2
             exit 1
           fi
-
-          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Release version must use stable semver without a v prefix." >&2
-            exit 1
-          fi
-
-          git fetch --force --no-tags --prune origin \
+          git fetch --force --no-tags origin \
             "+refs/heads/main:refs/remotes/origin/main"
-          TAG_REF="refs/tags/v${RELEASE_VERSION}"
-          git fetch --force --no-tags origin "+${TAG_REF}:${TAG_REF}"
-          TAG_COMMIT="$(git rev-parse "${TAG_REF}^{commit}")"
-          if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
-            echo "$TAG_REF must point to a commit reachable from origin/main." >&2
+          if ! git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main; then
+            echo "$SOURCE_COMMIT is not reachable from main." >&2
             exit 1
           fi
-          git checkout --detach "$TAG_COMMIT"
-          echo "tag_commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
-
-      - name: Validate release metadata and latest version
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_DISPATCH_REF: ${{ github.ref }}
-          RELEASE_TAG: v${{ inputs.version }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          LATEST_RELEASE_TAG="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""')"
-          export LATEST_RELEASE_TAG
-          node scripts/check-release-metadata.mjs
-
-      - name: Ensure release does not already exist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          if gh release view "v${RELEASE_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release v${RELEASE_VERSION} already exists and will not be overwritten." >&2
-            exit 1
-          fi
+          git checkout --detach "$SOURCE_COMMIT"
 
       - name: Run shared quality checks
         uses: ./.github/actions/quality
 
+  image-validation:
+    name: Release image validation
+    needs: [plan, quality]
+    if: needs.plan.outputs.status != 'complete'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release workflow
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout validated release source
+        env:
+          SOURCE_COMMIT: ${{ needs.plan.outputs.source_commit }}
+        run: |
+          if ! printf '%s' "$SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "Release source is not a full Git SHA." >&2
+            exit 1
+          fi
+          git fetch --force --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          if ! git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main; then
+            echo "$SOURCE_COMMIT is not reachable from main." >&2
+            exit 1
+          fi
+          git checkout --detach "$SOURCE_COMMIT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Build amd64 smoke image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: steam-bee:release-smoke
+          cache-from: type=gha
+          build-args: |
+            VERSION=${{ needs.plan.outputs.version }}
+            REVISION=${{ needs.plan.outputs.source_commit }}
+            BUILD_DATE=${{ needs.plan.outputs.build_date }}
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: steam-bee:release-smoke
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Smoke-test amd64 image
+        run: sh scripts/smoke-test-image.sh steam-bee:release-smoke steam-bee-release-smoke
+
+  reserve-tag:
+    name: Reserve immutable release tag
+    needs: [plan, image-validation]
+    if: needs.plan.outputs.status != 'complete'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release workflow
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create or verify release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+          SOURCE_COMMIT: ${{ needs.plan.outputs.source_commit }}
+        run: |
+          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "Release tag is not stable semver." >&2
+            exit 1
+          fi
+          if ! printf '%s' "$SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "Release source is not a full Git SHA." >&2
+            exit 1
+          fi
+
+          git fetch --force --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          if ! git merge-base --is-ancestor "$SOURCE_COMMIT" origin/main; then
+            echo "$SOURCE_COMMIT is not reachable from main." >&2
+            exit 1
+          fi
+
+          if git show-ref --verify --quiet "refs/tags/${RELEASE_TAG}"; then
+            TAG_COMMIT="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [ "$TAG_COMMIT" != "$SOURCE_COMMIT" ]; then
+              echo "$RELEASE_TAG already points to $TAG_COMMIT, not $SOURCE_COMMIT." >&2
+              exit 1
+            fi
+            echo "$RELEASE_TAG already reserves $SOURCE_COMMIT."
+            exit 0
+          fi
+
+          TAG_OBJECT_SHA="$(
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/tags" \
+              -f tag="$RELEASE_TAG" \
+              -f message="SteamBee ${RELEASE_VERSION}" \
+              -f object="$SOURCE_COMMIT" \
+              -f type=commit \
+              --jq .sha
+          )"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${RELEASE_TAG}" \
+            -f sha="$TAG_OBJECT_SHA" >/dev/null
+
   publish:
     name: Publish release image
-    needs: validate
-    if: inputs.publish
+    needs: [plan, reserve-tag]
+    if: needs.plan.outputs.status != 'complete'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: release
@@ -105,40 +244,36 @@ jobs:
       - name: Checkout release workflow
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Checkout unchanged release tag
+      - name: Checkout immutable release tag
         env:
-          EXPECTED_TAG_COMMIT: ${{ needs.validate.outputs.tag_commit }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          SOURCE_COMMIT: ${{ needs.plan.outputs.source_commit }}
         run: |
-          if ! printf '%s' "$RELEASE_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Release version must use stable semver without a v prefix." >&2
+          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "Release tag is not stable semver." >&2
             exit 1
           fi
-          if ! printf '%s' "$EXPECTED_TAG_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "Validated tag commit is not a full Git SHA." >&2
+          if ! printf '%s' "$SOURCE_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "Release source is not a full Git SHA." >&2
             exit 1
           fi
-
-          TAG_REF="refs/tags/v${RELEASE_VERSION}"
-          git fetch --force --no-tags origin "+${TAG_REF}:${TAG_REF}"
-          CURRENT_TAG_COMMIT="$(git rev-parse "${TAG_REF}^{commit}")"
-          if [ "$CURRENT_TAG_COMMIT" != "$EXPECTED_TAG_COMMIT" ]; then
-            echo "$TAG_REF moved from $EXPECTED_TAG_COMMIT to $CURRENT_TAG_COMMIT." >&2
+          git fetch --force --no-tags origin \
+            "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          TAG_COMMIT="$(git rev-list -n 1 "$RELEASE_TAG")"
+          if [ "$TAG_COMMIT" != "$SOURCE_COMMIT" ]; then
+            echo "$RELEASE_TAG points to $TAG_COMMIT, not $SOURCE_COMMIT." >&2
             exit 1
           fi
-          git checkout --detach "$EXPECTED_TAG_COMMIT"
+          git checkout --detach "$SOURCE_COMMIT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
-
-      - name: Capture build date
-        id: build-date
-        run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Docker metadata
         id: meta
@@ -150,8 +285,8 @@ jobs:
             org.opencontainers.image.description=Self-hosted Steam hour booster with a secure Docker management UI.
             org.opencontainers.image.licenses=AGPL-3.0-or-later
           tags: |
-            type=raw,value=${{ inputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+            type=raw,value=${{ needs.plan.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.plan.outputs.version }}
             type=raw,value=latest
 
       - name: Login to GitHub Container Registry
@@ -160,46 +295,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build amd64 smoke image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
-        with:
-          context: .
-          platforms: linux/amd64
-          load: true
-          push: false
-          tags: steam-bee:smoke
-          cache-from: type=gha
-          build-args: |
-            VERSION=${{ inputs.version }}
-            REVISION=${{ needs.validate.outputs.tag_commit }}
-            BUILD_DATE=${{ steps.build-date.outputs.value }}
-            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
-
-      - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: steam-bee:smoke
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          ignore-unfixed: true
-
-      - name: Smoke-test amd64 image
-        run: sh scripts/smoke-test-image.sh steam-bee:smoke steam-bee-smoke
-
-      - name: Recheck release tag before push
-        env:
-          EXPECTED_TAG_COMMIT: ${{ needs.validate.outputs.tag_commit }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          TAG_REF="refs/tags/v${RELEASE_VERSION}"
-          git fetch --force --no-tags origin "+${TAG_REF}:${TAG_REF}"
-          CURRENT_TAG_COMMIT="$(git rev-parse "${TAG_REF}^{commit}")"
-          if [ "$CURRENT_TAG_COMMIT" != "$EXPECTED_TAG_COMMIT" ]; then
-            echo "$TAG_REF moved from $EXPECTED_TAG_COMMIT to $CURRENT_TAG_COMMIT." >&2
-            exit 1
-          fi
 
       - name: Build and push multi-arch image
         id: push
@@ -213,12 +308,38 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VERSION=${{ inputs.version }}
-            REVISION=${{ needs.validate.outputs.tag_commit }}
-            BUILD_DATE=${{ steps.build-date.outputs.value }}
+            VERSION=${{ needs.plan.outputs.version }}
+            REVISION=${{ needs.plan.outputs.source_commit }}
+            BUILD_DATE=${{ needs.plan.outputs.build_date }}
             SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
           provenance: true
           sbom: true
+
+      - name: Verify published platforms
+        env:
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY}:${RELEASE_VERSION}"
+          docker buildx imagetools inspect --raw "$IMAGE" | node -e '
+            let input = "";
+            process.stdin.on("data", (chunk) => (input += chunk));
+            process.stdin.on("end", () => {
+              const manifest = JSON.parse(input);
+              const platforms = new Set(
+                (manifest.manifests || []).map(
+                  (entry) =>
+                    String(entry.platform?.os) +
+                    "/" +
+                    String(entry.platform?.architecture),
+                ),
+              );
+              for (const required of ["linux/amd64", "linux/arm64"]) {
+                if (!platforms.has(required)) {
+                  throw new Error("Published image is missing " + required + ".");
+                }
+              }
+            });
+          '
 
       - name: Attest image
         uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
@@ -229,37 +350,20 @@ jobs:
 
   github-release:
     name: Publish GitHub release
-    needs: [validate, publish]
-    if: inputs.publish
+    needs: [plan, publish]
+    if: needs.plan.outputs.status != 'complete' && needs.plan.outputs.release_exists != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
     steps:
-      - name: Checkout release workflow
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-
-      - name: Ensure release tag is unchanged
-        env:
-          EXPECTED_TAG_COMMIT: ${{ needs.validate.outputs.tag_commit }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          TAG_REF="refs/tags/v${RELEASE_VERSION}"
-          git fetch --force --no-tags origin "+${TAG_REF}:${TAG_REF}"
-          CURRENT_TAG_COMMIT="$(git rev-parse "${TAG_REF}^{commit}")"
-          if [ "$CURRENT_TAG_COMMIT" != "$EXPECTED_TAG_COMMIT" ]; then
-            echo "$TAG_REF moved from $EXPECTED_TAG_COMMIT to $CURRENT_TAG_COMMIT." >&2
-            exit 1
-          fi
-
-      - name: Create release from published image tag
+      - name: Publish release from immutable tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ needs.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.plan.outputs.version }}
         run: >-
-          gh release create "v${RELEASE_VERSION}"
+          gh release create "$RELEASE_TAG"
           --repo "$GITHUB_REPOSITORY"
           --verify-tag
           --generate-notes

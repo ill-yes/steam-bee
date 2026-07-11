@@ -52,45 +52,23 @@ sh scripts/smoke-test-image.sh steam-bee:local steam-bee-local
 ## Maintainer Release Process
 
 Development pushes and pull requests run checks but never publish a container
-image. A stable release is an explicit three-step operation:
+image. A stable release is one explicit GitHub Actions operation:
 
-1. Prepare and review the version metadata, then merge it to `main`:
+1. Open **Release**, choose **Run workflow**, and keep `main` selected.
+2. Choose `patch`, `minor`, or `major` and start the workflow.
 
-   ```bash
-   pnpm release:prepare 1.0.6
-   pnpm release:check
-   pnpm check
-   pnpm test
-   git diff
-   ```
+The workflow derives the next version from the latest stable GitHub Release. It
+runs the quality gate, builds and scans an amd64 smoke image, and only then
+creates an annotated tag on the exact validated `main` commit. It publishes the
+exact version, its `major.minor` channel, and `latest` for `linux/amd64` and
+`linux/arm64`, adds provenance, SBOM, and an artifact attestation, and creates
+the GitHub Release with generated notes.
 
-2. Create a version tag on that reviewed release commit and push only the tag.
-   An annotated or signed tag is recommended. Pushing the tag does not publish
-   anything:
-
-   ```bash
-   git tag -a v1.0.6 -m "SteamBee 1.0.6"
-   git push origin v1.0.6
-   ```
-
-3. In GitHub Actions, open **Release**, choose **Run workflow**, keep `main` as
-   the workflow ref, enter `1.0.6`, enable **Publish the release image to GHCR**,
-   and start the workflow. The version input selects `refs/tags/v1.0.6` as the
-   exact build and validation target.
-
-The workflow rejects dispatches from refs other than `main`, versions that
-differ from the tag's `package.json`, tags that are not reachable from
-`origin/main`, existing GitHub Releases, and versions that are not newer than
-the latest public release. The quality gate, image build, labels, and
-attestation all use the exact version tag commit rather than the `main` dispatch
-commit. The remote tag is checked again before the image push and GitHub Release
-creation so a moved tag cannot silently change that commit. All releases share
-one queue, so two versions cannot race while updating `latest`. Only this
-confirmed manual run publishes the exact version, its
-`major.minor` channel, and `latest`. After the image and its attestation are
-published, the same run creates the GitHub Release with generated notes.
-Creating a Git tag or pushing to `main` alone does not publish an image or
-GitHub Release. Existing GitHub Releases are never rebuilt or overwritten.
+All releases share one queue, so two runs cannot race while updating `latest`.
+If publication fails after the tag is reserved, the next run resumes that tag
+and commit instead of incrementing again. Rerunning an already completed release
+verifies its image and exits without creating another version. Normal pushes,
+pull requests, and manually created tags never publish an image.
 
 The publish job targets the GitHub `release` environment. Repository
 administrators can optionally configure that environment with required

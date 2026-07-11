@@ -1,6 +1,6 @@
 {
   "name": "steam-bee",
-  "version": "1.0.5",
+  "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Self-hosted Steam hour booster with a secure management UI.",
@@ -21,7 +21,7 @@
   "packageManager": "pnpm@11.7.0+sha512.19cc852c120c7125760f2443ee6be0ca5b40f9f50598de1a09a1f177503e010e57c23c77646e01e761de59bf874fb22a3398c33ab9691fc13eb946b6f0f4d620",
   "scripts": {
     "build": "pnpm -r build",
-    "check": "pnpm release:check && pnpm contracts:build && pnpm -r check",
+    "check": "pnpm release:source:check && pnpm contracts:build && pnpm -r check",
     "compose:check": "node scripts/check-compose-parity.mjs",
     "compose:test": "node --test scripts/compose-*.test.mjs",
     "unraid:check": "node scripts/check-unraid-template.mjs",
@@ -29,8 +29,8 @@
     "dev": "pnpm --filter @steam-bee/server dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "release:check": "node scripts/check-release-metadata.mjs",
-    "release:prepare": "node scripts/prepare-release.mjs",
+    "release:plan": "node scripts/plan-release.mjs",
+    "release:source:check": "node scripts/check-release-source.mjs",
     "release:test": "node --test scripts/release-metadata.test.mjs",
     "test": "pnpm release:test && pnpm compose:test && pnpm contracts:build && pnpm -r test"
   },
