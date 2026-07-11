@@ -1,3 +1,6 @@
+export const RELEASE_BUMPS = ["patch", "minor", "major"];
+export const SOURCE_PACKAGE_VERSION = "0.0.0";
+
 export const PACKAGE_PATHS = [
   "package.json",
   "apps/server/package.json",
@@ -5,23 +8,20 @@ export const PACKAGE_PATHS = [
   "packages/contracts/package.json",
 ];
 
-export const RELEASE_TEXT_TARGETS = [
-  target(
-    "compose.image.yml",
-    (version) => `ghcr.io/ill-yes/steam-bee:${version}`,
-  ),
-  target(".env.example", (version) => `ghcr.io/ill-yes/steam-bee:${version}`),
-  target("Dockerfile", (version) => `ARG VERSION=${version}-dev`),
-  target(
-    "docs/DEPLOYMENT.md",
-    (version) => `ghcr.io/ill-yes/steam-bee:${version}`,
-    (version) => version,
-  ),
-  target(
-    ".github/ISSUE_TEMPLATE/bug_report.yml",
-    (version) => `SteamBee ${version}; ghcr.io/ill-yes/steam-bee:${version}`,
-    (version) => version,
-  ),
+export const RELEASE_SOURCE_DEFAULTS = [
+  {
+    path: "compose.image.yml",
+    expected: "ghcr.io/ill-yes/steam-bee:latest",
+  },
+  {
+    path: ".env.example",
+    expected: "ghcr.io/ill-yes/steam-bee:latest",
+  },
+  { path: "Dockerfile", expected: "ARG VERSION=dev" },
+  {
+    path: ".github/ISSUE_TEMPLATE/bug_report.yml",
+    expected: "SteamBee 1.2.3; ghcr.io/ill-yes/steam-bee:1.2.3",
+  },
 ];
 
 export function isStableVersion(value) {
@@ -29,6 +29,12 @@ export function isStableVersion(value) {
     typeof value === "string" &&
     /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)
   );
+}
+
+export function parseStableReleaseTag(value) {
+  if (typeof value !== "string" || !value.startsWith("v")) return null;
+  const version = value.slice(1);
+  return isStableVersion(version) ? version : null;
 }
 
 export function compareStableVersions(left, right) {
@@ -47,73 +53,97 @@ export function compareStableVersions(left, right) {
   return 0;
 }
 
-export function validateReleaseTransition(currentVersion, nextVersion) {
-  if (!isStableVersion(currentVersion)) {
-    throw new Error(
-      `Current version is not a stable semantic version: ${currentVersion}`,
-    );
+export function incrementStableVersion(version, bump) {
+  if (!isStableVersion(version)) {
+    throw new Error(`Cannot increment unstable version: ${version}`);
   }
-  if (!isStableVersion(nextVersion)) {
-    throw new Error(
-      `Next version is not a stable semantic version: ${nextVersion}`,
-    );
+  if (!RELEASE_BUMPS.includes(bump)) {
+    throw new Error(`Unsupported release bump: ${bump}`);
   }
 
-  const comparison = compareStableVersions(nextVersion, currentVersion);
-  if (comparison < 0) {
-    throw new Error(
-      `Release metadata cannot move backward from ${currentVersion} to ${nextVersion}.`,
-    );
-  }
-  return comparison === 0 ? "same" : "upgrade";
+  const [major, minor, patch] = version.split(".").map(BigInt);
+  if (bump === "major") return `${major + 1n}.0.0`;
+  if (bump === "minor") return `${major}.${minor + 1n}.0`;
+  return `${major}.${minor}.${patch + 1n}`;
 }
 
-export function validateReleaseRequest({
-  version,
-  requestedVersion,
+export function resolveReleasePlan({
+  bump,
   dispatchRef,
-  releaseTag,
-  latestReleaseTag,
+  dispatchSha,
+  publishedReleaseTags,
+  tagCommits,
 }) {
-  if (!isStableVersion(version)) {
-    throw new Error(
-      `Root package version is not a stable semantic version: ${version}`,
-    );
-  }
-
-  if (requestedVersion === undefined) return;
-  if (requestedVersion !== version) {
-    throw new Error(
-      `Requested release ${requestedVersion} does not match package version ${version}.`,
-    );
-  }
   if (dispatchRef !== "refs/heads/main") {
     throw new Error(
-      `Release ${version} must be dispatched from main; received ${dispatchRef || "no ref"}.`,
+      `Release workflow must be dispatched from main; received ${dispatchRef || "no ref"}.`,
     );
   }
-  if (releaseTag !== `v${version}`) {
-    throw new Error(
-      `Release target ${releaseTag || "no tag"} does not match package version v${version}.`,
+  assertCommitSha(dispatchSha, "Dispatch SHA");
+  if (!RELEASE_BUMPS.includes(bump)) {
+    throw new Error(`Unsupported release bump: ${bump}`);
+  }
+
+  const stableReleases = publishedReleaseTags
+    .map((tag) => ({ tag, version: parseStableReleaseTag(tag) }))
+    .filter(({ version }) => version !== null)
+    .sort((left, right) => compareStableVersions(right.version, left.version));
+
+  if (stableReleases.length === 0) {
+    throw new Error("No stable GitHub Release exists to increment.");
+  }
+
+  const completedForCommit = stableReleases.find(
+    ({ tag }) => tagCommits[tag] === dispatchSha,
+  );
+  if (completedForCommit) {
+    return plan(
+      "complete",
+      completedForCommit.version,
+      completedForCommit.tag,
+      dispatchSha,
+      true,
     );
   }
 
-  if (!latestReleaseTag) return;
-  const latestVersion = latestReleaseTag.startsWith("v")
-    ? latestReleaseTag.slice(1)
-    : latestReleaseTag;
-  if (!isStableVersion(latestVersion)) {
+  const latestVersion = stableReleases[0].version;
+  const publishedTagSet = new Set(stableReleases.map(({ tag }) => tag));
+  const pendingTags = Object.entries(tagCommits)
+    .map(([tag, commit]) => ({
+      tag,
+      commit,
+      version: parseStableReleaseTag(tag),
+    }))
+    .filter(
+      ({ tag, version }) =>
+        version !== null &&
+        !publishedTagSet.has(tag) &&
+        compareStableVersions(version, latestVersion) > 0,
+    )
+    .sort((left, right) => compareStableVersions(left.version, right.version));
+
+  if (pendingTags.length > 1) {
     throw new Error(
-      `Latest GitHub Release has an unsupported tag: ${latestReleaseTag}.`,
+      `Multiple unpublished release tags require manual repair: ${pendingTags.map(({ tag }) => tag).join(", ")}.`,
     );
   }
-  if (compareStableVersions(requestedVersion, latestVersion) <= 0) {
-    throw new Error(
-      `Release ${requestedVersion} must be newer than the latest public release ${latestVersion}.`,
-    );
+  if (pendingTags.length === 1) {
+    const pending = pendingTags[0];
+    assertCommitSha(pending.commit, `Commit for ${pending.tag}`);
+    return plan("resume", pending.version, pending.tag, pending.commit, false);
   }
+
+  const version = incrementStableVersion(latestVersion, bump);
+  const tag = `v${version}`;
+  return plan("fresh", version, tag, dispatchSha, false);
 }
 
-function target(path, expected, replacement = expected) {
-  return { path, expected, replacement };
+function plan(status, version, tag, sourceCommit, releaseExists) {
+  return { status, version, tag, sourceCommit, releaseExists };
+}
+
+function assertCommitSha(value, label) {
+  if (typeof value !== "string" || !/^[0-9a-f]{40}$/.test(value)) {
+    throw new Error(`${label} must be a full lowercase Git SHA.`);
+  }
 }

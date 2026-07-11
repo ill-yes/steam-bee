@@ -23,11 +23,11 @@ The service uses the default address, `http://127.0.0.1:3000`.
 ## Image Versions and Verification
 
 [`compose.image.yml`](../compose.image.yml) defaults to
-`ghcr.io/ill-yes/steam-bee:1.0.5`. Override the pin in `.env` when you want to
-select another release:
+`ghcr.io/ill-yes/steam-bee:latest`. Pin an exact version in `.env` when you
+need a repeatable deployment:
 
 ```bash
-STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.0.5
+STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.2.3
 ```
 
 Exact version tags are recommended for repeatable deployments. Image tags do
@@ -37,25 +37,24 @@ and `latest` tracks the newest stable release.
 The read-only CI workflow verifies formatting, types, tests, dependency and
 image vulnerabilities, Compose parity, runtime UID/GID, the Unraid template,
 and both standard and PUID/PGID image smoke tests. Pushes and pull requests never
-publish images. Releases are started explicitly with the **Release** workflow's
-**Run workflow** action on `main`: enter `1.0.5` and enable **Publish the release
-image to GHCR**. The version input selects `refs/tags/v1.0.5` as the exact build
-target. An annotated or signed version tag is recommended, but merely pushing
-the tag does not publish anything. The workflow rejects tags that are not
-reachable from `origin/main`, then runs the same quality gate, image scan, and
-smoke test against the tag before it publishes `1.0.5`, `1.0`, and `latest` for
-`linux/amd64` and `linux/arm64`. It then creates the corresponding GitHub
-Release. Releases are serialized so an older build cannot overwrite `latest`
-after a newer one. Published images include SBOM, provenance, and a GitHub
-artifact attestation. The publish job uses the GitHub `release` environment;
-repository administrators can optionally add required reviewers or other
-deployment protection rules there. The GHCR package is public and can be pulled
-without authentication.
+publish images. To publish, open the **Release** workflow on `main`, choose
+`patch`, `minor`, or `major`, and select **Run workflow**. The workflow derives
+the next version from the latest stable GitHub Release, validates the exact
+`main` commit, builds and scans an amd64 smoke image, reserves an immutable
+annotated tag, and publishes the exact version, its `major.minor` channel, and
+`latest` for `linux/amd64` and `linux/arm64`. It then creates the corresponding
+GitHub Release. Releases are serialized so an older build cannot overwrite
+`latest` after a newer one. A failed run resumes its reserved tag and commit;
+rerunning a completed release is a no-op. Published images include SBOM,
+provenance, and a GitHub artifact attestation. The publish job uses the GitHub
+`release` environment; repository administrators can optionally add required
+reviewers or other deployment protection rules there. The GHCR package is
+public and can be pulled without authentication.
 
 Verify a published image against this repository with the GitHub CLI:
 
 ```bash
-gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.0.5 \
+gh attestation verify oci://ghcr.io/ill-yes/steam-bee:1.2.3 \
   --repo ill-yes/steam-bee
 ```
 

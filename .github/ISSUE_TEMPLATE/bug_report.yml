@@ -95,7 +95,7 @@ body:
     attributes:
       label: SteamBee version and image
       description: Provide the exact SteamBee version plus the image tag and digest/image ID, or the source commit. `latest` alone is not enough.
-      placeholder: SteamBee 1.0.5; ghcr.io/ill-yes/steam-bee:1.0.5; sha256:...
+      placeholder: SteamBee 1.2.3; ghcr.io/ill-yes/steam-bee:1.2.3; sha256:...
     validations:
       required: true
 

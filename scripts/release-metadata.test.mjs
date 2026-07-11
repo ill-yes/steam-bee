@@ -2,104 +2,173 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   compareStableVersions,
+  incrementStableVersion,
   isStableVersion,
   PACKAGE_PATHS,
-  RELEASE_TEXT_TARGETS,
-  validateReleaseRequest,
-  validateReleaseTransition,
+  parseStableReleaseTag,
+  RELEASE_BUMPS,
+  RELEASE_SOURCE_DEFAULTS,
+  resolveReleasePlan,
 } from "./release-metadata.mjs";
 
-test("stable release versions are validated strictly", () => {
+const dispatchSha = "1".repeat(40);
+const reservedSha = "2".repeat(40);
+
+test("stable release versions and tags are validated strictly", () => {
   assert.equal(isStableVersion("1.2.3"), true);
   assert.equal(isStableVersion("v1.2.3"), false);
   assert.equal(isStableVersion("1.2.3-beta.1"), false);
   assert.equal(isStableVersion("1.2"), false);
   assert.equal(isStableVersion("01.2.3"), false);
+  assert.equal(parseStableReleaseTag("v1.2.3"), "1.2.3");
+  assert.equal(parseStableReleaseTag("1.2.3"), null);
+  assert.equal(parseStableReleaseTag("v1.2.3-rc.1"), null);
 });
 
-test("stable versions are compared numerically", () => {
-  assert.equal(compareStableVersions("1.0.5", "1.0.4"), 1);
+test("stable versions are compared and incremented numerically", () => {
   assert.equal(compareStableVersions("1.10.0", "1.9.9"), 1);
   assert.equal(compareStableVersions("2.0.0", "10.0.0"), -1);
-  assert.equal(compareStableVersions("1.0.5", "1.0.5"), 0);
-  assert.equal(compareStableVersions("999999999999999999999.0.0", "2.0.0"), 1);
+  assert.equal(incrementStableVersion("1.0.5", "patch"), "1.0.6");
+  assert.equal(incrementStableVersion("1.0.5", "minor"), "1.1.0");
+  assert.equal(incrementStableVersion("1.0.5", "major"), "2.0.0");
+  assert.equal(
+    incrementStableVersion("999999999999999999999.0.0", "major"),
+    "1000000000000000000000.0.0",
+  );
+  assert.throws(
+    () => incrementStableVersion("1.0.5", "banana"),
+    /Unsupported release bump/,
+  );
 });
 
-test("release metadata targets stay unique", () => {
+test("release source metadata targets stay unique", () => {
+  assert.deepEqual(RELEASE_BUMPS, ["patch", "minor", "major"]);
   assert.equal(new Set(PACKAGE_PATHS).size, PACKAGE_PATHS.length);
-  const textPaths = RELEASE_TEXT_TARGETS.map(({ path }) => path);
-  assert.equal(new Set(textPaths).size, textPaths.length);
+  const sourcePaths = RELEASE_SOURCE_DEFAULTS.map(({ path }) => path);
+  assert.equal(new Set(sourcePaths).size, sourcePaths.length);
 });
 
-test("release transitions allow upgrades and idempotent preparation", () => {
-  assert.equal(validateReleaseTransition("1.0.5", "1.0.6"), "upgrade");
-  assert.equal(validateReleaseTransition("1.0.5", "1.0.5"), "same");
-  assert.throws(
-    () => validateReleaseTransition("1.0.5", "1.0.4"),
-    /cannot move backward from 1\.0\.5 to 1\.0\.4/,
-  );
-});
-
-test("manual release requests require main, a matching tag and a newer version", () => {
-  assert.doesNotThrow(() =>
-    validateReleaseRequest({
-      version: "1.0.5",
-      requestedVersion: "1.0.5",
+test("a fresh patch release increments the latest published release", () => {
+  assert.deepEqual(
+    resolveReleasePlan({
+      bump: "patch",
       dispatchRef: "refs/heads/main",
-      releaseTag: "v1.0.5",
-      latestReleaseTag: "v1.0.4",
+      dispatchSha,
+      publishedReleaseTags: ["v1.0.5", "v1.0.4"],
+      tagCommits: { "v1.0.5": "0".repeat(40) },
     }),
+    {
+      status: "fresh",
+      version: "1.0.6",
+      tag: "v1.0.6",
+      sourceCommit: dispatchSha,
+      releaseExists: false,
+    },
   );
-  assert.throws(
-    () =>
-      validateReleaseRequest({
-        version: "1.0.5",
-        requestedVersion: "1.0.6",
-        dispatchRef: "refs/heads/main",
-        releaseTag: "v1.0.6",
-      }),
-    /Requested release 1\.0\.6 does not match package version 1\.0\.5/,
+});
+
+test("minor and major plans derive from the latest semantic release", () => {
+  const base = {
+    dispatchRef: "refs/heads/main",
+    dispatchSha,
+    publishedReleaseTags: ["v1.9.9", "v1.10.0", "invalid"],
+    tagCommits: {},
+  };
+  assert.equal(
+    resolveReleasePlan({ ...base, bump: "minor" }).version,
+    "1.11.0",
   );
+  assert.equal(resolveReleasePlan({ ...base, bump: "major" }).version, "2.0.0");
+});
+
+test("an incomplete reserved tag resumes its original commit", () => {
+  assert.deepEqual(
+    resolveReleasePlan({
+      bump: "patch",
+      dispatchRef: "refs/heads/main",
+      dispatchSha,
+      publishedReleaseTags: ["v1.0.5"],
+      tagCommits: { "v1.0.6": reservedSha },
+    }),
+    {
+      status: "resume",
+      version: "1.0.6",
+      tag: "v1.0.6",
+      sourceCommit: reservedSha,
+      releaseExists: false,
+    },
+  );
+});
+
+test("an incomplete release resumes even when a different bump is selected", () => {
+  const result = resolveReleasePlan({
+    bump: "major",
+    dispatchRef: "refs/heads/main",
+    dispatchSha,
+    publishedReleaseTags: ["v1.0.5"],
+    tagCommits: { "v1.0.6": reservedSha },
+  });
+  assert.equal(result.status, "resume");
+  assert.equal(result.version, "1.0.6");
+  assert.equal(result.sourceCommit, reservedSha);
+});
+
+test("rerunning a completed release on its source commit is a no-op", () => {
+  assert.deepEqual(
+    resolveReleasePlan({
+      bump: "patch",
+      dispatchRef: "refs/heads/main",
+      dispatchSha,
+      publishedReleaseTags: ["v1.0.6", "v1.0.5"],
+      tagCommits: { "v1.0.6": dispatchSha },
+    }),
+    {
+      status: "complete",
+      version: "1.0.6",
+      tag: "v1.0.6",
+      sourceCommit: dispatchSha,
+      releaseExists: true,
+    },
+  );
+});
+
+test("invalid dispatches and missing release history fail safely", () => {
+  const valid = {
+    bump: "patch",
+    dispatchRef: "refs/heads/main",
+    dispatchSha,
+    publishedReleaseTags: ["v1.0.5"],
+    tagCommits: {},
+  };
   assert.throws(
-    () =>
-      validateReleaseRequest({
-        version: "1.0.5",
-        requestedVersion: "1.0.5",
-        dispatchRef: "refs/tags/v1.0.5",
-        releaseTag: "v1.0.5",
-      }),
+    () => resolveReleasePlan({ ...valid, dispatchRef: "refs/heads/feature" }),
     /must be dispatched from main/,
   );
   assert.throws(
-    () =>
-      validateReleaseRequest({
-        version: "1.0.5",
-        requestedVersion: "1.0.5",
-        dispatchRef: "refs/heads/main",
-        releaseTag: "v1.0.4",
-      }),
-    /target v1\.0\.4 does not match package version v1\.0\.5/,
+    () => resolveReleasePlan({ ...valid, publishedReleaseTags: [] }),
+    /No stable GitHub Release exists/,
+  );
+  assert.throws(
+    () => resolveReleasePlan({ ...valid, dispatchSha: "short" }),
+    /full lowercase Git SHA/,
   );
   assert.throws(
     () =>
-      validateReleaseRequest({
-        version: "1.0.5",
-        requestedVersion: "1.0.5",
-        dispatchRef: "refs/heads/main",
-        releaseTag: "v1.0.5",
-        latestReleaseTag: "v1.0.5",
+      resolveReleasePlan({
+        ...valid,
+        tagCommits: { "v1.0.6": "not-a-sha" },
       }),
-    /must be newer than the latest public release 1\.0\.5/,
+    /Commit for v1\.0\.6 must be a full lowercase Git SHA/,
   );
   assert.throws(
     () =>
-      validateReleaseRequest({
-        version: "1.0.5",
-        requestedVersion: "1.0.5",
-        dispatchRef: "refs/heads/main",
-        releaseTag: "v1.0.5",
-        latestReleaseTag: "v1.0.4-beta.1",
+      resolveReleasePlan({
+        ...valid,
+        tagCommits: {
+          "v1.0.6": "2".repeat(40),
+          "v1.1.0": "3".repeat(40),
+        },
       }),
-    /Latest GitHub Release has an unsupported tag/,
+    /Multiple unpublished release tags require manual repair/,
   );
 });
