@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { migrate, sqlite } from "../src/db/client.js";
 import {
   createPresetRecord,
+  hasAccountLibrary,
   replaceAccountLibrary,
   replaceSelectedGames,
 } from "../src/steam/repository.js";
@@ -83,6 +84,16 @@ describe("Steam repository transactions", () => {
         )
         .all(accountId),
     ).toEqual([{ appId: 440, favorite: 1, tagsJson: '["classic"]' }]);
+  });
+
+  it("detects whether an account already has an imported library", () => {
+    expect(hasAccountLibrary(accountId)).toBe(true);
+
+    sqlite
+      .prepare("DELETE FROM steam_account_library WHERE account_id = ?")
+      .run(accountId);
+
+    expect(hasAccountLibrary(accountId)).toBe(false);
   });
 });
 

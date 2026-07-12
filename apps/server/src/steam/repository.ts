@@ -189,6 +189,16 @@ export function replaceAccountLibrary(
   replace();
 }
 
+export function hasAccountLibrary(accountId: string) {
+  return Boolean(
+    sqlite
+      .prepare(
+        "SELECT 1 FROM steam_account_library WHERE account_id = ? LIMIT 1",
+      )
+      .get(accountId),
+  );
+}
+
 function insertPresetGames(presetId: string, appIds: number[], now: number) {
   const insert = sqlite.prepare(`
     INSERT INTO boost_preset_game (preset_id, app_id, created_at)

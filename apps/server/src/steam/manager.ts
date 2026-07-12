@@ -1,12 +1,7 @@
 import { ACCOUNT_STATUS_CAPABILITIES, ERROR_CODES } from "@steam-bee/contracts";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import {
-  boostPreset,
-  boostPresetGame,
-  steamAccount,
-  steamAccountLibrary,
-} from "../db/schema.js";
+import { boostPreset, boostPresetGame, steamAccount } from "../db/schema.js";
 import {
   broadcast,
   recordErrorEventSafely,
@@ -16,7 +11,7 @@ import { createLogger, errorLogFields } from "../util/logger.js";
 import { safeErrorMessage } from "../util/redact.js";
 import { appError } from "../http/errors.js";
 import type { OperationContext } from "../operation-context.js";
-import { replaceSelectedGames } from "./repository.js";
+import { hasAccountLibrary, replaceSelectedGames } from "./repository.js";
 import { enforceGameLimit } from "./validation.js";
 import { SteamWorker } from "./worker.js";
 import { getAccountOrThrow } from "./account-repository.js";
@@ -26,17 +21,28 @@ import { AccountOperationState } from "./account-operation-state.js";
 import type { WorkerStatusPayload } from "./types.js";
 import { ScheduleCoordinator } from "./schedule-coordinator.js";
 import { scheduleRepository } from "./schedule-repository.js";
+import { AutoLibraryImporter } from "./auto-library-importer.js";
 
 class SteamManager {
   private workers = new Map<string, SteamWorker>();
-  private autoImportInFlight = new Set<string>();
-  private autoImportDone = new Set<string>();
   private shutdownPromise: Promise<void> | null = null;
   private readonly logger = createLogger("steam-manager");
   private readonly accountOperations = new AccountOperationState();
   private readonly statusEventRecorder = new SteamStatusEventRecorder(
     (accountId) => this.accountOperations.metadata(accountId),
   );
+  private readonly autoLibraryImporter = new AutoLibraryImporter({
+    hasLibrary: hasAccountLibrary,
+    importLibrary: async (accountId) => {
+      const worker = await this.getWorkerForAccount(accountId);
+      return worker.importLibrary();
+    },
+    metadataFor: (accountId) => this.accountOperations.metadata(accountId),
+    recordInfo: (accountId, type, message, metadata) =>
+      this.recordInfo(accountId, type, message, metadata),
+    recordError: (accountId, type, message, metadata) =>
+      this.recordError(accountId, type, message, metadata),
+  });
   private readonly scheduleCoordinator = new ScheduleCoordinator({
     repository: scheduleRepository,
     runForAccount: (accountId, operation) =>
@@ -379,8 +385,7 @@ class SteamManager {
     );
     this.accountOperations.clearContexts();
     this.statusEventRecorder.clearAll();
-    this.autoImportInFlight.clear();
-    this.autoImportDone.clear();
+    this.autoLibraryImporter.clearAll();
     this.scheduleCoordinator.clearAll();
   }
 
@@ -458,73 +463,14 @@ class SteamManager {
       !payload.error &&
       ACCOUNT_STATUS_CAPABILITIES[payload.status].importable
     ) {
-      await this.autoImportLibrary(accountId);
-    }
-  }
-
-  private async autoImportLibrary(accountId: string) {
-    if (
-      this.autoImportDone.has(accountId) ||
-      this.autoImportInFlight.has(accountId)
-    ) {
-      return;
-    }
-
-    this.autoImportInFlight.add(accountId);
-
-    try {
-      const existingLibraryEntry = await db
-        .select({ appId: steamAccountLibrary.appId })
-        .from(steamAccountLibrary)
-        .where(eq(steamAccountLibrary.accountId, accountId))
-        .limit(1);
-
-      if (existingLibraryEntry.length > 0) {
-        this.autoImportDone.add(accountId);
-        this.logger.debug(
-          { accountId },
-          "Skipping auto-import because library already exists",
-        );
-        return;
-      }
-
-      await this.recordInfo(
-        accountId,
-        "steam.library.import.start",
-        "Automatic library import started.",
-        { ...this.accountOperations.metadata(accountId), mode: "auto" },
-      );
-
-      const worker = await this.getWorkerForAccount(accountId);
-      const apps = await worker.importLibrary();
-      this.autoImportDone.add(accountId);
-      await this.recordInfo(
-        accountId,
-        "steam.library.import",
-        `${apps.length} games imported.`,
-        {
-          ...this.accountOperations.metadata(accountId),
-          appCount: apps.length,
-          mode: "auto",
-        },
-      );
-    } catch (error) {
-      await this.recordError(
-        accountId,
-        "steam.library.import.error",
-        `Library import failed: ${safeErrorMessage(error)}`,
-        { ...this.accountOperations.metadata(accountId), mode: "auto" },
-      );
-    } finally {
-      this.autoImportInFlight.delete(accountId);
+      await this.autoLibraryImporter.import(accountId);
     }
   }
 
   private clearAccountState(accountId: string) {
     this.accountOperations.clearContext(accountId);
     this.statusEventRecorder.clearAccount(accountId);
-    this.autoImportInFlight.delete(accountId);
-    this.autoImportDone.delete(accountId);
+    this.autoLibraryImporter.clearAccount(accountId);
     this.scheduleCoordinator.clearAccount(accountId);
   }
 
