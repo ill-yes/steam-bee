@@ -16,7 +16,7 @@
     "@tanstack/react-table": "^8.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.24.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -31,10 +31,10 @@
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
-    "@vitejs/plugin-react": "^4.3.4",
-    "jsdom": "^25.0.1",
-    "typescript": "^5.7.3",
-    "vite": "^6.4.3",
-    "vitest": "^3.2.6"
+    "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
   }
 }
