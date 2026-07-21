@@ -282,7 +282,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           labels: |
             org.opencontainers.image.title=SteamBee
-            org.opencontainers.image.description=Self-hosted Steam hour booster with a secure Docker management UI.
+            org.opencontainers.image.description=Self-hosted operations console for managing your own Steam accounts.
             org.opencontainers.image.licenses=AGPL-3.0-or-later
           tags: |
             type=raw,value=${{ needs.plan.outputs.version }}

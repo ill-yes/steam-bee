@@ -40,6 +40,9 @@ body:
         - Accounts or library import
         - Boosting or session control
         - Presets or schedules
+        - Safety, recovery, or account health
+        - Notifications or webhooks
+        - Account groups or bulk actions
         - Web UI or browser
         - Reverse proxy or networking
         - Other

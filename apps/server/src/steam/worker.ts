@@ -26,24 +26,52 @@ import type {
 import { replaceAccountLibrary } from "./repository.js";
 import { enforceGameLimit } from "./validation.js";
 import { steamIdToString } from "./steam-id.js";
+import {
+  clearRecoveryHealth,
+  clearSafetyHold,
+  getAccountSafetyPolicy,
+  setRecoveryHealth,
+  setSafetyHold,
+  touchSteamContact,
+  type SafetyHoldOwner,
+} from "./operations-repository.js";
+import { classifySteamFailure, type RetryDecision } from "./retry-policy.js";
 
 type SteamAccountRow = typeof steamAccount.$inferSelect;
+type SteamWorkerOptions = {
+  runAccountOperation?: <T>(operation: () => Promise<T>) => Promise<T>;
+  canResumeOtherSessionDelay?: () => Promise<boolean>;
+  getOtherSessionDelayOwner?: () => Promise<SafetyHoldOwner>;
+};
 
 export class SteamWorker extends EventEmitter {
   readonly accountId: string;
   private readonly client: SteamUser;
   private account: SteamAccountRow;
   private status: AccountStatus;
+  private connected = false;
   private manuallyPaused = false;
   private blockedByOtherSession = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private otherSessionResumeTimer: NodeJS.Timeout | null = null;
   private reconnectAttempt = 0;
   private startInFlight = false;
+  private quiescing = false;
+  private intentGeneration = 0;
   private eventQueue: Promise<void> = Promise.resolve();
   private lastPersistedRefreshToken: string | null = null;
   private readonly logger: ReturnType<typeof createLogger>;
+  private readonly runAccountOperation: NonNullable<
+    SteamWorkerOptions["runAccountOperation"]
+  >;
+  private readonly canResumeOtherSessionDelay: NonNullable<
+    SteamWorkerOptions["canResumeOtherSessionDelay"]
+  >;
+  private readonly getOtherSessionDelayOwner: NonNullable<
+    SteamWorkerOptions["getOtherSessionDelayOwner"]
+  >;
 
-  constructor(account: SteamAccountRow) {
+  constructor(account: SteamAccountRow, options: SteamWorkerOptions = {}) {
     super();
     this.account = account;
     this.accountId = account.id;
@@ -52,6 +80,13 @@ export class SteamWorker extends EventEmitter {
       accountId: account.id,
       accountName: account.accountName,
     });
+    this.runAccountOperation =
+      options.runAccountOperation ?? (async (operation) => operation());
+    this.canResumeOtherSessionDelay =
+      options.canResumeOtherSessionDelay ?? (async () => true);
+    this.getOtherSessionDelayOwner =
+      options.getOtherSessionDelayOwner ??
+      (async () => ({ kind: "unscheduled" }));
 
     const dataDirectory = join(paths.steamData, account.id);
     mkdirSync(dataDirectory, { recursive: true });
@@ -70,14 +105,20 @@ export class SteamWorker extends EventEmitter {
     return this.status;
   }
 
+  get isConnected() {
+    return this.connected;
+  }
+
   async start() {
     return this.runSerial("command:start", () => this.startNow());
   }
 
   private async startNow() {
+    if (this.quiescing) return;
     if (
       this.startInFlight ||
-      ["connecting", "online", "boosting"].includes(this.status)
+      this.status === "connecting" ||
+      (this.connected && ["online", "boosting"].includes(this.status))
     ) {
       this.logger.debug(
         { status: this.status },
@@ -119,21 +160,36 @@ export class SteamWorker extends EventEmitter {
   private async stopNow() {
     this.logger.info("Stopping Steam worker");
     this.clearReconnect();
+    this.clearOtherSessionResume();
+    await clearRecoveryHealth(this.accountId);
+    await clearSafetyHold(this.accountId);
     await this.setDesiredState("stopped");
     this.client.gamesPlayed([]);
     this.client.logOff();
+    this.connected = false;
     await this.setStatus("disconnected");
   }
 
   async shutdown() {
+    this.beginShutdown();
     return this.runSerial("command:shutdown", () => this.shutdownNow());
+  }
+
+  beginShutdown() {
+    if (this.quiescing) return;
+    this.quiescing = true;
+    this.clearReconnect();
+    this.clearOtherSessionResume();
+    this.client.removeAllListeners();
   }
 
   private async shutdownNow() {
     this.logger.info("Gracefully shutting down Steam worker");
     this.clearReconnect();
+    this.clearOtherSessionResume();
     this.client.gamesPlayed([]);
     this.client.logOff();
+    this.connected = false;
     await this.setStatus("disconnected");
   }
 
@@ -143,6 +199,8 @@ export class SteamWorker extends EventEmitter {
 
   private async pauseNow() {
     this.logger.info("Pausing Steam worker");
+    this.clearReconnect();
+    this.clearOtherSessionResume();
     this.manuallyPaused = true;
     await this.setDesiredState("paused");
     this.client.gamesPlayed([]);
@@ -157,6 +215,10 @@ export class SteamWorker extends EventEmitter {
     this.logger.info("Resuming Steam worker");
     this.manuallyPaused = false;
     await this.setDesiredState("running");
+    if (!this.connected) {
+      await this.startNow();
+      return;
+    }
     await this.applyGames();
   }
 
@@ -174,6 +236,9 @@ export class SteamWorker extends EventEmitter {
       },
       "Updating Steam worker account state",
     );
+    if (account.desiredState !== this.account.desiredState) {
+      this.intentGeneration += 1;
+    }
     this.account = account;
     this.client.setPersona(account.personaState);
     await this.applyGames();
@@ -229,23 +294,30 @@ export class SteamWorker extends EventEmitter {
   private attachListeners() {
     this.onClientEvent("loggedOn", async () => {
       this.logger.info("Steam client logged on");
+      this.connected = true;
       this.clearReconnect();
       this.reconnectAttempt = 0;
+      await touchSteamContact(this.accountId);
+      await clearRecoveryHealth(this.accountId);
       await this.persistSteamId();
       this.client.setPersona(this.account.personaState);
       await this.setStatus("online");
+      if (await this.honorOtherSessionDelayAfterLogin()) return;
       await this.applyGames();
     });
 
     this.onClientEvent("refreshToken", async (token: string) => {
       this.logger.debug("Steam refresh token renewed");
       await this.persistRefreshToken(token);
+      await touchSteamContact(this.accountId);
     });
 
     this.onClientEvent("playingState", async (blocked: boolean) => {
+      await touchSteamContact(this.accountId);
       const wasBlocked = this.blockedByOtherSession;
       this.blockedByOtherSession = blocked;
       if (blocked) {
+        this.clearOtherSessionResume();
         if (!wasBlocked) {
           this.logger.warn(
             "Steam account is active elsewhere; pausing reported games",
@@ -263,29 +335,47 @@ export class SteamWorker extends EventEmitter {
 
       this.logger.info("Steam account is available for boosting again");
       if (!this.manuallyPaused && this.account.desiredState === "running") {
-        await this.applyGames();
+        await this.resumeAfterOtherSession();
       }
     });
 
-    this.onClientEvent("disconnected", async () => {
-      if (this.account.desiredState === "running") {
-        this.logger.warn("Steam client disconnected; scheduling reconnect");
-        await this.setStatus("reconnecting");
-        this.scheduleReconnect();
-      } else {
-        this.logger.info("Steam client disconnected");
-        await this.setStatus("disconnected");
-      }
-    });
+    this.onClientEvent(
+      "disconnected",
+      async (eresult?: number, message?: string) => {
+        this.connected = false;
+        if (eresult !== undefined) await touchSteamContact(this.accountId);
+        const decision = classifySteamFailure(eresult);
+        if (decision.terminal) {
+          await this.handleTerminalFailure(
+            decision,
+            message ?? "Steam disconnected permanently.",
+          );
+          return;
+        }
+        if (this.account.desiredState === "running") {
+          this.logger.warn("Steam client disconnected; scheduling reconnect");
+          await this.setStatus("reconnecting");
+          await this.scheduleReconnect(decision);
+        } else {
+          this.logger.info("Steam client disconnected");
+          await this.setStatus("disconnected");
+        }
+      },
+    );
 
     this.onClientEvent("error", async (error: unknown) => {
       this.logger.error(
         errorLogFields(error, { desiredState: this.account.desiredState }),
         "Steam client error",
       );
+      const decision = classifySteamFailure(error);
+      if (decision.terminal) {
+        await this.handleTerminalFailure(decision, safeErrorMessage(error));
+        return;
+      }
       await this.setStatus("error", safeErrorMessage(error));
       if (this.account.desiredState === "running") {
-        this.scheduleReconnect();
+        await this.scheduleReconnect(decision);
       }
     });
   }
@@ -297,9 +387,35 @@ export class SteamWorker extends EventEmitter {
     this.client.on(
       event as never,
       ((...args: T) => {
-        void this.runSerial(`event:${event}`, () => handler(...args)).catch(
-          () => undefined,
-        );
+        if (this.quiescing) return;
+        const eventIntentGeneration = this.intentGeneration;
+        void this.runAccountOperation(() =>
+          this.runSerial(`event:${event}`, async () => {
+            if (this.quiescing) return;
+            if (eventIntentGeneration !== this.intentGeneration) {
+              this.logger.debug(
+                {
+                  event,
+                  eventIntentGeneration,
+                  intentGeneration: this.intentGeneration,
+                },
+                "Ignoring Steam event from a superseded account intent",
+              );
+              return;
+            }
+            if (
+              event === "loggedOn" &&
+              this.account.desiredState !== "running"
+            ) {
+              this.logger.debug(
+                { event, desiredState: this.account.desiredState },
+                "Ignoring Steam login for an inactive account intent",
+              );
+              return;
+            }
+            await handler(...args);
+          }),
+        ).catch(() => undefined);
       }) as never,
     );
   }
@@ -319,6 +435,11 @@ export class SteamWorker extends EventEmitter {
   }
 
   private async applyGames() {
+    if (!this.connected) {
+      this.logger.debug("Deferring gamesPlayed until Steam is connected");
+      return;
+    }
+
     if (this.manuallyPaused) {
       this.client.gamesPlayed([]);
       await this.setStatus("paused_manual");
@@ -356,38 +477,194 @@ export class SteamWorker extends EventEmitter {
     await this.setStatus(payload.length > 0 ? "boosting" : "online");
   }
 
-  private scheduleReconnect() {
+  private async scheduleReconnect(decision: RetryDecision) {
     this.clearReconnect();
     this.reconnectAttempt += 1;
-    const delay = Math.min(
+    const scheduledIntentGeneration = this.intentGeneration;
+    const backoff = Math.min(
       15 * 60_000,
       10_000 * 2 ** Math.min(this.reconnectAttempt, 6),
     );
+    const delay = Math.max(backoff, decision.minimumDelayMs);
+    const jitter = Math.floor(Math.random() * 2500);
+    const nextRetryAt = Date.now() + delay + jitter;
+    await setRecoveryHealth(this.accountId, {
+      nextRetryAt,
+      retryAttempt: this.reconnectAttempt,
+      errorClass: decision.errorClass,
+      errorCode: decision.errorCode,
+      recoveryAction: decision.recoveryAction,
+    });
     this.logger.warn(
       { reconnectAttempt: this.reconnectAttempt, delayMs: delay },
       "Scheduling Steam reconnect",
     );
-    this.reconnectTimer = setTimeout(
-      () => {
-        void this.start().catch((error) => {
+    const timer = setTimeout(() => {
+      if (this.reconnectTimer !== timer) return;
+      this.reconnectTimer = null;
+      if (this.quiescing) return;
+      void this.runAccountOperation(async () => {
+        if (
+          this.quiescing ||
+          this.account.desiredState !== "running" ||
+          this.intentGeneration !== scheduledIntentGeneration
+        ) {
+          this.logger.debug(
+            {
+              desiredState: this.account.desiredState,
+              scheduledIntentGeneration,
+              intentGeneration: this.intentGeneration,
+            },
+            "Ignoring Steam reconnect from a superseded account intent",
+          );
+          return;
+        }
+        try {
+          await this.start();
+        } catch (error) {
           this.logger.error(
             errorLogFields(error, {
               reconnectAttempt: this.reconnectAttempt,
             }),
             "Steam reconnect failed",
           );
-          if (this.account.desiredState === "running") {
-            this.scheduleReconnect();
+          if (
+            this.account.desiredState === "running" &&
+            this.intentGeneration === scheduledIntentGeneration
+          ) {
+            await this.scheduleReconnect(decision);
           }
-        });
-      },
-      delay + Math.floor(Math.random() * 2500),
-    );
+        }
+      }).catch(() => undefined);
+    }, delay + jitter);
+    this.reconnectTimer = timer;
   }
 
   private clearReconnect() {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+  }
+
+  private async handleTerminalFailure(
+    decision: RetryDecision,
+    message: string,
+  ) {
+    this.clearReconnect();
+    this.clearOtherSessionResume();
+    this.connected = false;
+    this.blockedByOtherSession = false;
+    await setRecoveryHealth(this.accountId, {
+      nextRetryAt: null,
+      retryAttempt: this.reconnectAttempt,
+      errorClass: decision.errorClass,
+      errorCode: decision.errorCode,
+      recoveryAction: decision.recoveryAction,
+    });
+    await this.setDesiredState("paused");
+    await this.setStatus(
+      decision.errorClass === "authentication" ? "login_required" : "error",
+      message,
+    );
+  }
+
+  private async resumeAfterOtherSession() {
+    const policy = await getAccountSafetyPolicy(this.accountId);
+    if (policy.resumePolicy === "manual") {
+      await this.requireManualResumeAfterOtherSession();
+      return;
+    }
+    if (policy.resumePolicy === "delayed") {
+      const resumeAt = Date.now() + policy.resumeDelayMinutes * 60_000;
+      const owner = await this.getOtherSessionDelayOwner();
+      await setSafetyHold(
+        this.accountId,
+        "other_session_delay",
+        resumeAt,
+        owner,
+      );
+      this.scheduleOtherSessionResume(resumeAt);
+      return;
+    }
+    await clearSafetyHold(this.accountId);
+    await this.applyGames();
+  }
+
+  private async honorOtherSessionDelayAfterLogin() {
+    const policy = await getAccountSafetyPolicy(this.accountId);
+    if (policy.holdReason !== "other_session_delay") return false;
+    await this.resumeOtherSessionDelayNow();
+    return true;
+  }
+
+  async resumeOtherSessionDelay() {
+    return this.runSerial("safety:other-session-resume", () =>
+      this.resumeOtherSessionDelayNow(),
+    );
+  }
+
+  private async resumeOtherSessionDelayNow() {
+    const policy = await getAccountSafetyPolicy(this.accountId);
+    if (policy.holdReason !== "other_session_delay") return;
+    if (policy.resumePolicy === "manual") {
+      await this.requireManualResumeAfterOtherSession();
+      return;
+    }
+    if (policy.pauseUntil !== null && policy.pauseUntil > Date.now()) {
+      this.client.gamesPlayed([]);
+      await this.setStatus("paused_other_session");
+      this.scheduleOtherSessionResume(policy.pauseUntil);
+      return;
+    }
+    if (
+      !this.connected ||
+      this.blockedByOtherSession ||
+      this.manuallyPaused ||
+      this.account.desiredState !== "running"
+    ) {
+      this.client.gamesPlayed([]);
+      return;
+    }
+    if (!(await this.canResumeOtherSessionDelay())) {
+      await clearSafetyHold(this.accountId);
+      this.manuallyPaused = true;
+      await this.setDesiredState("paused");
+      this.client.gamesPlayed([]);
+      await this.setStatus("paused_manual");
+      return;
+    }
+
+    await clearSafetyHold(this.accountId);
+    await this.applyGames();
+  }
+
+  private async requireManualResumeAfterOtherSession() {
+    await setSafetyHold(this.accountId, "other_session_manual");
+    this.manuallyPaused = true;
+    await this.setDesiredState("paused");
+    this.client.gamesPlayed([]);
+    await this.setStatus("paused_manual");
+  }
+
+  private scheduleOtherSessionResume(resumeAt: number) {
+    this.clearOtherSessionResume();
+    const delay = Math.max(0, resumeAt - Date.now());
+    this.otherSessionResumeTimer = setTimeout(() => {
+      this.otherSessionResumeTimer = null;
+      if (this.quiescing) return;
+      void this.runAccountOperation(() =>
+        this.runSerial("safety:other-session-resume", async () => {
+          if (this.quiescing) return;
+          await this.resumeOtherSessionDelayNow();
+        }),
+      ).catch(() => undefined);
+    }, delay);
+    this.otherSessionResumeTimer.unref();
+  }
+
+  private clearOtherSessionResume() {
+    if (this.otherSessionResumeTimer)
+      clearTimeout(this.otherSessionResumeTimer);
+    this.otherSessionResumeTimer = null;
   }
 
   private getRefreshToken() {
@@ -459,6 +736,9 @@ export class SteamWorker extends EventEmitter {
   }
 
   private async setDesiredState(desiredState: DesiredState) {
+    if (this.account.desiredState !== desiredState) {
+      this.intentGeneration += 1;
+    }
     this.account = { ...this.account, desiredState };
     await db
       .update(steamAccount)

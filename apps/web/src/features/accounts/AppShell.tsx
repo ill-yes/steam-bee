@@ -94,7 +94,7 @@ export function AppShell({
           </label>
           <details className="relative sm:hidden">
             <summary
-              className="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted-strong)] [&::-webkit-details-marker]:hidden"
+              className="grid h-11 w-11 cursor-pointer list-none place-items-center rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted-strong)] [&::-webkit-details-marker]:hidden"
               aria-label={t.appShell.mobileSettings}
               title={t.appShell.mobileSettings}
             >
@@ -138,7 +138,7 @@ export function AppShell({
                 href={sourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="flex min-h-9 items-center gap-2 rounded-md px-2.5 text-xs font-semibold text-[var(--muted-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+                className="flex min-h-11 items-center gap-2 rounded-md px-2.5 text-xs font-semibold text-[var(--muted-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
               >
                 <Github size={16} />
                 <span>{t.common.sourceCode}</span>

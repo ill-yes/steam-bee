@@ -6,6 +6,7 @@ settings:
 
 overrides:
   protobufjs: 7.6.5
+  steam-user@5.3.0>adm-zip: 0.6.0
 
 importers:
 
@@ -1171,9 +1172,9 @@ packages:
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
 
-  adm-zip@0.5.18:
-    resolution: {integrity: sha512-ufJnssQGbxzLNS1Ho9bCtX4rQKCCvoVuDLHoJyc3F9dOGDB4BkWs2Ci0kv53lqocAEQ/Cbi+I2XCsNYGqVYqng==}
-    engines: {node: '>=12.0'}
+  adm-zip@0.6.0:
+    resolution: {integrity: sha512-XleryMhbuksdKtofnWZ9Sk+4CUTbms4Mb/EU32SZwToAyZ5RgVos/ki8n+yr0LWHOGKuakbXTuuYNHLQjhddgg==}
+    engines: {node: '>=14.0'}
 
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
@@ -3329,7 +3330,7 @@ snapshots:
 
   abstract-logging@2.0.1: {}
 
-  adm-zip@0.5.18: {}
+  adm-zip@0.6.0: {}
 
   agent-base@6.0.2:
     dependencies:
@@ -4278,7 +4279,7 @@ snapshots:
       '@bbob/parser': 2.9.0
       '@doctormckay/stdlib': 2.10.0
       '@doctormckay/steam-crypto': 1.2.0
-      adm-zip: 0.5.18
+      adm-zip: 0.6.0
       binarykvparser: 2.3.0
       bytebuffer: 5.0.1
       file-manager: 2.0.1

@@ -9,6 +9,7 @@ export function Alert({
   icon,
   className,
   children,
+  role,
   ...props
 }: HTMLAttributes<HTMLDivElement> & {
   tone?: AlertTone;
@@ -25,6 +26,14 @@ export function Alert({
 
   return (
     <div
+      role={
+        role ??
+        (tone === "danger" || tone === "warning"
+          ? "alert"
+          : tone === "success"
+            ? "status"
+            : undefined)
+      }
       className={cn(
         "flex items-start gap-2 rounded-md border px-3 py-2 text-sm font-medium",
         tone === "info" &&

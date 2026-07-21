@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsZhHans } from "../operations-copy";
 
 const messages = {
   common: {
@@ -492,6 +493,7 @@ const messages = {
     noAnalytics: "尚未测量任何增强会话。",
     recentSessions: "最近的会议",
   },
+  operations: operationsZhHans,
   admin: {
     title: "管理区",
     description: "对访问、会话、帐户、日志和保存的SteamBee数据进行本地管理。",
@@ -629,6 +631,14 @@ const messages = {
       clear: "清除",
       appCacheTitle: "应用程序缓存",
       appCacheDescription: "本地应用程序名称和元数据。最多显示 200 个条目。",
+      appCacheSearch: "搜索应用缓存",
+      appCacheSearchPlaceholder: "名称或 AppID",
+      appCacheNoResultsTitle: "没有匹配的缓存条目",
+      appCacheNoResultsBody: "请调整搜索以查看已加载的缓存条目。",
+      appCacheLoadedStatus: "已加载 {loaded}/{total} 个缓存条目",
+      appCachePageStatus: "第 {from}–{to} 项，共 {total} 个匹配项",
+      previousPage: "上一页",
+      nextPage: "下一页",
       cleanupUnused: "清理未使用的",
       noAppDataTitle: "没有应用数据",
       noAppDataBody: "导入库或手动添加 AppID。",

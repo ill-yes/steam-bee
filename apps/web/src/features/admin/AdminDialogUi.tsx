@@ -123,8 +123,10 @@ export function Section({
 }
 
 export function LoadingState() {
+  const { messages: t } = useI18n();
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-2" role="status" aria-label={t.common.loading}>
+      <span className="sr-only">{t.common.loading}</span>
       {Array.from({ length: 5 }).map((_, index) => (
         <div
           key={index}

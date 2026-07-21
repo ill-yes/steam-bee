@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsUr } from "../operations-copy";
 
 const messages = {
   common: {
@@ -509,6 +510,7 @@ const messages = {
     noAnalytics: "ابھی تک کوئی بوسٹ سیشن نہیں ماپا گیا۔",
     recentSessions: "حالیہ سیشنز",
   },
+  operations: operationsUr,
   admin: {
     title: "ایڈمن ایریا",
     description:
@@ -659,6 +661,14 @@ const messages = {
       appCacheTitle: "ایپ کیش",
       appCacheDescription:
         "مقامی ایپ کے نام اور میٹا ڈیٹا۔ زیادہ سے زیادہ 200 اندراجات دکھائے گئے ہیں۔",
+      appCacheSearch: "ایپ کیش تلاش کریں",
+      appCacheSearchPlaceholder: "نام یا AppID",
+      appCacheNoResultsTitle: "کوئی مماثل کیش اندراج نہیں",
+      appCacheNoResultsBody: "لوڈ شدہ اندراجات دیکھنے کے لیے تلاش بدلیں۔",
+      appCacheLoadedStatus: "{total} میں سے {loaded} اندراجات لوڈ ہوئے",
+      appCachePageStatus: "{total} نتائج میں سے {from}–{to}",
+      previousPage: "پچھلا",
+      nextPage: "اگلا",
       cleanupUnused: "غیر استعمال شدہ صاف کریں۔",
       noAppDataTitle: "کوئی ایپ ڈیٹا نہیں ہے۔",
       noAppDataBody: "لائبریری درآمد کریں یا دستی طور پر AppIDs شامل کریں۔",

@@ -6,6 +6,7 @@ import type {
   ScheduleRecord,
   ScheduleRepository,
 } from "./schedule-repository.js";
+import type { SafetyHoldOwner } from "./operations-repository.js";
 
 type ScheduleEntry = {
   schedule: ScheduleRecord;
@@ -39,6 +40,9 @@ export type ScheduleCoordinatorPorts = {
   recordInfo: ScheduleEventWriter;
   recordError: ScheduleEventWriter;
   onTickError: (error: unknown, phase: "initial" | "interval") => void;
+  getActiveHold?: (
+    accountId: string,
+  ) => Promise<{ reason: string; until: number | null } | null>;
 };
 
 const scheduleIntervalMs = 60_000;
@@ -99,6 +103,57 @@ export class ScheduleCoordinator {
     this.activeWindows.clear();
   }
 
+  async getHoldOwner(
+    accountId: string,
+    now = new Date(),
+  ): Promise<SafetyHoldOwner> {
+    const schedules =
+      await this.ports.repository.listSchedulesForAccount(accountId);
+    const entries = await this.evaluateSchedules(schedules, now);
+    const winner = selectScheduleWinner(entries);
+    if (winner?.state?.windowId) {
+      return {
+        kind: "scheduled",
+        scheduleId: winner.schedule.id,
+        windowId: winner.state.windowId,
+      };
+    }
+    const openWindows = openScheduleWindows(entries);
+    if (openWindows.length === 0) return { kind: "unscheduled" };
+
+    const inMemoryWindow = this.activeWindows.get(accountId);
+    const inMemoryOwner = openWindows.find(
+      (window) => window.windowId === inMemoryWindow,
+    );
+    if (inMemoryOwner) return scheduledOwner(inMemoryOwner);
+
+    return scheduledOwner(
+      openWindows.sort((left, right) =>
+        `${left.scheduleId}:${left.windowId}`.localeCompare(
+          `${right.scheduleId}:${right.windowId}`,
+        ),
+      )[0]!,
+    );
+  }
+
+  async canResumeHeldAccount(
+    accountId: string,
+    owner: SafetyHoldOwner,
+    now = new Date(),
+  ) {
+    if (owner.kind === "unscheduled") return true;
+    if (owner.kind === "unknown") return false;
+
+    const schedules =
+      await this.ports.repository.listSchedulesForAccount(accountId);
+    const entries = await this.evaluateSchedules(schedules, now);
+    const winner = selectScheduleWinner(entries);
+    return Boolean(
+      winner?.schedule.id === owner.scheduleId &&
+      winner.state?.windowId === owner.windowId,
+    );
+  }
+
   private runScheduledTick(phase: "initial" | "interval") {
     void this.tick().catch((error) => this.ports.onTickError(error, phase));
   }
@@ -143,6 +198,16 @@ export class ScheduleCoordinator {
       if (schedule.enabled) {
         try {
           state = evaluateScheduleWindow(schedule, now);
+          if (
+            state.windowId &&
+            (await this.ports.repository.isWindowSkipped?.(
+              schedule.accountId,
+              schedule.id,
+              state.windowId,
+            ))
+          ) {
+            state = { active: false, windowId: null, windowStartedAt: null };
+          }
         } catch (error) {
           await this.ports.recordError(
             schedule.accountId,
@@ -162,6 +227,8 @@ export class ScheduleCoordinator {
   }
 
   private async transitionAccount(accountId: string, entries: ScheduleEntry[]) {
+    const hold = await this.ports.getActiveHold?.(accountId);
+    if (hold) return;
     const winner = selectScheduleWinner(entries);
     const previousWindow = this.activeWindows.get(accountId);
 
@@ -219,6 +286,8 @@ export class ScheduleCoordinator {
         winner.schedule.presetId,
         context,
       );
+      const holdAfterPreset = await this.ports.getActiveHold?.(accountId);
+      if (holdAfterPreset) return;
       await this.ports.resumeOrStart(accountId, context);
       await this.ports.repository.commitStartedWindow({
         accountId,
@@ -278,6 +347,14 @@ export class ScheduleCoordinator {
       );
     }
   }
+}
+
+function scheduledOwner(window: OpenScheduleWindow): SafetyHoldOwner {
+  return {
+    kind: "scheduled",
+    scheduleId: window.scheduleId,
+    windowId: window.windowId,
+  };
 }
 
 function openScheduleWindows(entries: ScheduleEntry[]) {

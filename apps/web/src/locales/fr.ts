@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsFr } from "../operations-copy";
 
 const messages = {
   common: {
@@ -526,6 +527,7 @@ const messages = {
     noAnalytics: "Aucune séance de boost mesurée pour l’instant.",
     recentSessions: "Séances récentes",
   },
+  operations: operationsFr,
   admin: {
     title: "Zone d'administration",
     description:
@@ -685,6 +687,15 @@ const messages = {
       appCacheTitle: "Cache d'application",
       appCacheDescription:
         "Noms et métadonnées des applications locales. Au maximum 200 entrées sont affichées.",
+      appCacheSearch: "Rechercher dans le cache des applications",
+      appCacheSearchPlaceholder: "Nom ou AppID",
+      appCacheNoResultsTitle: "Aucune entrée correspondante",
+      appCacheNoResultsBody:
+        "Modifiez la recherche pour examiner les entrées chargées.",
+      appCacheLoadedStatus: "{loaded} entrées chargées sur {total}",
+      appCachePageStatus: "{from}–{to} sur {total} résultats",
+      previousPage: "Précédent",
+      nextPage: "Suivant",
       cleanupUnused: "Nettoyer les inutilisés",
       noAppDataTitle: "Aucune donnée d'application",
       noAppDataBody: "Importez une bibliothèque ou ajoutez AppID manuellement.",

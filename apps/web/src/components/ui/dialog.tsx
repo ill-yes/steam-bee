@@ -53,7 +53,7 @@ export function Dialog({
     <dialog
       ref={dialogRef}
       className={cn(
-        "m-auto max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0 text-[var(--ink)] shadow-[var(--modal-shadow)] backdrop:bg-black/65",
+        "m-auto max-h-[calc(100vh-2rem)] w-[min(48rem,calc(100vw-2rem))] overflow-x-hidden overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0 text-[var(--ink)] shadow-[var(--modal-shadow)] backdrop:bg-black/65",
         className,
       )}
       role={role}

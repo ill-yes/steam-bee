@@ -6,6 +6,7 @@ import { steamEvent } from "../db/schema.js";
 import { createLogger, errorLogFields } from "../util/logger.js";
 import { parseJsonRecord } from "../util/json.js";
 import { redact, redactText } from "../util/redact.js";
+import { notificationDispatcher } from "../notifications/dispatcher.js";
 
 export type EventPayload = {
   id?: number;
@@ -30,6 +31,7 @@ type StoredEvent = {
 const clients = new Set<FastifyReply>();
 const eventLogger = createLogger("events");
 const heartbeatIntervalMs = 15_000;
+const sseShutdownGraceMs = 250;
 const retentionCleanupIntervalMs = 24 * 60 * 60_000;
 let heartbeatTimer: NodeJS.Timeout | null = null;
 
@@ -66,6 +68,15 @@ export async function recordEvent(event: EventPayload) {
   const presented = presentSteamEvent(saved);
   broadcast("event", presented);
   logSavedEvent(saved, metadata);
+  void notificationDispatcher.enqueue(presented).catch((error) => {
+    eventLogger.error(
+      errorLogFields(error, {
+        eventId: presented.id,
+        eventType: presented.type,
+      }),
+      "Failed to enqueue event notifications",
+    );
+  });
   return presented;
 }
 
@@ -127,6 +138,7 @@ export function presentSteamEvent(event: StoredEvent): SteamEvent {
 }
 
 export async function registerEventRetention(app: FastifyInstance) {
+  app.addHook("preClose", async () => closeSseClients());
   await cleanupRetainedEvents();
   if (config.eventRetentionDays === 0) return;
 
@@ -140,6 +152,43 @@ export async function registerEventRetention(app: FastifyInstance) {
   }, retentionCleanupIntervalMs);
   timer.unref();
   app.addHook("onClose", async () => clearInterval(timer));
+}
+
+export function closeSseClients() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+  const activeClients = [...clients];
+  clients.clear();
+  for (const reply of activeClients) {
+    if (reply.raw.destroyed || reply.raw.writableEnded) continue;
+    const socket = reply.raw.socket;
+    const forceCloseTimer = socket
+      ? setTimeout(() => {
+          if (!socket.destroyed) {
+            eventLogger.debug("Force-closing a stalled SSE client");
+            socket.destroy();
+          }
+        }, sseShutdownGraceMs)
+      : null;
+    forceCloseTimer?.unref();
+    if (socket && forceCloseTimer) {
+      socket.once("close", () => clearTimeout(forceCloseTimer));
+    }
+    try {
+      reply.raw.end();
+    } catch (error) {
+      eventLogger.debug(errorLogFields(error), "SSE client close failed");
+      reply.raw.destroy();
+    }
+  }
+  if (activeClients.length > 0) {
+    eventLogger.debug(
+      { clientCount: activeClients.length },
+      "SSE clients closed for shutdown",
+    );
+  }
 }
 
 export async function cleanupRetainedEvents(now = Date.now()) {

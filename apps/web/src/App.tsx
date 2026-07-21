@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Plus, ShieldCheck } from "lucide-react";
 import { Toaster } from "sonner";
 import {
@@ -9,6 +17,7 @@ import {
   type Account,
   type Diagnostics,
   type Me,
+  type NotificationRule,
   type SteamEvent,
   type SystemStatus,
   setCsrfToken,
@@ -20,30 +29,46 @@ import { useTheme } from "./hooks/useTheme";
 import { useI18n } from "./i18n";
 import { AccountDetail } from "./features/accounts/AccountDetail";
 import { AccountRail } from "./features/accounts/AccountRail";
-import { AddAccountModal } from "./features/accounts/AddAccountModal";
 import { AppShell } from "./features/accounts/AppShell";
 import { EmptyWorkspace } from "./features/accounts/EmptyWorkspace";
-import { AdminDialog } from "./features/admin/AdminDialog";
 import { AuthPanel } from "./features/auth/AuthPanel";
 import { statusLabel } from "./lib/status";
 
+const AddAccountModal = lazy(() =>
+  import("./features/accounts/AddAccountModal").then((module) => ({
+    default: module.AddAccountModal,
+  })),
+);
+const AdminDialog = lazy(() =>
+  import("./features/admin/AdminDialog").then((module) => ({
+    default: module.AdminDialog,
+  })),
+);
+
 export function App() {
   const { messages: t } = useI18n();
+  const o = t.operations;
   const { theme, setTheme } = useTheme();
   const [me, setMe] = useState<Me | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [events, setEvents] = useState<SteamEvent[]>([]);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [notificationRules, setNotificationRules] = useState<
+    NotificationRule[]
+  >([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const [railCollapsed, setRailCollapsed] = useState(true);
   const [addAccountOpen, setAddAccountOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
   const loadGeneration = useRef(0);
   const loadController = useRef<AbortController | null>(null);
   const messagesRef = useRef(t);
+  const notificationRulesRef = useRef(notificationRules);
   messagesRef.current = t;
+  notificationRulesRef.current = notificationRules;
 
   const handleLoadError = useCallback((loadError: unknown) => {
     if (isAbortError(loadError)) return;
@@ -69,6 +94,7 @@ export function App() {
     const nextMe = await api<Me>("/api/me", request);
     if (generation !== loadGeneration.current) return;
     setError(null);
+    setConnectionError(null);
     setMe(nextMe);
     setCsrfToken(nextMe.csrfToken);
 
@@ -77,6 +103,7 @@ export function App() {
       setEvents([]);
       setDiagnostics(null);
       setSystemStatus(null);
+      setNotificationRules([]);
       setSelectedId(null);
       return;
     }
@@ -88,11 +115,19 @@ export function App() {
         api<Diagnostics>("/api/diagnostics", request),
         api<SystemStatus>("/api/system/status", request),
       ]);
+    const [nextNotificationRules] = await Promise.allSettled([
+      api<NotificationRule[]>("/api/notifications/rules", request),
+    ]);
     if (generation !== loadGeneration.current) return;
     setAccounts(nextAccounts);
     setEvents(nextEvents);
     setDiagnostics(nextDiagnostics);
     setSystemStatus(nextSystemStatus);
+    setNotificationRules(
+      nextNotificationRules?.status === "fulfilled"
+        ? nextNotificationRules.value
+        : [],
+    );
     setSelectedId((current) =>
       current && nextAccounts.some((account) => account.id === current)
         ? current
@@ -126,13 +161,42 @@ export function App() {
         void Promise.all([
           api<Account[]>("/api/accounts").then(setAccounts),
           api<SystemStatus>("/api/system/status").then(setSystemStatus),
-        ]).catch(() => undefined);
+        ])
+          .then(() => setConnectionError(null))
+          .catch((refreshError) => {
+            if (isAbortError(refreshError)) return;
+            setConnectionError(
+              apiErrorMessage(refreshError, messagesRef.current),
+            );
+          });
       }, 150);
     };
     source.addEventListener("event", (message) => {
       try {
         const event = JSON.parse((message as MessageEvent).data) as SteamEvent;
         setEvents((current) => [event, ...current].slice(0, 100));
+        const status = event.metadata.status;
+        const eventKeys = [
+          event.type,
+          ...(typeof status === "string" ? [`${event.type}.${status}`] : []),
+        ];
+        const browserRule = notificationRulesRef.current.some(
+          (rule) =>
+            rule.enabled &&
+            rule.target === "browser" &&
+            (rule.eventTypes.includes("*") ||
+              eventKeys.some((eventKey) => rule.eventTypes.includes(eventKey))),
+        );
+        if (
+          browserRule &&
+          "Notification" in window &&
+          window.Notification.permission === "granted"
+        ) {
+          new window.Notification("SteamBee", {
+            body: event.message,
+            tag: `steam-bee-${event.type}`,
+          });
+        }
         scheduleRefresh();
       } catch {
         setError(t.errors.INVALID_RESPONSE);
@@ -156,11 +220,38 @@ export function App() {
     return (
       <AppShell theme={theme} onThemeChange={setTheme}>
         <main className="mx-auto grid min-h-[calc(100vh-4rem)] w-[min(520px,calc(100vw-2rem))] place-items-center">
-          <div className="grid w-full gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--panel-shadow)]">
-            <div className="h-6 w-2/3 animate-pulse rounded-full bg-[var(--surface-3)]" />
-            <div className="h-3 w-full animate-pulse rounded-full bg-[var(--surface-3)]" />
-            <div className="h-3 w-1/2 animate-pulse rounded-full bg-[var(--surface-3)]" />
-          </div>
+          {error ? (
+            <div className="grid w-full gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--panel-shadow)]">
+              <div>
+                <h1 className="text-lg font-semibold">
+                  {t.admin.loadFailedTitle}
+                </h1>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {t.admin.loadFailedBody}
+                </p>
+              </div>
+              <Alert tone="danger">{error}</Alert>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setError(null);
+                  void load().catch(handleLoadError);
+                }}
+              >
+                {o.retry}
+              </Button>
+            </div>
+          ) : (
+            <div
+              className="grid w-full gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-6 shadow-[var(--panel-shadow)]"
+              role="status"
+              aria-label={t.common.loading}
+            >
+              <div className="h-6 w-2/3 animate-pulse rounded-full bg-[var(--surface-3)]" />
+              <div className="h-3 w-full animate-pulse rounded-full bg-[var(--surface-3)]" />
+              <div className="h-3 w-1/2 animate-pulse rounded-full bg-[var(--surface-3)]" />
+            </div>
+          )}
         </main>
       </AppShell>
     );
@@ -225,13 +316,17 @@ export function App() {
         }}
       />
       {addAccountOpen && (
-        <AddAccountModal
-          onClose={() => setAddAccountOpen(false)}
-          onDone={load}
-        />
+        <Suspense fallback={<LazyDialogStatus label={t.common.loading} />}>
+          <AddAccountModal
+            onClose={() => setAddAccountOpen(false)}
+            onDone={load}
+          />
+        </Suspense>
       )}
       {adminOpen && (
-        <AdminDialog onClose={() => setAdminOpen(false)} onChanged={load} />
+        <Suspense fallback={<LazyDialogStatus label={t.common.loading} />}>
+          <AdminDialog onClose={() => setAdminOpen(false)} onChanged={load} />
+        </Suspense>
       )}
 
       <main className="grid gap-4 p-4 lg:grid-cols-[auto_minmax(0,1fr)]">
@@ -246,9 +341,9 @@ export function App() {
         />
 
         <section className="min-w-0">
-          {error && (
+          {(error || connectionError) && (
             <Alert tone="danger" className="mb-4">
-              {error}
+              {error ?? connectionError}
             </Alert>
           )}
 
@@ -262,6 +357,7 @@ export function App() {
 
           {selected ? (
             <AccountDetail
+              key={selected.id}
               account={selected}
               events={events.filter(
                 (event) => !event.accountId || event.accountId === selected.id,
@@ -275,6 +371,14 @@ export function App() {
         </section>
       </main>
     </AppShell>
+  );
+}
+
+function LazyDialogStatus({ label }: { label: string }) {
+  return (
+    <div role="status" className="sr-only">
+      {label}
+    </div>
   );
 }
 

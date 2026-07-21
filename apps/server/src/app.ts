@@ -14,6 +14,8 @@ import { registerEventRetention } from "./http/events.js";
 import { steamManager } from "./steam/manager.js";
 import { errorLogFields, fastifyLoggerOptions } from "./util/logger.js";
 import { safeErrorMessage } from "./util/redact.js";
+import { notificationDispatcher } from "./notifications/dispatcher.js";
+import { IncompleteStartupCleanupError } from "./startup.js";
 
 const maxCorrelationIdLength = 128;
 const correlationIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
@@ -36,43 +38,57 @@ export async function buildApp(options: { initSteam?: boolean } = {}) {
     trustProxy: config.trustProxy,
   });
 
-  app.setErrorHandler((error, request, reply) => {
-    const httpError = error as { status?: number; statusCode?: number };
-    const statusCode =
-      error instanceof ZodError
-        ? 400
-        : (httpError.statusCode ?? httpError.status ?? 500);
-    const normalizedStatusCode =
-      statusCode >= 400 && statusCode < 600 ? statusCode : 500;
+  try {
+    app.setErrorHandler((error, request, reply) => {
+      const httpError = error as { status?: number; statusCode?: number };
+      const statusCode =
+        error instanceof ZodError
+          ? 400
+          : (httpError.statusCode ?? httpError.status ?? 500);
+      const normalizedStatusCode =
+        statusCode >= 400 && statusCode < 600 ? statusCode : 500;
 
-    if (normalizedStatusCode >= 500) {
-      request.log.error(errorLogFields(error), "Unhandled API error");
-    } else {
-      request.log.warn(errorLogFields(error), "API request rejected");
+      if (normalizedStatusCode >= 500) {
+        request.log.error(errorLogFields(error), "Unhandled API error");
+      } else {
+        request.log.warn(errorLogFields(error), "API request rejected");
+      }
+
+      return reply.code(normalizedStatusCode).send({
+        error:
+          normalizedStatusCode >= 500
+            ? "Internal server error."
+            : readableErrorMessage(error),
+        code: errorCode(error, normalizedStatusCode),
+      });
+    });
+
+    await registerPlugins(app);
+    await registerRoutes(app);
+    await registerEventRetention(app);
+    app.addHook("onClose", async () => notificationDispatcher.stop());
+    notificationDispatcher.start();
+
+    const initSteam = options.initSteam ?? true;
+    if (initSteam) {
+      app.addHook("onClose", async () => {
+        await steamManager.shutdown();
+      });
+      await steamManager.init();
     }
 
-    return reply.code(normalizedStatusCode).send({
-      error:
-        normalizedStatusCode >= 500
-          ? "Internal server error."
-          : readableErrorMessage(error),
-      code: errorCode(error, normalizedStatusCode),
-    });
-  });
-
-  await registerPlugins(app);
-  await registerRoutes(app);
-  await registerEventRetention(app);
-
-  const initSteam = options.initSteam ?? true;
-  if (initSteam) {
-    app.addHook("onClose", async () => {
-      await steamManager.shutdown();
-    });
-    await steamManager.init();
+    return app;
+  } catch (initializationError) {
+    try {
+      await app.close();
+    } catch (cleanupError) {
+      throw new IncompleteStartupCleanupError(
+        initializationError,
+        cleanupError,
+      );
+    }
+    throw initializationError;
   }
-
-  return app;
 }
 
 function readableErrorMessage(error: unknown) {

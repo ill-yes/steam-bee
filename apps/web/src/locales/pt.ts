@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsPt } from "../operations-copy";
 
 const messages = {
   common: {
@@ -519,6 +520,7 @@ const messages = {
     noAnalytics: "Nenhuma sessão de reforço foi medida ainda.",
     recentSessions: "Sessões recentes",
   },
+  operations: operationsPt,
   admin: {
     title: "Área administrativa",
     description:
@@ -673,6 +675,15 @@ const messages = {
       appCacheTitle: "Cache do aplicativo",
       appCacheDescription:
         "Nomes e metadados de aplicativos locais. São mostradas no máximo 200 entradas.",
+      appCacheSearch: "Pesquisar no cache de aplicativos",
+      appCacheSearchPlaceholder: "Nome ou AppID",
+      appCacheNoResultsTitle: "Nenhuma entrada correspondente",
+      appCacheNoResultsBody:
+        "Altere a pesquisa para inspecionar as entradas carregadas.",
+      appCacheLoadedStatus: "{loaded} de {total} entradas carregadas",
+      appCachePageStatus: "{from}–{to} de {total} resultados",
+      previousPage: "Anterior",
+      nextPage: "Próxima",
       cleanupUnused: "Limpe não utilizado",
       noAppDataTitle: "Nenhum dado do aplicativo",
       noAppDataBody: "Importe uma biblioteca ou adicione AppIDs manualmente.",

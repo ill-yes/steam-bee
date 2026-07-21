@@ -22,17 +22,21 @@ The service uses the default address, `http://127.0.0.1:3000`.
 
 ## Image Versions and Verification
 
-[`compose.image.yml`](../compose.image.yml) defaults to
-`ghcr.io/ill-yes/steam-bee:latest`. Pin an exact version in `.env` when you
-need a repeatable deployment:
+[`compose.image.yml`](../compose.image.yml) defaults to the mutable stable
+channel `ghcr.io/ill-yes/steam-bee:latest`. Pin an exact version in `.env` when
+you need a repeatable deployment:
 
 ```bash
 STEAM_BEE_IMAGE=ghcr.io/ill-yes/steam-bee:1.2.3
 ```
 
-Exact version tags are recommended for repeatable deployments. Image tags do
-not include the Git tag's `v` prefix: `1.0` tracks the latest `1.0.x` patch,
-and `latest` tracks the newest stable release.
+Exact version tags are stable after a release completes, but GHCR tags are not
+mechanically immutable: recovery of an interrupted release can rebuild and
+republish the same version from its reserved source commit. Pin the published
+image digest (`ghcr.io/ill-yes/steam-bee@sha256:...`) when byte-for-byte
+repeatability is required. Image tags do not include the Git tag's `v` prefix:
+`1.0` is a mutable channel that tracks the newest `1.0.x` patch, and `latest` is
+a mutable channel that tracks the newest stable release.
 
 The read-only CI workflow verifies formatting, types, tests, dependency and
 image vulnerabilities, Compose parity, runtime UID/GID, the Unraid template,
@@ -44,9 +48,10 @@ the next version from the latest stable GitHub Release, validates the exact
 annotated tag, and publishes the exact version, its `major.minor` channel, and
 `latest` for `linux/amd64` and `linux/arm64`. It then creates the corresponding
 GitHub Release. Releases are serialized so an older build cannot overwrite
-`latest` after a newer one. A failed run resumes its reserved tag and commit;
-rerunning a completed release is a no-op. Published images include SBOM,
-provenance, and a GitHub artifact attestation. The publish job uses the GitHub
+`latest` after a newer one. A failed run resumes its reserved tag and commit and
+may republish that version tag with a rebuilt digest; rerunning a completed
+release is a no-op. Published images include SBOM, provenance, and a GitHub
+artifact attestation. The publish job uses the GitHub
 `release` environment; repository administrators can optionally add required
 reviewers or other deployment protection rules there. The GHCR package is
 public and can be pulled without authentication.

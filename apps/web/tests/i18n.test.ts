@@ -112,6 +112,9 @@ describe("i18n messages", () => {
       "Logs",
       "Online",
       "System",
+      "OK",
+      "Webhook",
+      "Active",
     ]);
 
     for (const option of localeOptions) {

@@ -9,13 +9,13 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/ill-yes/steam-bee/issues</Support>
   <Project>https://github.com/ill-yes/steam-bee</Project>
-  <Overview>SteamBee is a self-hosted, single-user Steam hour booster with a browser-based management UI, multi-account control, QR/mobile approval, encrypted refresh-token storage, schedules, presets, and local logs.</Overview>
+  <Overview>SteamBee is a self-hosted operations console for managing your own Steam accounts, with a browser UI, multi-account control, QR/mobile approval, encrypted refresh-token storage, recovery tooling, notifications, schedules, and local logs. Legacy playtime boosting is a high-risk compatibility feature and may violate Steam or game-service rules.</Overview>
   <Category>Tools:Utilities</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/ill-yes/steam-bee/main/templates/steam-bee.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/ill-yes/steam-bee/main/icon.png</Icon>
   <ReadMe>https://raw.githubusercontent.com/ill-yes/steam-bee/main/README.md</ReadMe>
-  <ExtraSearchTerms>steam idler idle hour booster automation</ExtraSearchTerms>
+  <ExtraSearchTerms>steam account operations self hosted management recovery notifications</ExtraSearchTerms>
   <License>AGPL-3.0-or-later</License>
   <Screenshot>https://raw.githubusercontent.com/ill-yes/steam-bee/main/docs/screenshots/steambee-dashboard.jpg</Screenshot>
   <Screenshot>https://raw.githubusercontent.com/ill-yes/steam-bee/main/docs/screenshots/steambee-admin.jpg</Screenshot>
@@ -24,7 +24,7 @@
   <DonateText>Support SteamBee</DonateText>
   <ExtraParams>--entrypoint=/usr/local/bin/steam-bee-entrypoint --user=0:0 --pids-limit=256 --cap-drop=ALL --cap-add=CHOWN --cap-add=DAC_READ_SEARCH --cap-add=SETGID --cap-add=SETPCAP --cap-add=SETUID --security-opt=no-new-privileges=true --read-only --tmpfs=/tmp:rw,noexec,nosuid,nodev,size=64m --stop-timeout=30 --log-opt=max-size=10m --log-opt=max-file=3</ExtraParams>
   <PostArgs>node dist/index.js</PostArgs>
-  <Requires>Internet access and one dedicated persistent appdata directory. The template validates and initializes appdata ownership automatically, then runs SteamBee without root privileges as PUID/PGID. Do not map the appdata parent directory. Use only with Steam accounts you own. Use an HTTPS reverse proxy when exposing SteamBee beyond a trusted LAN or VPN.</Requires>
+  <Requires>Internet access and one dedicated persistent appdata directory. The template validates and initializes appdata ownership automatically, then runs SteamBee without root privileges as PUID/PGID. Do not map the appdata parent directory. Use only with Steam accounts you own. Review the project policy notice before using legacy boosting. Use an HTTPS reverse proxy when exposing SteamBee beyond a trusted LAN or VPN.</Requires>
 
   <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="HTTP port for the SteamBee management UI." Type="Port" Display="always" Required="true" Mask="false"/>
   <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/steambee" Mode="rw" Description="Dedicated SteamBee data directory. Ownership is validated and initialized automatically for PUID/PGID; do not select the appdata parent." Type="Path" Display="always" Required="true" Mask="false"/>

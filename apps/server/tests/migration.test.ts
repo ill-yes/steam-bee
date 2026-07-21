@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { getMigrationState, migrate, sqlite } from "../src/db/client.js";
+import {
+  checkDatabaseReady,
+  getMigrationState,
+  migrate,
+  sqlite,
+  UnsupportedDatabaseSchemaError,
+} from "../src/db/client.js";
 
 const baseTimestamp = 1_735_689_600_000;
 
@@ -15,8 +21,8 @@ describe("database migrations", () => {
     migrate();
 
     expect(getMigrationState()).toMatchObject({
-      current: "005_app_read_model_indexes",
-      latest: "005_app_read_model_indexes",
+      current: "010_timed_hold_ownership_provenance",
+      latest: "010_timed_hold_ownership_provenance",
       pending: [],
     });
     expect(tableColumns("steam_account")).toContain("active_preset_id");
@@ -29,6 +35,21 @@ describe("database migrations", () => {
         "boost_preset_game",
         "boost_schedule",
         "boost_session",
+        "account_health_state",
+        "account_safety_policy",
+        "schedule_exception",
+        "account_group",
+        "account_group_member",
+        "playtime_goal",
+        "notification_rule",
+        "notification_delivery",
+      ]),
+    );
+    expect(tableColumns("account_safety_policy")).toEqual(
+      expect.arrayContaining([
+        "hold_schedule_id",
+        "hold_schedule_window",
+        "hold_schedule_origin",
       ]),
     );
     expect(
@@ -64,6 +85,53 @@ describe("database migrations", () => {
         "steam_app_cache_updated_at_idx",
       ]),
     );
+  });
+
+  it("fails legacy timed holds closed when schedule ownership is unavailable", () => {
+    seedVersionNineTimedHolds();
+
+    migrate();
+
+    expect(
+      sqlite
+        .prepare(
+          `SELECT account_id, hold_schedule_origin
+           FROM account_safety_policy
+           ORDER BY account_id`,
+        )
+        .all(),
+    ).toEqual([
+      { account_id: "legacy-manual", hold_schedule_origin: "unscheduled" },
+      { account_id: "legacy-scheduled", hold_schedule_origin: "scheduled" },
+      { account_id: "legacy-unknown", hold_schedule_origin: "unknown" },
+    ]);
+  });
+
+  it("fails closed when the database contains a newer migration", () => {
+    seedInitialSchema();
+    sqlite
+      .prepare(
+        "INSERT INTO app_migration (id, description, applied_at) VALUES (?, ?, ?)",
+      )
+      .run(
+        "999_future_schema",
+        "Migration written by a newer SteamBee binary",
+        baseTimestamp + 999,
+      );
+
+    expect(() => migrate()).toThrow(UnsupportedDatabaseSchemaError);
+    expect(getMigrationState()).toMatchObject({
+      current: "999_future_schema",
+      latest: "010_timed_hold_ownership_provenance",
+      unsupported: [
+        {
+          id: "999_future_schema",
+          description: "Migration written by a newer SteamBee binary",
+        },
+      ],
+    });
+    expect(checkDatabaseReady()).toMatchObject({ ok: false });
+    expect(tableNames()).not.toContain("boost_preset");
   });
 
   it("clears active preset references when a preset is deleted", () => {
@@ -238,6 +306,59 @@ function seedOperationalIndexes() {
       ${baseTimestamp + 1}
     );
   `);
+}
+
+function seedVersionNineTimedHolds() {
+  seedInitialSchema();
+  sqlite.exec(`
+    CREATE TABLE account_safety_policy (
+      account_id TEXT PRIMARY KEY REFERENCES steam_account(id) ON DELETE CASCADE,
+      resume_policy TEXT NOT NULL DEFAULT 'automatic',
+      resume_delay_minutes INTEGER NOT NULL DEFAULT 15,
+      max_session_minutes INTEGER,
+      max_daily_minutes INTEGER,
+      max_weekly_minutes INTEGER,
+      pause_until INTEGER,
+      hold_reason TEXT,
+      hold_created_at INTEGER,
+      hold_schedule_id TEXT,
+      hold_schedule_window TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    INSERT INTO steam_account (
+      id, account_name, status, desired_state, persona_state,
+      token_key_version, created_at, updated_at
+    ) VALUES
+      ('legacy-manual', 'legacy.manual', 'paused_manual', 'paused', 7, 1, ${baseTimestamp}, ${baseTimestamp}),
+      ('legacy-scheduled', 'legacy.scheduled', 'paused_other_session', 'running', 7, 1, ${baseTimestamp}, ${baseTimestamp}),
+      ('legacy-unknown', 'legacy.unknown', 'paused_manual', 'paused', 7, 1, ${baseTimestamp}, ${baseTimestamp});
+
+    INSERT INTO account_safety_policy (
+      account_id, pause_until, hold_reason, hold_created_at,
+      hold_schedule_id, hold_schedule_window, created_at, updated_at
+    ) VALUES
+      ('legacy-manual', NULL, 'manual', ${baseTimestamp}, NULL, NULL, ${baseTimestamp}, ${baseTimestamp}),
+      ('legacy-scheduled', ${baseTimestamp + 60_000}, 'other_session_delay', ${baseTimestamp}, 'schedule-a', 'window-a', ${baseTimestamp}, ${baseTimestamp}),
+      ('legacy-unknown', ${baseTimestamp + 60_000}, 'pause_until', ${baseTimestamp}, NULL, NULL, ${baseTimestamp}, ${baseTimestamp});
+  `);
+
+  const insertMigration = sqlite.prepare(
+    "INSERT INTO app_migration (id, description, applied_at) VALUES (?, ?, ?)",
+  );
+  for (const [index, id] of [
+    "002_operational_indexes",
+    "003_presets_schedules_analytics",
+    "004_single_admin_and_preset_integrity",
+    "005_app_read_model_indexes",
+    "006_operational_safety_foundation",
+    "007_schedule_exceptions_groups_goals",
+    "008_notifications",
+    "009_timed_hold_schedule_ownership",
+  ].entries()) {
+    insertMigration.run(id, "test fixture", baseTimestamp + index + 1);
+  }
 }
 
 function seedHistoricalAccount() {

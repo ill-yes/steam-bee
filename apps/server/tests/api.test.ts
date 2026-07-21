@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
-import { beforeEach, describe, expect, it } from "vitest";
+import { createConnection, type Socket } from "node:net";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db, getMigrationState, migrate, sqlite } from "../src/db/client.js";
 import { config, parseTrustProxy, paths } from "../src/config.js";
 import {
@@ -11,7 +12,9 @@ import {
   steamAppCache,
 } from "../src/db/schema.js";
 import { buildApp } from "../src/app.js";
+import { broadcast, getSseClientCount } from "../src/http/events.js";
 import { readXmlTag } from "../src/http/routes/accounts.js";
+import { closeWithLeaseCleanup } from "../src/startup.js";
 
 describe("api auth flow", () => {
   beforeEach(() => {
@@ -179,6 +182,132 @@ describe("api auth flow", () => {
     expect(accounts.json()).toEqual([]);
 
     await app.close();
+  });
+
+  it("closes an authenticated SSE stream before releasing the data lease", async () => {
+    const app = await buildApp({ initSteam: false });
+    const abortController = new AbortController();
+    let closed = false;
+
+    try {
+      const setup = await app.inject({
+        method: "POST",
+        url: "/api/setup",
+        payload: {
+          password: "correct horse battery staple",
+          setupToken: "steam-bee-test-setup-token",
+        },
+      });
+      const cookie = setup.cookies.find(
+        (item) => item.name === "session",
+      )?.value;
+      expect(cookie).toBeTruthy();
+
+      const address = await app.listen({ host: "127.0.0.1", port: 0 });
+      const response = await fetch(`${address}/api/events`, {
+        headers: { cookie: `session=${cookie}` },
+        signal: abortController.signal,
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain(
+        "text/event-stream",
+      );
+      await vi.waitFor(() => expect(getSseClientCount()).toBe(1));
+
+      const lease = { release: vi.fn() };
+      let closeTimeout: NodeJS.Timeout | undefined;
+      const boundedClose = Promise.race([
+        closeWithLeaseCleanup(app, lease),
+        new Promise<never>((_resolve, reject) => {
+          closeTimeout = setTimeout(
+            () => reject(new Error("SSE shutdown exceeded two seconds.")),
+            2_000,
+          );
+        }),
+      ]);
+      try {
+        await expect(boundedClose).resolves.toBeUndefined();
+      } finally {
+        if (closeTimeout) clearTimeout(closeTimeout);
+      }
+      closed = true;
+
+      expect(getSseClientCount()).toBe(0);
+      expect(lease.release).toHaveBeenCalledTimes(1);
+    } finally {
+      abortController.abort();
+      if (!closed) await app.close();
+    }
+  });
+
+  it("force-closes a backpressured SSE stream before releasing the data lease", async () => {
+    const app = await buildApp({ initSteam: false });
+    let socket: Socket | null = null;
+    let closed = false;
+
+    try {
+      const setup = await app.inject({
+        method: "POST",
+        url: "/api/setup",
+        payload: {
+          password: "correct horse battery staple",
+          setupToken: "steam-bee-test-setup-token",
+        },
+      });
+      const cookie = setup.cookies.find(
+        (item) => item.name === "session",
+      )?.value;
+      expect(cookie).toBeTruthy();
+
+      const address = new URL(await app.listen({ host: "127.0.0.1", port: 0 }));
+      socket = createConnection({
+        host: address.hostname,
+        port: Number(address.port),
+      });
+      socket.on("error", () => undefined);
+      await new Promise<void>((resolve) => socket?.once("connect", resolve));
+      socket.pause();
+      socket.write(
+        [
+          "GET /api/events HTTP/1.1",
+          `Host: ${address.host}`,
+          `Cookie: session=${cookie}`,
+          "Connection: keep-alive",
+          "",
+          "",
+        ].join("\r\n"),
+      );
+      await vi.waitFor(() => expect(getSseClientCount()).toBe(1));
+
+      const payload = { data: "x".repeat(256 * 1024) };
+      for (let index = 0; index < 32; index += 1) {
+        broadcast("test.backpressure", payload);
+      }
+
+      const lease = { release: vi.fn() };
+      let closeTimeout: NodeJS.Timeout | undefined;
+      const boundedClose = Promise.race([
+        closeWithLeaseCleanup(app, lease),
+        new Promise<never>((_resolve, reject) => {
+          closeTimeout = setTimeout(
+            () => reject(new Error("Backpressured SSE shutdown hung.")),
+            2_000,
+          );
+        }),
+      ]);
+      try {
+        await expect(boundedClose).resolves.toBeUndefined();
+      } finally {
+        if (closeTimeout) clearTimeout(closeTimeout);
+      }
+      closed = true;
+
+      expect(getSseClientCount()).toBe(0);
+      expect(lease.release).toHaveBeenCalledTimes(1);
+    } finally {
+      socket?.destroy();
+      if (!closed) await app.close();
+    }
   });
 
   it("allows exactly one concurrent setup and returns a stable conflict code", async () => {
@@ -414,6 +543,7 @@ describe("api auth flow", () => {
         playtimeForever: 42,
         source: "library",
         tags: [],
+        importedAt: now,
       },
     ]);
 

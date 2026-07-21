@@ -169,6 +169,91 @@ describe("ScheduleCoordinator", () => {
     });
   });
 
+  it("does not start a window that has a persisted skip exception", async () => {
+    const harness = createHarness([scheduleRecord()]);
+    harness.repository.skippedWindows.add("schedule-a:2026-07-08:10:00-11:00");
+
+    await harness.coordinator.tick(activeAt);
+
+    expect(harness.order).toEqual([
+      "lock:start:account-a",
+      "lock:end:account-a",
+    ]);
+    expect(harness.repository.schedules[0]?.lastStartedWindow).toBeNull();
+  });
+
+  it("does not start scheduled activity while a safety hold is active", async () => {
+    const harness = createHarness([scheduleRecord()]);
+    harness.ports.getActiveHold = async () => ({
+      reason: "pause_until",
+      until: activeAt.getTime() + 60_000,
+    });
+
+    await harness.coordinator.tick(activeAt);
+
+    expect(harness.order).toEqual([
+      "lock:start:account-a",
+      "lock:end:account-a",
+    ]);
+    expect(harness.repository.schedules[0]?.lastStartedWindow).toBeNull();
+  });
+
+  it("resumes only explicitly unscheduled or currently owned timed holds", async () => {
+    const harness = createHarness([scheduleRecord()]);
+    const owner = {
+      kind: "scheduled" as const,
+      scheduleId: "schedule-a",
+      windowId: "schedule-a:2026-07-08:10:00-11:00",
+    };
+
+    await expect(
+      harness.coordinator.getHoldOwner("account-a", activeAt),
+    ).resolves.toEqual(owner);
+    await expect(
+      harness.coordinator.canResumeHeldAccount(
+        "account-a",
+        { kind: "unscheduled" },
+        afterWindow,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      harness.coordinator.canResumeHeldAccount(
+        "account-a",
+        { kind: "unknown" },
+        activeAt,
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      harness.coordinator.canResumeHeldAccount("account-a", owner, activeAt),
+    ).resolves.toBe(true);
+    await expect(
+      harness.coordinator.canResumeHeldAccount("account-a", owner, afterWindow),
+    ).resolves.toBe(false);
+  });
+
+  it("preserves schedule ownership until a safety hold is resolved", async () => {
+    const windowId = "schedule-a:2026-07-08:10:00-11:00";
+    const harness = createHarness([
+      scheduleRecord({ lastStartedWindow: windowId }),
+    ]);
+    let holdActive = true;
+    harness.ports.getActiveHold = async () =>
+      holdActive ? { reason: "other_session_delay", until: null } : null;
+
+    await harness.coordinator.tick(afterWindow);
+
+    expect(harness.order).not.toContain("pause:account-a");
+    expect(harness.order).not.toContain("stop:schedule-a");
+    expect(harness.repository.schedules[0]?.lastStoppedWindow).toBeNull();
+
+    holdActive = false;
+    await harness.coordinator.tick(afterWindow);
+
+    expect(harness.order).toContain("pause:account-a");
+    expect(harness.order).toContain("stop:schedule-a");
+    expect(harness.repository.schedules[0]?.lastStoppedWindow).toBe(windowId);
+  });
+
   it("closes every persisted predecessor when a later winner starts after restart", async () => {
     const firstWindow = "schedule-a:2026-07-08:10:00-12:00";
     const harness = createHarness([
@@ -363,6 +448,7 @@ describe("ScheduleCoordinator", () => {
 
 class FakeScheduleRepository implements ScheduleRepository {
   readonly schedules: ScheduleRecord[];
+  readonly skippedWindows = new Set<string>();
   listAccountCalls = 0;
   listForAccountCalls = 0;
   listAccountGate: Promise<void> | null = null;
@@ -385,6 +471,14 @@ class FakeScheduleRepository implements ScheduleRepository {
     return this.schedules
       .filter((schedule) => schedule.accountId === accountId)
       .map((schedule) => ({ ...schedule }));
+  }
+
+  async isWindowSkipped(
+    _accountId: string,
+    _scheduleId: string,
+    windowId: string,
+  ) {
+    return this.skippedWindows.has(windowId);
   }
 
   async markWindowsStopped(accountId: string, windows: OpenScheduleWindow[]) {

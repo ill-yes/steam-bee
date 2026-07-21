@@ -9,9 +9,12 @@ import type {
   Account,
   BoostPreset,
   BoostSchedule,
+  AccountSafetyPolicy,
   Diagnostics,
   SteamApp,
   SteamEvent,
+  PlaytimeGoal,
+  SchedulePreview,
 } from "../../api";
 import { api, apiErrorMessage, isAbortError } from "../../api";
 import { Alert } from "../../components/ui/alert";
@@ -29,6 +32,7 @@ import { AnalyticsPanel } from "./detail/AnalyticsPanel";
 import { BoostToolsPanel, type PlanningTab } from "./detail/BoostToolsPanel";
 import { PresetPanel } from "./detail/PresetPanel";
 import { SchedulePanel } from "./detail/SchedulePanel";
+import { SafetyPanel } from "./detail/SafetyPanel";
 import { useAccountResources } from "./useAccountController";
 
 type PendingConfirmation = {
@@ -50,6 +54,7 @@ export function AccountDetail({
   onReload: () => Promise<void>;
 }) {
   const { messages: t } = useI18n();
+  const o = t.operations;
   const {
     library,
     setLibrary,
@@ -59,8 +64,16 @@ export function AccountDetail({
     setSchedules,
     analytics,
     setAnalytics,
+    safety,
+    setSafety,
+    schedulePreview,
+    setSchedulePreview,
+    goals,
+    setGoals,
     schedulePresetId,
     setSchedulePresetId,
+    loadState,
+    optionalStates,
     loadAccountData,
   } = useAccountResources();
   const [personaState, setPersonaState] = useState(account.personaState);
@@ -148,6 +161,9 @@ export function AccountDetail({
       setPresets([]);
       setSchedules([]);
       setAnalytics(null);
+      setSafety(null);
+      setSchedulePreview(null);
+      setGoals([]);
       setLibraryError(apiErrorMessage(loadError, t));
     });
   }, [account.id]);
@@ -444,6 +460,107 @@ export function AccountDetail({
     );
   }
 
+  async function refreshSchedulePreview() {
+    return runBusyAction("schedule-preview", async () => {
+      setSchedulePreview(
+        await api<SchedulePreview>(
+          `/api/accounts/${account.id}/schedules/preview?days=7`,
+        ),
+      );
+    });
+  }
+
+  async function skipNextSchedule(schedule: BoostSchedule) {
+    return runBusyAction(
+      `schedule-skip-${schedule.id}`,
+      async () => {
+        await api(
+          `/api/accounts/${account.id}/schedules/${schedule.id}/skip-next`,
+          { method: "POST" },
+        );
+        await loadAccountData(account.id);
+      },
+      o.saved,
+    );
+  }
+
+  async function saveSafetyPolicy(input: {
+    resumePolicy: AccountSafetyPolicy["resumePolicy"];
+    resumeDelayMinutes: number;
+    maxSessionMinutes: number | null;
+    maxDailyMinutes: number | null;
+    maxWeeklyMinutes: number | null;
+  }) {
+    return runBusyAction(
+      "safety-save",
+      async () => {
+        setSafety(
+          await api<AccountSafetyPolicy>(`/api/accounts/${account.id}/safety`, {
+            method: "PUT",
+            body: JSON.stringify(input),
+          }),
+        );
+        await onReload();
+      },
+      o.saved,
+    );
+  }
+
+  async function pauseUntil(until: number) {
+    return runBusyAction(
+      "safety-pause",
+      async () => {
+        setSafety(
+          await api<AccountSafetyPolicy>(
+            `/api/accounts/${account.id}/safety/pause-until`,
+            { method: "POST", body: JSON.stringify({ until }) },
+          ),
+        );
+        await onReload();
+      },
+      o.saved,
+    );
+  }
+
+  async function saveGoal(appId: number, targetMinutes: number) {
+    return runBusyAction(
+      "goal-save",
+      async () => {
+        setGoals(
+          await api<PlaytimeGoal[]>(`/api/accounts/${account.id}/goals`, {
+            method: "PUT",
+            body: JSON.stringify({ appId, targetMinutes }),
+          }),
+        );
+      },
+      o.saved,
+    );
+  }
+
+  async function deleteGoal(goal: PlaytimeGoal, confirmed = false) {
+    if (!confirmed) {
+      requestConfirmation({
+        description: interpolate(o.confirmDeleteGoal, {
+          name: goal.appName,
+        }),
+        confirmLabel: t.common.delete,
+        destructive: true,
+        action: () => deleteGoal(goal, true),
+      });
+      return false;
+    }
+    return runBusyAction(
+      `goal-delete-${goal.id}`,
+      async () => {
+        await api(`/api/accounts/${account.id}/goals/${goal.id}`, {
+          method: "DELETE",
+        });
+        setGoals((current) => current.filter((item) => item.id !== goal.id));
+      },
+      o.saved,
+    );
+  }
+
   function toggleWeekday(day: number) {
     setScheduleWeekdays((current) =>
       current.includes(day)
@@ -452,7 +569,7 @@ export function AccountDetail({
     );
   }
 
-  const planningPanel =
+  const loadedPlanningPanel =
     planningTab === "presets" ? (
       <PresetPanel
         presets={presets}
@@ -486,9 +603,43 @@ export function AccountDetail({
         onCreateSchedule={() => void createSchedule()}
         onToggleSchedule={(schedule) => void toggleSchedule(schedule)}
         onDeleteSchedule={(schedule) => void deleteSchedule(schedule)}
+        preview={schedulePreview}
+        previewState={optionalStates.schedulePreview}
+        onRefreshPreview={() => void refreshSchedulePreview()}
+        onSkipNext={(schedule) => void skipNextSchedule(schedule)}
+      />
+    ) : planningTab === "analytics" ? (
+      <AnalyticsPanel
+        analytics={analytics}
+        goals={goals}
+        library={library}
+        busy={Boolean(busyAction)}
+        goalsState={optionalStates.goals}
+        onSaveGoal={(appId, targetMinutes) =>
+          void saveGoal(appId, targetMinutes)
+        }
+        onDeleteGoal={(goal) => void deleteGoal(goal)}
       />
     ) : (
-      <AnalyticsPanel analytics={analytics} />
+      <SafetyPanel
+        policy={safety}
+        loadState={optionalStates.safety}
+        busy={Boolean(busyAction)}
+        canPauseUntil={account.desiredState === "running"}
+        onSave={(input) => void saveSafetyPolicy(input)}
+        onPauseUntil={(until) => void pauseUntil(until)}
+      />
+    );
+
+  const planningPanel =
+    loadState === "loading" ? (
+      <p role="status" className="text-sm text-[var(--muted)]">
+        {t.common.loading}
+      </p>
+    ) : loadState === "error" ? (
+      <Alert tone="danger">{libraryError ?? o.failed}</Alert>
+    ) : (
+      loadedPlanningPanel
     );
 
   async function updateLibraryMeta(
@@ -574,7 +725,7 @@ export function AccountDetail({
           account={{ id: account.id, runtimeStatus: account.runtimeStatus }}
           library={{
             apps: library,
-            loading: libraryLoading,
+            loading: libraryLoading || loadState === "loading",
             error: libraryError,
             canImport: canImportLibrary,
             onImport: importLibrary,

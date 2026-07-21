@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "Self-hosted Steam hour booster with a secure management UI.",
+  "description": "Self-hosted operations console for managing your own Steam accounts.",
   "homepage": "https://github.com/ill-yes/steam-bee#readme",
   "repository": {
     "type": "git",
@@ -29,10 +29,11 @@
     "dev": "pnpm --filter @steam-bee/server dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "hygiene:test": "node --test scripts/repository-hygiene.test.mjs",
     "release:plan": "node scripts/plan-release.mjs",
     "release:source:check": "node scripts/check-release-source.mjs",
     "release:test": "node --test scripts/release-metadata.test.mjs",
-    "test": "pnpm release:test && pnpm compose:test && pnpm contracts:build && pnpm -r test"
+    "test": "pnpm release:test && pnpm compose:test && pnpm hygiene:test && pnpm contracts:build && pnpm -r test"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

@@ -13,15 +13,19 @@ Thanks for taking the time to improve SteamBee.
 Never commit local runtime state, secrets, or private account data. This
 includes real Steam account names, SteamIDs, refresh tokens, `.env` files,
 `data/`, `backups/`, SQLite files, Steam client data, build outputs, and local
-screenshots. These paths are ignored where applicable. Before committing, these
-checks should be clean:
+screenshots. A custom `DATA_DIR` may place runtime leaves elsewhere, so files
+named `instance.secret` or `setup.token`, `.sbb` recovery exports, instance
+leases, and restore staging or rollback directories are ignored at any depth.
+Before committing, these checks should be clean:
 
 ```bash
-git check-ignore -v .env .env.local data apps/server/data screenshots backups
+git check-ignore -v .env .env.local data apps/server/data screenshots backups \
+  custom/runtime/instance.secret custom/runtime/setup.token custom/backup.sbb
 git ls-files -- data .env apps/server/data screenshots backups
+git ls-files | grep -E '(^|/)(instance\.secret|setup\.token|\.steam-bee-(instance|restore-|data-v1))|\.sbb$'
 ```
 
-The second command should print nothing.
+The last two commands should print nothing.
 
 Public documentation screenshots belong in `docs/screenshots/` and must use
 synthetic accounts and fake data only.

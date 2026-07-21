@@ -67,6 +67,28 @@ validate_known_path() {
   esac
 }
 
+validate_lease_directory() {
+  lease_path=$1
+  validate_known_path "$lease_path" directory
+  lease_entry=$(find "$lease_path" -mindepth 1 -maxdepth 1 ! -name owner.json -print -quit) ||
+    fail "could not inspect the SteamBee instance lease."
+  [ -z "$lease_entry" ] || fail "the SteamBee instance lease is invalid."
+  [ ! -e "$lease_path/owner.json" ] || validate_known_path "$lease_path/owner.json" file
+}
+
+validate_stale_lease_name() {
+  stale_owner=${1#.steam-bee-instance.stale-}
+  case "$stale_owner" in
+    ????????-????-????-????-????????????) ;;
+    *) fail "the SteamBee stale instance lease name is invalid." ;;
+  esac
+  case "$stale_owner" in
+    *[!0123456789abcdef-]*)
+      fail "the SteamBee stale instance lease name is invalid."
+      ;;
+  esac
+}
+
 validate_data_layout() {
   has_entries=false
   has_marker=false
@@ -85,6 +107,24 @@ validate_data_layout() {
         ;;
       steam-data)
         validate_known_path "$path" directory
+        ;;
+      .steam-bee-instance)
+        validate_lease_directory "$path"
+        ;;
+      .steam-bee-instance.stale-*)
+        validate_stale_lease_name "${path##*/}"
+        validate_lease_directory "$path"
+        ;;
+      .steam-bee-restore-staging | .steam-bee-restore-rollback)
+        validate_known_path "$path" directory
+        restore_unsafe=$(find "$path" -mindepth 1 -maxdepth 1 \
+          ! -name instance.secret \
+          ! -name steam-bee.sqlite \
+          ! -name steam-bee.sqlite-wal \
+          ! -name steam-bee.sqlite-shm \
+          ! -name steam-bee.sqlite-journal \
+          -print -quit) || fail "could not inspect SteamBee restore data."
+        [ -z "$restore_unsafe" ] || fail "the SteamBee restore data is invalid."
         ;;
       .steam-bee-data-v1)
         validate_known_path "$path" directory
@@ -145,6 +185,22 @@ migrate_data_ownership() {
       \( ! -uid "$runtime_uid" -o ! -gid "$runtime_gid" \) \
       -exec chown --no-dereference "$runtime_uid:$runtime_gid" -- {} +
   fi
+
+  for lease_dir in /data/.steam-bee-instance /data/.steam-bee-instance.stale-*; do
+    [ -d "$lease_dir" ] || continue
+    find "$lease_dir" -xdev \
+      \( -type d -o -type f \) \
+      \( ! -uid "$runtime_uid" -o ! -gid "$runtime_gid" \) \
+      -exec chown --no-dereference "$runtime_uid:$runtime_gid" -- {} +
+  done
+
+  for restore_dir in /data/.steam-bee-restore-staging /data/.steam-bee-restore-rollback; do
+    [ -d "$restore_dir" ] || continue
+    find "$restore_dir" -xdev \
+      \( -type d -o -type f \) \
+      \( ! -uid "$runtime_uid" -o ! -gid "$runtime_gid" \) \
+      -exec chown --no-dereference "$runtime_uid:$runtime_gid" -- {} +
+  done
 }
 
 create_data_marker() {

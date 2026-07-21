@@ -10,7 +10,14 @@ export type {
   BoostAnalytics,
   BoostPreset,
   BoostSchedule,
+  AccountGroup,
+  AccountHealth,
+  AccountSafetyPolicy,
+  BulkAccountCommandResult,
   Diagnostics,
+  NotificationRule,
+  PlaytimeGoal,
+  SchedulePreview,
   SteamApp,
   SteamEvent,
   SteamProfile,
@@ -76,9 +83,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!response.ok) {
     const payload = isApiErrorResponse(data) ? data : null;
-    if (response.status === 401 && path !== "/api/login") {
-      window.dispatchEvent(new CustomEvent(authExpiredEvent));
-    }
+    announceAuthExpired(path, response.status);
     throw new ApiError(
       payload?.error ?? "Request failed.",
       payload?.code ?? `HTTP_${response.status}`,
@@ -87,6 +92,46 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   return data as T;
+}
+
+export async function apiDownload(
+  path: string,
+  init: RequestInit = {},
+): Promise<{ blob: Blob; filename: string | null }> {
+  const headers = new Headers(init.headers);
+  if (init.body && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+  if (csrfToken) headers.set("x-csrf-token", csrfToken);
+  const response = await fetch(path, {
+    ...init,
+    credentials: "include",
+    headers,
+  });
+  if (!response.ok) {
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      // The normalized fallback below is safe for non-JSON proxy errors.
+    }
+    const apiPayload = isApiErrorResponse(payload) ? payload : null;
+    announceAuthExpired(path, response.status);
+    throw new ApiError(
+      apiPayload?.error ?? "Download failed.",
+      apiPayload?.code ?? `HTTP_${response.status}`,
+      response.status,
+    );
+  }
+  const disposition = response.headers.get("content-disposition");
+  const filename = disposition?.match(/filename="([^"]+)"/)?.[1] ?? null;
+  return { blob: await response.blob(), filename };
+}
+
+function announceAuthExpired(path: string, status: number) {
+  if (status === 401 && path !== "/api/login") {
+    window.dispatchEvent(new CustomEvent(authExpiredEvent));
+  }
 }
 
 export function apiErrorMessage(error: unknown, messages: Messages) {

@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsBn } from "../operations-copy";
 
 const messages = {
   common: {
@@ -512,6 +513,7 @@ const messages = {
     noAnalytics: "কোনো বুস্ট সেশন এখনো পরিমাপ করা হয়নি।",
     recentSessions: "সাম্প্রতিক সেশন",
   },
+  operations: operationsBn,
   admin: {
     title: "অ্যাডমিন এলাকা",
     description:
@@ -662,6 +664,14 @@ const messages = {
       appCacheTitle: "অ্যাপ ক্যাশে",
       appCacheDescription:
         "স্থানীয় অ্যাপের নাম এবং মেটাডেটা। সর্বাধিক 200 এন্ট্রি দেখানো হয়.",
+      appCacheSearch: "অ্যাপ ক্যাশ খুঁজুন",
+      appCacheSearchPlaceholder: "নাম বা AppID",
+      appCacheNoResultsTitle: "মিল থাকা ক্যাশ এন্ট্রি নেই",
+      appCacheNoResultsBody: "লোড করা এন্ট্রি দেখতে অনুসন্ধান বদলান।",
+      appCacheLoadedStatus: "{total}টির মধ্যে {loaded}টি এন্ট্রি লোড হয়েছে",
+      appCachePageStatus: "{total} ফলাফলের মধ্যে {from}–{to}",
+      previousPage: "আগের",
+      nextPage: "পরের",
       cleanupUnused: "অব্যবহৃত পরিষ্কার করুন",
       noAppDataTitle: "কোনো অ্যাপ ডেটা নেই",
       noAppDataBody:

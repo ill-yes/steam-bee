@@ -16,12 +16,15 @@ import type {
   BoostPreset,
   BoostSchedule,
   Diagnostics,
+  NotificationRule,
   SteamApp,
 } from "../src/api";
 import { App } from "../src/App";
 import { AccountDetail } from "../src/features/accounts/AccountDetail";
 import { AccountRail } from "../src/features/accounts/AccountRail";
+import { SafetyPanel } from "../src/features/accounts/detail/SafetyPanel";
 import { AdminDialog } from "../src/features/admin/AdminDialog";
+import { OperationsPanel } from "../src/features/admin/OperationsPanel";
 import { I18nProvider } from "../src/i18n";
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -65,6 +68,101 @@ describe("web smoke", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a retryable bootstrap error instead of an endless skeleton", async () => {
+    apiMock.mockRejectedValueOnce(new Error("Local server unavailable"));
+    renderWithProviders(<App />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Local server unavailable",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /Try again|Erneut versuchen/ }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /Sign in|Anmelden/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not retain the previous account resources while switching", async () => {
+    const secondAccount: Account = {
+      ...pausedAccount,
+      id: "account-2",
+      accountName: "second",
+      games: [],
+    };
+    let resolveSecondLibrary: (value: SteamApp[]) => void = () => undefined;
+    const secondLibrary = new Promise<SteamApp[]>((resolve) => {
+      resolveSecondLibrary = resolve;
+    });
+    class FakeEventSource {
+      onerror: ((event: Event) => void) | null = null;
+      addEventListener() {}
+      close() {}
+    }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/api/me") {
+        return {
+          setupComplete: true,
+          setupTokenRequired: false,
+          authenticated: true,
+          csrfToken: "csrf",
+        };
+      }
+      if (path === "/api/accounts") return [pausedAccount, secondAccount];
+      if (path === "/api/events/recent") return [];
+      if (path === "/api/diagnostics") return diagnostics;
+      if (path === "/api/system/status") return readySystemStatus;
+      if (path === "/api/notifications/rules") return [];
+      if (path.includes("/account-2/library")) return secondLibrary;
+      if (path.includes("/account-2/presets")) return [];
+      if (path.includes("/account-2/schedules/preview")) {
+        return emptySchedulePreview();
+      }
+      if (path.includes("/account-2/schedules")) return [];
+      if (path.includes("/account-2/analytics")) return emptyAnalytics();
+      if (path.includes("/account-2/safety")) return safetyPolicy("account-2");
+      if (path.includes("/account-2/goals")) return [];
+      if (path.endsWith("/library")) return library;
+      if (path.endsWith("/presets")) return presets;
+      if (path.endsWith("/schedules/preview")) return emptySchedulePreview();
+      if (path.endsWith("/schedules")) return schedules;
+      if (path.endsWith("/analytics")) return analytics;
+      if (path.endsWith("/safety")) return safetyPolicy("account-1");
+      if (path.endsWith("/goals")) return [];
+      return [];
+    });
+
+    try {
+      renderWithProviders(<App />);
+      expect(await screen.findAllByText("Counter-Strike 2")).not.toHaveLength(
+        0,
+      );
+
+      fireEvent.change(screen.getByLabelText(/Account|Konto/), {
+        target: { value: "account-2" },
+      });
+
+      expect(screen.queryByText("Counter-Strike 2")).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent(/Loading|Lädt/);
+      resolveSecondLibrary([
+        {
+          appId: 440,
+          name: "Team Fortress 2",
+          playtimeForever: 60,
+          source: "library",
+          favorite: false,
+          hidden: false,
+          tags: [],
+        },
+      ]);
+      expect(await screen.findByText("Team Fortress 2")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders one resume action for a paused account", () => {
     renderWithProviders(
       <AccountDetail
@@ -102,8 +200,98 @@ describe("web smoke", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
     expect(await screen.findByText("Top games")).toBeInTheDocument();
+    expect(screen.getByText("Snapshot goals")).toBeInTheDocument();
     expect(screen.getAllByText("Counter-Strike 2").length).toBeGreaterThan(0);
     expect(screen.queryByText("CSV")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Safety/ }));
+    expect(await screen.findByText("Session safety")).toBeInTheDocument();
+    expect(
+      screen.getByText(/caps never start a stopped account/i),
+    ).toBeInTheDocument();
+  });
+
+  it("rejects invalid safety limits instead of silently clearing them", () => {
+    const onSave = vi.fn();
+    renderWithProviders(
+      <SafetyPanel
+        policy={{
+          accountId: "account-1",
+          resumePolicy: "automatic",
+          resumeDelayMinutes: 15,
+          maxSessionMinutes: 60,
+          maxDailyMinutes: null,
+          maxWeeklyMinutes: null,
+          pauseUntil: null,
+          holdReason: null,
+          holdCreatedAt: null,
+          updatedAt: Date.now(),
+        }}
+        busy={false}
+        canPauseUntil={false}
+        onSave={onSave}
+        onPauseUntil={vi.fn()}
+      />,
+    );
+
+    const sessionLimit = screen.getByLabelText(
+      /Maximum session|Maximale Session/,
+    );
+    const save = screen.getByRole("button", {
+      name: /Save safety policy|Safety-Regeln speichern/,
+    });
+    fireEvent.change(sessionLimit, { target: { value: "4" } });
+
+    expect(sessionLimit).toHaveAttribute("aria-invalid", "true");
+    expect(save).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /whole minutes|Ganze Minuten/,
+    );
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.change(sessionLimit, { target: { value: "" } });
+    expect(sessionLimit).toHaveAttribute("aria-invalid", "false");
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    expect(onSave).toHaveBeenCalledWith({
+      resumePolicy: "automatic",
+      resumeDelayMinutes: 15,
+      maxSessionMinutes: null,
+      maxDailyMinutes: null,
+      maxWeeklyMinutes: null,
+    });
+  });
+
+  it("distinguishes optional resource failures from valid empty states", async () => {
+    apiMock.mockImplementation(async (path: string) => {
+      if (path.endsWith("/library")) return library;
+      if (path.endsWith("/presets")) return presets;
+      if (path.endsWith("/schedules")) return schedules;
+      if (path.endsWith("/analytics")) return analytics;
+      if (
+        path.endsWith("/safety") ||
+        path.includes("/schedules/preview") ||
+        path.endsWith("/goals")
+      ) {
+        throw new Error("Optional endpoint unavailable");
+      }
+      return [];
+    });
+    renderAccountDetail();
+    await screen.findByText("Boost presets");
+
+    fireEvent.click(screen.getByRole("button", { name: /Schedule/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /operation failed|Aktion ist fehlgeschlagen/i,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /operation failed|Aktion ist fehlgeschlagen/i,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Safety/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /operation failed|Aktion ist fehlgeschlagen/i,
+    );
   });
 
   it("updates library metadata from the library row actions", async () => {
@@ -402,6 +590,195 @@ describe("web smoke", () => {
       );
     });
   });
+
+  it("activates a new browser notification rule in the current app session", async () => {
+    const onChanged = vi.fn(async () => undefined);
+    const originalNotification = window.Notification;
+    const requestPermission = vi.fn(async () => "granted" as const);
+    const notification = Object.assign(vi.fn(), {
+      permission: "granted" as NotificationPermission,
+      requestPermission,
+    });
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: notification,
+    });
+
+    try {
+      renderWithProviders(
+        <AdminDialog onClose={vi.fn()} onChanged={onChanged} />,
+      );
+      await screen.findByText("Admin area");
+      fireEvent.click(
+        screen.getByRole("button", { name: /Operations|Betrieb/ }),
+      );
+      expect(
+        await screen.findByText(/Webhook name|Webhook-Name/, {
+          selector: "label",
+        }),
+      ).toBeVisible();
+      expect(
+        screen.getByText(/Webhook URL|Webhook-URL/, { selector: "label" }),
+      ).toBeVisible();
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: /Enable browser alerts|Browser-Hinweise aktivieren/,
+        }),
+      );
+
+      await waitFor(() => expect(requestPermission).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(apiMock).toHaveBeenCalledWith(
+          "/api/notifications/rules",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({
+              name: "Browser alerts",
+              target: "browser",
+              enabled: true,
+              eventTypes: [
+                "steam.status.login_required",
+                "steam.status.paused_other_session",
+                "steam.schedule.error",
+                "steam.safety.cap",
+                "steam.status.error",
+              ],
+            }),
+          }),
+        ),
+      );
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    } finally {
+      Object.defineProperty(window, "Notification", {
+        configurable: true,
+        value: originalNotification,
+      });
+    }
+  });
+
+  it("requests one browser-rule upsert when enable is clicked twice", async () => {
+    const existingRule: NotificationRule = {
+      id: "00000000-0000-4000-8000-000000000020",
+      name: "Legacy translated browser name",
+      target: "browser",
+      enabled: true,
+      effectiveEnabled: false,
+      effectiveStatus: "suspended",
+      failureCount: 5,
+      suspendedUntil: Date.now() + 60_000,
+      nextRetryAt: null,
+      eventTypes: ["steam.status.error"],
+      webhookConfigured: false,
+      createdAt: Date.now() - 60_000,
+      updatedAt: Date.now(),
+    };
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/api/account-groups") return [];
+      if (path === "/api/notifications/rules") return [existingRule];
+      return { ok: true };
+    });
+    const originalNotification = window.Notification;
+    const requestPermission = vi.fn(async () => "granted" as const);
+    const toLocaleString = vi
+      .spyOn(Date.prototype, "toLocaleString")
+      .mockReturnValue("localized date");
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: Object.assign(vi.fn(), {
+        permission: "granted" as NotificationPermission,
+        requestPermission,
+      }),
+    });
+
+    try {
+      renderWithProviders(
+        <OperationsPanel
+          overview={adminOverview}
+          onNotificationRulesChanged={vi.fn()}
+        />,
+      );
+      const enable = await screen.findByRole("button", {
+        name: /Enable browser alerts|Browser-Hinweise aktivieren/,
+      });
+      fireEvent.click(enable);
+      fireEvent.click(enable);
+
+      await waitFor(() => expect(requestPermission).toHaveBeenCalledOnce());
+      await waitFor(() =>
+        expect(apiMock).toHaveBeenCalledWith(
+          "/api/notifications/rules",
+          expect.objectContaining({ method: "POST" }),
+        ),
+      );
+      expect(
+        apiMock.mock.calls.filter(
+          ([path, options]) =>
+            path === "/api/notifications/rules" && options?.method === "POST",
+        ),
+      ).toHaveLength(1);
+      expect(
+        apiMock.mock.calls.filter(
+          ([path, options]) =>
+            path === `/api/notifications/rules/${existingRule.id}` &&
+            options?.method === "PUT",
+        ),
+      ).toHaveLength(0);
+      const health = screen.getByText(/Suspended|Ausgesetzt/);
+      expect(health).not.toHaveClass("truncate");
+      expect(screen.getByText("Legacy translated browser name")).toHaveClass(
+        "truncate",
+      );
+      expect(toLocaleString).toHaveBeenCalledWith("en-US");
+    } finally {
+      toLocaleString.mockRestore();
+      Object.defineProperty(window, "Notification", {
+        configurable: true,
+        value: originalNotification,
+      });
+    }
+  });
+
+  it("confirms account-group deletion before issuing the request", async () => {
+    const group = {
+      id: "00000000-0000-4000-8000-000000000010",
+      name: "Weekend hold",
+      accountIds: ["account-1"],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/api/account-groups") return [group];
+      if (path === "/api/notifications/rules") return [];
+      return { ok: true };
+    });
+    renderWithProviders(
+      <OperationsPanel
+        overview={adminOverview}
+        onNotificationRulesChanged={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Delete group: Weekend hold|Gruppe löschen: Weekend hold/,
+      }),
+    );
+    expect(apiMock).not.toHaveBeenCalledWith(
+      `/api/account-groups/${group.id}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: /Delete|Löschen/,
+      }),
+    );
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith(
+        `/api/account-groups/${group.id}`,
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+  });
 });
 
 function renderAccountDetail(account: Account = pausedAccount) {
@@ -440,7 +817,30 @@ function mockAccountData() {
     if (path.endsWith("/library")) return library;
     if (path.endsWith("/presets")) return presets;
     if (path.endsWith("/schedules")) return schedules;
+    if (path.includes("/schedules/preview")) {
+      return {
+        generatedAt: Date.now(),
+        through: Date.now(),
+        timezoneCount: 1,
+        items: [],
+      };
+    }
     if (path.endsWith("/analytics")) return analytics;
+    if (path.endsWith("/safety")) {
+      return {
+        accountId: "account-1",
+        resumePolicy: "automatic",
+        resumeDelayMinutes: 15,
+        maxSessionMinutes: null,
+        maxDailyMinutes: null,
+        maxWeeklyMinutes: null,
+        pauseUntil: null,
+        holdReason: "manual",
+        holdCreatedAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+    }
+    if (path.endsWith("/goals")) return [];
     return [];
   });
 }
@@ -529,6 +929,52 @@ const analytics: BoostAnalytics = {
   ],
 };
 
+const readySystemStatus = {
+  code: "SYSTEM_READY" as const,
+  label: "System ready",
+  tone: "good" as const,
+  detail: "Ready",
+  pendingMigrations: 0,
+  accountErrors: 0,
+  recentErrors: 0,
+  checkedAt: Date.now(),
+};
+
+function emptyAnalytics(): BoostAnalytics {
+  return {
+    todayMs: 0,
+    last7DaysMs: 0,
+    totalSessions: 0,
+    openSession: null,
+    topGames: [],
+    recentSessions: [],
+  };
+}
+
+function emptySchedulePreview() {
+  return {
+    generatedAt: Date.now(),
+    through: Date.now(),
+    timezoneCount: 0,
+    items: [],
+  };
+}
+
+function safetyPolicy(accountId: string) {
+  return {
+    accountId,
+    resumePolicy: "automatic" as const,
+    resumeDelayMinutes: 15,
+    maxSessionMinutes: null,
+    maxDailyMinutes: null,
+    maxWeeklyMinutes: null,
+    pauseUntil: null,
+    holdReason: null,
+    holdCreatedAt: null,
+    updatedAt: Date.now(),
+  };
+}
+
 const diagnostics: Diagnostics = {
   build: {
     version: "0.1.0-test",
@@ -549,6 +995,7 @@ const diagnostics: Diagnostics = {
     current: null,
     latest: null,
     pending: [],
+    unsupported: [],
   },
   events: {
     sampleSize: 0,

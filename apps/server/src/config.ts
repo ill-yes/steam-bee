@@ -9,6 +9,7 @@ import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
+import { dataDirectory } from "./data-directory.js";
 
 const privateDirectoryMode = 0o700;
 const privateFileMode = 0o600;
@@ -108,7 +109,7 @@ export const config = {
     revision: env.BUILD_REVISION,
     buildDate: env.BUILD_DATE,
   },
-  dataDir: resolve(env.DATA_DIR),
+  dataDir: dataDirectory,
   publicDir:
     process.env.PUBLIC_DIR ??
     (process.env.NODE_ENV === "production"
@@ -123,6 +124,7 @@ export const paths = {
   secret: join(config.dataDir, "instance.secret"),
   setupToken: join(config.dataDir, "setup.token"),
   steamData: join(config.dataDir, "steam-data"),
+  instanceLease: join(config.dataDir, ".steam-bee-instance"),
 };
 
 ensurePrivateDirectory(paths.steamData);
