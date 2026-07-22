@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsId } from "../operations-copy";
 
 const messages = {
   common: {
@@ -513,6 +514,7 @@ const messages = {
     noAnalytics: "Belum ada sesi peningkatan yang diukur.",
     recentSessions: "Sesi terbaru",
   },
+  operations: operationsId,
   admin: {
     title: "wilayah admin",
     description:
@@ -661,6 +663,15 @@ const messages = {
       appCacheTitle: "Tembolok aplikasi",
       appCacheDescription:
         "Nama dan metadata aplikasi lokal. Paling banyak 200 entri ditampilkan.",
+      appCacheSearch: "Cari cache aplikasi",
+      appCacheSearchPlaceholder: "Nama atau AppID",
+      appCacheNoResultsTitle: "Tidak ada entri yang cocok",
+      appCacheNoResultsBody:
+        "Ubah pencarian untuk memeriksa entri yang dimuat.",
+      appCacheLoadedStatus: "{loaded} dari {total} entri dimuat",
+      appCachePageStatus: "{from}–{to} dari {total} hasil",
+      previousPage: "Sebelumnya",
+      nextPage: "Berikutnya",
       cleanupUnused: "Bersihkan yang tidak terpakai",
       noAppDataTitle: "Tidak ada data aplikasi",
       noAppDataBody: "Impor perpustakaan atau tambahkan AppIDs secara manual.",

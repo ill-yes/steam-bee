@@ -25,3 +25,13 @@ sqlite.db
 
 /screenshots
 /backups/
+
+# SteamBee runtime credentials and recovery artifacts at any DATA_DIR depth.
+instance.secret
+setup.token
+*.sbb
+.steam-bee-instance/
+.steam-bee-instance.stale-*/
+.steam-bee-restore-staging/
+.steam-bee-restore-rollback/
+.steam-bee-data-v1/

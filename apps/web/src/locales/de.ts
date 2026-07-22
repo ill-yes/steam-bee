@@ -1,4 +1,5 @@
 import type { Messages } from "./types";
+import { operationsDe } from "../operations-copy";
 
 const messages = {
   common: {
@@ -524,6 +525,7 @@ const messages = {
     noAnalytics: "Noch keine Boost-Sessions gemessen.",
     recentSessions: "Letzte Sessions",
   },
+  operations: operationsDe,
   admin: {
     title: "Admin-Bereich",
     description:
@@ -677,6 +679,15 @@ const messages = {
       appCacheTitle: "App-Cache",
       appCacheDescription:
         "Lokale App-Namen und Metadaten. Angezeigt werden maximal 200 Einträge.",
+      appCacheSearch: "App-Cache durchsuchen",
+      appCacheSearchPlaceholder: "Name oder AppID",
+      appCacheNoResultsTitle: "Keine passenden Cache-Einträge",
+      appCacheNoResultsBody:
+        "Passe die Suche an, um die geladenen Cache-Einträge zu prüfen.",
+      appCacheLoadedStatus: "{loaded} von {total} Cache-Einträgen geladen",
+      appCachePageStatus: "{from}–{to} von {total} Treffern",
+      previousPage: "Zurück",
+      nextPage: "Weiter",
       cleanupUnused: "Ungenutzte bereinigen",
       noAppDataTitle: "Keine App-Daten",
       noAppDataBody:

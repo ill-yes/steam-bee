@@ -1,3 +1,5 @@
+import type { InstanceLeaseStatus } from "./operations.js";
+
 export type BuildMetadata = {
   version: string;
   revision: string;
@@ -31,11 +33,13 @@ export type Diagnostics = {
     dataDir: string;
     publicDir: string;
     sseClients: number;
+    instanceLease?: InstanceLeaseStatus;
   };
   migrations: {
     current: string | null;
     latest: string | null;
     pending: Array<{ id: string; description: string }>;
+    unsupported: Array<{ id: string; description: string }>;
   };
   events: {
     sampleSize: number;

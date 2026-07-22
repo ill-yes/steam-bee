@@ -1,3 +1,5 @@
+import { operationsEn } from "../operations-copy";
+
 export const en = {
   common: {
     appName: "SteamBee",
@@ -511,6 +513,7 @@ export const en = {
     noAnalytics: "No boost sessions measured yet.",
     recentSessions: "Recent sessions",
   },
+  operations: operationsEn,
   admin: {
     title: "Admin area",
     description:
@@ -661,6 +664,15 @@ export const en = {
       appCacheTitle: "App cache",
       appCacheDescription:
         "Local app names and metadata. At most 200 entries are shown.",
+      appCacheSearch: "Search app cache",
+      appCacheSearchPlaceholder: "Name or AppID",
+      appCacheNoResultsTitle: "No matching cache entries",
+      appCacheNoResultsBody:
+        "Change the search to inspect the loaded cache entries.",
+      appCacheLoadedStatus: "{loaded} of {total} cache entries loaded",
+      appCachePageStatus: "{from}–{to} of {total} matches",
+      previousPage: "Previous",
+      nextPage: "Next",
       cleanupUnused: "Clean up unused",
       noAppDataTitle: "No app data",
       noAppDataBody: "Import a library or add AppIDs manually.",

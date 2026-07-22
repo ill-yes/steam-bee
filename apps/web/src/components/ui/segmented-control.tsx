@@ -17,7 +17,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       className={cn(
-        "inline-grid min-h-9 grid-flow-col rounded-md border border-[var(--line)] bg-[var(--surface-2)] p-1",
+        "inline-grid min-h-9 grid-flow-col rounded-md border border-[var(--line)] bg-[var(--surface-2)] p-1 max-sm:min-h-11",
         className,
       )}
       role="group"
@@ -28,7 +28,7 @@ export function SegmentedControl<T extends string>({
           key={option.value}
           type="button"
           className={cn(
-            "rounded-[5px] px-3 text-xs font-semibold text-[var(--muted-strong)] transition hover:text-[var(--ink)]",
+            "rounded-[5px] px-3 text-xs font-semibold text-[var(--muted-strong)] transition hover:text-[var(--ink)] max-sm:min-h-11",
             value === option.value &&
               "bg-[var(--surface)] text-[var(--ink)] shadow-sm",
           )}

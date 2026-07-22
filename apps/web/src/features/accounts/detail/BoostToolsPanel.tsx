@@ -3,7 +3,7 @@ import { formatDurationMs } from "../../../lib/format";
 import { cn } from "../../../lib/utils";
 import { useI18n } from "../../../i18n";
 
-export type PlanningTab = "presets" | "schedule" | "analytics";
+export type PlanningTab = "presets" | "schedule" | "analytics" | "safety";
 
 export function BoostToolsPanel({
   activeTab,
@@ -21,6 +21,7 @@ export function BoostToolsPanel({
   children: ReactNode;
 }) {
   const { messages: t, localeInfo } = useI18n();
+  const o = t.operations;
   const panelId = useId();
   const tabs = [
     { id: "presets" as const, label: t.tools.presets, meta: presetCount },
@@ -34,6 +35,7 @@ export function BoostToolsPanel({
       label: t.tools.analytics,
       meta: formatDurationMs(analyticsLast7DaysMs, t, localeInfo.dateLocale),
     },
+    { id: "safety" as const, label: o.safety, meta: "•" },
   ];
 
   return (
@@ -48,7 +50,7 @@ export function BoostToolsPanel({
           </div>
         </div>
         <div
-          className="mt-2 grid grid-cols-3 gap-1 rounded-md bg-[var(--surface-2)] p-1"
+          className="mt-2 grid grid-cols-4 gap-1 rounded-md bg-[var(--surface-2)] p-1"
           role="group"
           aria-label={t.tools.title}
         >

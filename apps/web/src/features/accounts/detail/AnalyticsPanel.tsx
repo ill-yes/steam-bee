@@ -1,12 +1,26 @@
-import type { BoostAnalytics } from "../../../api";
+import type { BoostAnalytics, PlaytimeGoal, SteamApp } from "../../../api";
 import { formatDateTime, formatDurationMs } from "../../../lib/format";
 import { interpolate, useI18n } from "../../../i18n";
 import { StatusFact } from "./StatusFact";
+import { GoalsPanel } from "./GoalsPanel";
+import type { ResourceLoadState } from "../useAccountController";
 
 export function AnalyticsPanel({
   analytics,
+  goals,
+  library,
+  busy,
+  goalsState,
+  onSaveGoal,
+  onDeleteGoal,
 }: {
   analytics: BoostAnalytics | null;
+  goals: PlaytimeGoal[];
+  library: SteamApp[];
+  busy: boolean;
+  goalsState: ResourceLoadState;
+  onSaveGoal: (appId: number, targetMinutes: number) => void;
+  onDeleteGoal: (goal: PlaytimeGoal) => void;
 }) {
   const { messages: t, localeInfo } = useI18n();
   const topGames = Array.isArray(analytics?.topGames) ? analytics.topGames : [];
@@ -100,6 +114,14 @@ export function AnalyticsPanel({
           ))}
         </div>
       </div>
+      <GoalsPanel
+        goals={goals}
+        loadState={goalsState}
+        library={library}
+        busy={busy}
+        onSave={onSaveGoal}
+        onDelete={onDeleteGoal}
+      />
     </section>
   );
 }

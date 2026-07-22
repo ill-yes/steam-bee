@@ -7,19 +7,25 @@ prefix=${2:?Usage: smoke-test-image.sh IMAGE NAME_PREFIX}
 default_container=$prefix-default
 migration_container=$prefix-migration
 fresh_container=$prefix-unraid
+restore_container=$prefix-restore
 failure_container=$prefix-expected-failure
 default_volume=$prefix-default-data
 fresh_volume=$prefix-unraid-data
+restore_volume=$prefix-restore-data
 guard_volume=$prefix-guard-data
 outside_volume=$prefix-outside-data
 nest_volume=$prefix-nested-data
 invalid_volume=$prefix-invalid-data
+restore_stage=$(mktemp -d "${TMPDIR:-/tmp}/steam-bee-restore-stage.XXXXXX")
+host_uid=$(id -u)
+host_gid=$(id -g)
 
 cleanup() {
   for container in \
     "$default_container" \
     "$migration_container" \
     "$fresh_container" \
+    "$restore_container" \
     "$failure_container"
   do
     docker rm -f "$container" >/dev/null 2>&1 || true
@@ -28,6 +34,7 @@ cleanup() {
   for volume in \
     "$default_volume" \
     "$fresh_volume" \
+    "$restore_volume" \
     "$guard_volume" \
     "$outside_volume" \
     "$nest_volume" \
@@ -35,6 +42,14 @@ cleanup() {
   do
     docker volume rm "$volume" >/dev/null 2>&1 || true
   done
+
+  if [ -d "$restore_stage" ]; then
+    docker run --rm --user 0:0 --entrypoint sh \
+      -v "$restore_stage:/restore-stage" "$image" \
+      -c "rm -f /restore-stage/restore.sbb; chown $host_uid:$host_gid /restore-stage; chmod 0700 /restore-stage" \
+      >/dev/null 2>&1 || true
+    rmdir "$restore_stage" >/dev/null 2>&1 || true
+  fi
 }
 
 trap cleanup EXIT
@@ -44,6 +59,13 @@ cleanup
 
 docker run --rm --user 0:0 "$image" sh -c \
   'test "$(id -u):$(id -g)" = "0:0"'
+
+docker run --rm --user 0:0 --entrypoint sh \
+  -v "$restore_stage:/restore-stage" "$image" \
+  -c 'chown 10001:10001 /restore-stage; chmod 0700 /restore-stage; printf restore-stage-ok > /restore-stage/restore.sbb; chown 10001:10001 /restore-stage/restore.sbb; chmod 0400 /restore-stage/restore.sbb'
+docker run --rm --user 10001:10001 --entrypoint sh --read-only \
+  --mount "type=bind,src=$restore_stage,dst=/backup,readonly" \
+  "$image" -c 'test "$(cat /backup/restore.sbb)" = "restore-stage-ok"'
 
 assert_container_fails() {
   container=$1
@@ -290,10 +312,111 @@ docker exec "$default_container" sh -c \
   'test "$(stat -c "%u:%g:%a" /data)" = "10001:10001:700" && test "$(stat -c "%u:%g:%a" /data/steam-data)" = "10001:10001:700" && test "$(stat -c "%u:%g:%a" /data/instance.secret)" = "10001:10001:600"'
 docker exec "$default_container" sh -c \
   'printf migration-ok > /data/steam-data/migration-sentinel'
+docker exec -d "$default_container" node -e '
+void (async () => {
+  const setup = await fetch("http://127.0.0.1:3000/api/setup", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      password: "correct horse battery staple",
+      setupToken: "12345678",
+    }),
+  });
+  if (!setup.ok) throw new Error(`Setup failed with ${setup.status}.`);
+  const cookie = setup.headers.get("set-cookie")?.split(";", 1)[0];
+  if (!cookie) throw new Error("Setup did not return a session cookie.");
+  const { csrfToken } = await setup.json();
+  if (!csrfToken) throw new Error("Setup did not return a CSRF token.");
+  const backup = await fetch("http://127.0.0.1:3000/api/admin/backup", {
+    method: "POST",
+    headers: {
+      cookie,
+      "content-type": "application/json",
+      "x-csrf-token": csrfToken,
+    },
+    body: JSON.stringify({ passphrase: "correct horse battery staple" }),
+  });
+  if (!backup.ok) throw new Error(`Backup failed with ${backup.status}.`);
+  require("node:fs").writeFileSync(
+    "/data/steam-data/restore.sbb",
+    Buffer.from(await backup.arrayBuffer()),
+    { mode: 0o400 },
+  );
+  const events = await fetch("http://127.0.0.1:3000/api/events", {
+    headers: { cookie },
+  });
+  if (!events.ok) throw new Error(`SSE failed with ${events.status}.`);
+  require("node:fs").writeFileSync(
+    "/data/steam-data/sse-connected",
+    "yes",
+  );
+  const reader = events.body.getReader();
+  while (!(await reader.read()).done) {}
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});'
+attempt=1
+while [ "$attempt" -le 20 ]; do
+  if docker exec "$default_container" test -f /data/steam-data/sse-connected; then
+    break
+  fi
+  attempt=$((attempt + 1))
+  sleep 1
+done
+test "$attempt" -le 20
 secret_hash=$(docker exec "$default_container" sha256sum /data/instance.secret | awk '{print $1}')
 docker stop -t 10 "$default_container" >/dev/null
 test "$(docker inspect "$default_container" --format '{{.State.ExitCode}}')" = "0"
 docker rm "$default_container" >/dev/null
+docker run --rm --user 0:0 --entrypoint sh -v "$default_volume:/data" "$image" \
+  -c 'test ! -e /data/.steam-bee-instance'
+
+docker volume create "$restore_volume" >/dev/null
+docker run --rm --user 0:0 --entrypoint sh -v "$restore_volume:/data" "$image" \
+  -c 'chown 10001:10001 /data && chmod 0700 /data'
+printf '%s\n' "correct horse battery staple" | docker run --rm -i \
+  --user 10001:10001 \
+  --pids-limit 256 \
+  --cap-drop ALL \
+  --security-opt no-new-privileges=true \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  -v "$restore_volume:/data" \
+  -v "$default_volume:/source:ro" \
+  "$image" node dist/restore.js \
+  --input /source/steam-data/restore.sbb --data-dir /data
+docker run --rm --user 10001:10001 --entrypoint sh \
+  -v "$restore_volume:/data" "$image" \
+  -c 'test ! -e /data/.steam-bee-instance && test -d /data/.steam-bee-restore-rollback && test -s /data/steam-bee.sqlite && test -s /data/instance.secret'
+test "$(docker run --rm --user 10001:10001 --entrypoint sha256sum -v "$restore_volume:/data" "$image" /data/instance.secret | awk '{print $1}')" = "$secret_hash"
+docker run --rm --user 10001:10001 --entrypoint node \
+  -v "$restore_volume:/data" "$image" \
+  -e 'const Database=require("better-sqlite3");const db=new Database("/data/steam-bee.sqlite",{readonly:true});if(db.prepare("SELECT COUNT(*) AS count FROM admin_user").get().count!==1)process.exit(1);db.close()'
+docker run -d \
+  --name "$restore_container" \
+  --init \
+  --user 10001:10001 \
+  --pids-limit 256 \
+  --cap-drop ALL \
+  --security-opt no-new-privileges=true \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  --health-interval 1s \
+  --health-timeout 5s \
+  --health-start-period 0s \
+  --health-retries 3 \
+  -v "$restore_volume:/data" \
+  "$image" >/dev/null
+wait_for_app "$restore_container"
+wait_for_health "$restore_container"
+assert_runtime_process "$restore_container" 10001 10001 /home/steambee
+docker stop -t 10 "$restore_container" >/dev/null
+test "$(docker inspect "$restore_container" --format '{{.State.ExitCode}}')" = "0"
+docker rm "$restore_container" >/dev/null
+
+docker run --rm --user 0:0 --entrypoint sh -v "$default_volume:/data" "$image" \
+  -c 'mkdir -m 700 /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001 && printf "%s" "{\"ownerId\":\"stale\"}" > /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001/owner.json && chmod 600 /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001/owner.json && chown -R 0:0 /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001' >/dev/null
 
 docker run -d \
   --name "$migration_container" \
@@ -327,7 +450,7 @@ assert_healthcheck_drop "$migration_container" 99 100
 test "$(docker exec "$migration_container" sha256sum /data/instance.secret | awk '{print $1}')" = "$secret_hash"
 test "$(docker exec "$migration_container" cat /data/steam-data/migration-sentinel)" = "migration-ok"
 docker exec "$migration_container" sh -c \
-  'test -z "$(find /data -xdev \( ! -uid 99 -o ! -gid 100 \) -print -quit)" && test "$(stat -c "%a" /data)" = "700" && test "$(stat -c "%a" /data/instance.secret)" = "600" && test "$(stat -c "%u:%g:%a" /data/.steam-bee-data-v1)" = "99:100:700"'
+  'test -z "$(find /data -xdev \( ! -uid 99 -o ! -gid 100 \) -print -quit)" && test "$(stat -c "%a" /data)" = "700" && test "$(stat -c "%a" /data/instance.secret)" = "600" && test "$(stat -c "%u:%g:%a" /data/.steam-bee-data-v1)" = "99:100:700" && test "$(stat -c "%u:%g:%a" /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001)" = "99:100:700"'
 marker_inode=$(
   docker exec "$migration_container" stat -c '%d:%i' /data/.steam-bee-data-v1
 )

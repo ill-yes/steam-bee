@@ -131,17 +131,9 @@ export function LibraryTable({
                 {visibleRows.map((row) => (
                   <tr
                     key={row.id}
-                    tabIndex={row.original.blockedByLimit ? -1 : 0}
-                    aria-label={`${row.original.name} ${t.library.selectionTitle}`}
                     aria-selected={row.original.selected}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        onToggleApp(row.original.appId);
-                      }
-                    }}
                     className={cn(
-                      "cursor-pointer border-b border-[var(--line)] transition hover:bg-[var(--surface-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]",
+                      "cursor-pointer border-b border-[var(--line)] transition hover:bg-[var(--surface-2)]",
                       row.original.selected && "bg-[var(--selected)]",
                       row.original.blockedByLimit &&
                         "cursor-not-allowed opacity-60",

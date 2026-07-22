@@ -1,5 +1,6 @@
 import { db, sqlite } from "../db/client.js";
-import { boostSchedule } from "../db/schema.js";
+import { and, eq } from "drizzle-orm";
+import { boostSchedule, scheduleException } from "../db/schema.js";
 
 export type ScheduleRecord = typeof boostSchedule.$inferSelect;
 
@@ -22,6 +23,11 @@ export interface ScheduleRepository {
     windows: OpenScheduleWindow[],
   ): Promise<void>;
   commitStartedWindow(window: StartedScheduleWindow): Promise<void>;
+  isWindowSkipped?(
+    accountId: string,
+    scheduleId: string,
+    windowId: string,
+  ): Promise<boolean>;
 }
 
 export class SqliteScheduleRepository implements ScheduleRepository {
@@ -116,6 +122,22 @@ export class SqliteScheduleRepository implements ScheduleRepository {
       requireSingleScheduleUpdate(started.changes, window.scheduleId, "start");
     });
     commit();
+  }
+
+  async isWindowSkipped(
+    accountId: string,
+    scheduleId: string,
+    windowId: string,
+  ) {
+    const exception = await db.query.scheduleException.findFirst({
+      where: and(
+        eq(scheduleException.accountId, accountId),
+        eq(scheduleException.scheduleId, scheduleId),
+        eq(scheduleException.windowId, windowId),
+        eq(scheduleException.action, "skip"),
+      ),
+    });
+    return Boolean(exception);
   }
 }
 

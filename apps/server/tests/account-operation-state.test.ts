@@ -62,6 +62,33 @@ describe("AccountOperationState", () => {
     expect(drained).toBe(true);
   });
 
+  it("drains work appended while an earlier queue tail is still running", async () => {
+    const state = new AccountOperationState();
+    let releaseFirst = () => {};
+    let releaseAppended = () => {};
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const appendedGate = new Promise<void>((resolve) => {
+      releaseAppended = resolve;
+    });
+    const first = state.run("account-a", async () => firstGate);
+    let drained = false;
+    const drain = state.drain().then(() => {
+      drained = true;
+    });
+    const appended = state.run("account-a", async () => appendedGate);
+
+    releaseFirst();
+    await first;
+    await Promise.resolve();
+    expect(drained).toBe(false);
+
+    releaseAppended();
+    await Promise.all([appended, drain]);
+    expect(drained).toBe(true);
+  });
+
   it("applies fallback actions and expires operation metadata after its TTL", () => {
     let now = 1_000;
     const state = new AccountOperationState({

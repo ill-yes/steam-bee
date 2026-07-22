@@ -16,8 +16,10 @@ import { LogsPanel } from "./LogsPanel";
 import { SecurityPanel } from "./SecurityPanel";
 import { useAdminActions } from "./useAdminActions";
 import { useAdminData } from "./useAdminController";
+import { OperationsPanel } from "./OperationsPanel";
 
-type AdminTab = "security" | "accounts" | "logs" | "automation" | "data";
+type AdminTab =
+  "security" | "accounts" | "logs" | "automation" | "operations" | "data";
 
 export function AdminDialog({
   onClose,
@@ -27,6 +29,7 @@ export function AdminDialog({
   onChanged: () => Promise<void> | void;
 }) {
   const { messages: t } = useI18n();
+  const o = t.operations;
   const [tab, setTab] = useState<AdminTab>("security");
   const { overview, sessions, loading, error, setError, loadAdmin } =
     useAdminData(t);
@@ -41,6 +44,7 @@ export function AdminDialog({
     { value: "accounts", label: t.admin.tabs.accounts },
     { value: "logs", label: t.admin.tabs.logs },
     { value: "automation", label: t.admin.tabs.automation },
+    { value: "operations", label: o.tab },
     { value: "data", label: t.admin.tabs.data },
   ];
 
@@ -122,6 +126,12 @@ export function AdminDialog({
                     onClearLibrary={actions.clearLibrary}
                     onDeleteApp={actions.deleteApp}
                     onClearUnusedApps={actions.clearUnusedApps}
+                  />
+                )}
+                {tab === "operations" && (
+                  <OperationsPanel
+                    overview={overview}
+                    onNotificationRulesChanged={onChanged}
                   />
                 )}
               </>

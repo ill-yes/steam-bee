@@ -69,7 +69,9 @@ export class AccountOperationState {
   }
 
   async drain() {
-    await Promise.allSettled(this.queues.values());
+    while (this.queues.size > 0) {
+      await Promise.allSettled([...this.queues.values()]);
+    }
   }
 
   clearContexts() {

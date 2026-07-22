@@ -19,6 +19,7 @@ import {
   registerSseClient,
 } from "../events.js";
 import { requireAuth } from "../plugins.js";
+import { instanceLease } from "../../runtime-instance-lease.js";
 
 const systemReadRateLimit = {
   max: 60,
@@ -32,6 +33,13 @@ export async function registerSystemRoutes(app: FastifyInstance) {
   app.get("/readyz", async (_request, reply) => {
     const readiness = checkDatabaseReady();
     if (!readiness.ok) {
+      if (readiness.migrationState.unsupported.length > 0) {
+        return reply.code(503).send({
+          ok: false,
+          code: "UNSUPPORTED_DATABASE_SCHEMA",
+          unsupported: readiness.migrationState.unsupported,
+        });
+      }
       return reply.code(503).send({
         ok: false,
         code: "MIGRATIONS_PENDING",
@@ -70,6 +78,7 @@ export async function registerSystemRoutes(app: FastifyInstance) {
           dataDir: config.dataDir,
           publicDir: config.publicDir,
           sseClients: getSseClientCount(),
+          instanceLease: instanceLease.status(),
         },
         migrations: getMigrationState(),
         events: summarizeEvents(recentEvents),
@@ -155,6 +164,17 @@ async function getSystemStatus() {
     );
   });
 
+  if (migrations.unsupported.length > 0) {
+    return status(
+      SYSTEM_STATUS_CODES.migrationsPending,
+      "Unsupported database schema",
+      "danger",
+      `${migrations.unsupported.length} unsupported migration found.`,
+      0,
+      accountErrors.length,
+      recentErrors.length,
+    );
+  }
   if (migrations.pending.length > 0) {
     return status(
       SYSTEM_STATUS_CODES.migrationsPending,

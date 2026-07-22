@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsAr } from "../operations-copy";
 
 const messages = {
   common: {
@@ -505,6 +506,7 @@ const messages = {
     noAnalytics: "لم يتم قياس جلسات التعزيز حتى الآن.",
     recentSessions: "الجلسات الأخيرة",
   },
+  operations: operationsAr,
   admin: {
     title: "المنطقة الادارية",
     description:
@@ -653,6 +655,14 @@ const messages = {
       appCacheTitle: "ذاكرة التخزين المؤقت للتطبيق",
       appCacheDescription:
         "أسماء التطبيقات المحلية والبيانات الوصفية. يتم عرض 200 إدخال على الأكثر.",
+      appCacheSearch: "البحث في ذاكرة التطبيقات",
+      appCacheSearchPlaceholder: "الاسم أو AppID",
+      appCacheNoResultsTitle: "لا توجد إدخالات مطابقة",
+      appCacheNoResultsBody: "غيّر البحث لفحص الإدخالات المحمّلة.",
+      appCacheLoadedStatus: "تم تحميل {loaded} من {total} إدخالًا",
+      appCachePageStatus: "{from}–{to} من {total} نتيجة",
+      previousPage: "السابق",
+      nextPage: "التالي",
       cleanupUnused: "تنظيف غير المستخدمة",
       noAppDataTitle: "لا توجد بيانات التطبيق",
       noAppDataBody: "قم باستيراد مكتبة أو أضف AppIDs يدويًا.",

@@ -35,6 +35,7 @@ import {
   operationContext,
   type OperationContext,
 } from "../operation-context.js";
+import { getAccountOperationMaps } from "../../steam/operations-repository.js";
 
 const routeLogger = createLogger("routes");
 const qrLoginRateLimit = {
@@ -65,10 +66,15 @@ export async function registerAccountRoutes(app: FastifyInstance) {
   app.get("/api/accounts", { preHandler: requireAuth }, async () => {
     const accounts = await db.select().from(steamAccount);
     const games = await db.select().from(steamAccountGame);
+    const operations = await getAccountOperationMaps(
+      accounts.map((account) => account.id),
+    );
     return accounts.map(
       (account) =>
         ({
           ...presentSteamAccount(account, steamManager.getStatus(account.id)),
+          health: operations.health.get(account.id)!,
+          safety: operations.safety.get(account.id)!,
           games: games
             .filter((game) => game.accountId === account.id)
             .map((game) => ({
@@ -195,6 +201,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
           favorite: steamAccountLibrary.favorite,
           hidden: steamAccountLibrary.hidden,
           tagsJson: steamAccountLibrary.tagsJson,
+          importedAt: steamAccountLibrary.importedAt,
         })
         .from(steamAccountLibrary)
         .innerJoin(

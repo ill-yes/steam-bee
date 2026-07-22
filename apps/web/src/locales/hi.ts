@@ -1,4 +1,5 @@
 import type { DeepPartial, Messages } from "./types";
+import { operationsHi } from "../operations-copy";
 
 const messages = {
   common: {
@@ -513,6 +514,7 @@ const messages = {
     noAnalytics: "अभी तक कोई बूस्ट सत्र नहीं मापा गया.",
     recentSessions: "हाल के सत्र",
   },
+  operations: operationsHi,
   admin: {
     title: "प्रशासन क्षेत्र",
     description:
@@ -663,6 +665,15 @@ const messages = {
       appCacheTitle: "ऐप कैश",
       appCacheDescription:
         "स्थानीय ऐप के नाम और मेटाडेटा. अधिकतम 200 प्रविष्टियाँ दिखाई जाती हैं।",
+      appCacheSearch: "ऐप कैश खोजें",
+      appCacheSearchPlaceholder: "नाम या AppID",
+      appCacheNoResultsTitle: "कोई मेल खाती कैश प्रविष्टि नहीं",
+      appCacheNoResultsBody:
+        "लोड की गई कैश प्रविष्टियाँ देखने के लिए खोज बदलें।",
+      appCacheLoadedStatus: "{total} में से {loaded} कैश प्रविष्टियाँ लोड हुईं",
+      appCachePageStatus: "{total} परिणामों में {from}–{to}",
+      previousPage: "पिछला",
+      nextPage: "अगला",
       cleanupUnused: "अप्रयुक्त को साफ़ करें",
       noAppDataTitle: "कोई ऐप डेटा नहीं",
       noAppDataBody: "लाइब्रेरी आयात करें या मैन्युअल रूप से AppIDs जोड़ें।",

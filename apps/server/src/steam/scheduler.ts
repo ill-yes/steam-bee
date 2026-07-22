@@ -135,7 +135,7 @@ export function parseWeekdays(value: string) {
   }
 }
 
-function zonedDateParts(date: Date, timezone: string) {
+export function zonedDateParts(date: Date, timezone: string) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     weekday: "short",
@@ -166,7 +166,7 @@ function inactiveWindow(): ScheduleWindowState {
   return { active: false, windowId: null, windowStartedAt: null };
 }
 
-function zonedLocalTimeToEpoch(
+export function zonedLocalTimeToEpoch(
   dateKey: string,
   time: string,
   timezone: string,

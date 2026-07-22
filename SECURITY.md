@@ -56,3 +56,29 @@ capability set before Node starts. Its healthcheck applies the same privilege
 drop. Ownership initialization is fail-closed: `/data` must be a dedicated,
 empty or recognizable SteamBee mount without nested mounts, hardlinks,
 symlinks, special files, or unrelated top-level entries.
+
+## Operational Security Boundaries
+
+- A heartbeat lease prevents concurrent SteamBee processes from sharing one
+  `/data` directory.
+- Generic webhook delivery rejects credentials in URLs, redirects, and targets
+  resolving to loopback, private, link-local, multicast, or reserved IP space.
+  Delivery payloads contain only a local event ID, event type, and timestamp;
+  raw event messages, account identifiers, and rule secrets are excluded.
+- Encrypted recovery exports use a per-backup salt, scrypt key derivation, and
+  AES-256-GCM authentication. Restore remains an offline operation with staging,
+  integrity checks, migration compatibility checks, and a retained rollback.
+- Setup tokens, `instance.secret`, portable `.sbb` backups, instance leases,
+  restore staging, and restore rollback material remain sensitive even outside
+  the default `/data` directory. Keep them outside the source checkout; matching
+  leaf names are excluded from Git and Docker build contexts as defense in depth.
+- Browser notification permission is requested only after an explicit operator
+  action.
+
+See [Notifications and Webhooks](docs/OPERATIONS.md#notifications-and-webhooks)
+for exact payload, retry, suspension, and browser-delivery behavior.
+
+These controls reduce local operational and secret-handling risks. They do not
+alter Steam or game-service policy. In particular, safety caps and recovery
+features do not make automated playtime boosting compliant with the current
+Steam Subscriber Agreement.

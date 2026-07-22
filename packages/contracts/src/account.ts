@@ -1,3 +1,5 @@
+import type { AccountHealth, AccountSafetyPolicy } from "./operations.js";
+
 export const ACCOUNT_STATUSES = [
   "disconnected",
   "connecting",
@@ -176,6 +178,8 @@ export type SteamAccountBase = {
   tokenExpiresAt: number | null;
   lastError: string | null;
   latestBoostStartedAt: number | null;
+  health?: AccountHealth;
+  safety?: AccountSafetyPolicy;
   createdAt: number;
   updatedAt: number;
 };
@@ -192,6 +196,7 @@ export type SteamApp = {
   favorite?: boolean;
   hidden?: boolean;
   tags?: string[];
+  importedAt?: number;
 };
 
 export type SteamProfile = {
