@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22.23.1-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS base
+FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable
@@ -29,7 +29,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @steam-bee
 RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
-FROM node:22.23.1-bookworm-slim@sha256:53ada149d435c38b14476cb57e4a7da73c15595aba79bd6971b547ceb6d018bf AS runtime
+FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc4406a4d41d5824c5bb8beb AS runtime
 RUN rm -rf \
   /usr/local/lib/node_modules/npm \
   /usr/local/lib/node_modules/corepack \
