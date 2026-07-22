@@ -26,6 +26,7 @@ const supportedMigrationIds = [
   "008_notifications",
   "009_timed_hold_schedule_ownership",
   "010_timed_hold_ownership_provenance",
+  "011_automatic_session_recovery",
 ] as const;
 const supportedMigrations = new Set<string>(supportedMigrationIds);
 

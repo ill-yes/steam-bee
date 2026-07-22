@@ -1,9 +1,7 @@
 import {
-  RESUME_POLICIES,
   type AccountHealth,
   type AccountSafetyPolicy,
   type RecoveryAction,
-  type ResumePolicy,
   type SafetyHoldReason,
   type SteamErrorClass,
 } from "@steam-bee/contracts";
@@ -140,8 +138,6 @@ export async function clearRecoveryHealth(accountId: string) {
 export async function updateSafetyPolicy(
   accountId: string,
   input: {
-    resumePolicy: ResumePolicy;
-    resumeDelayMinutes: number;
     maxSessionMinutes: number | null;
     maxDailyMinutes: number | null;
     maxWeeklyMinutes: number | null;
@@ -234,7 +230,7 @@ export async function getActiveAutomationHold(accountId: string) {
     where: eq(accountHealthState.accountId, accountId),
   });
   if (
-    health?.recoveryAction === "manual_resume" ||
+    health?.recoveryAction === "attention" ||
     health?.recoveryAction === "reauthenticate"
   ) {
     return {
@@ -269,10 +265,6 @@ function presentSafety(
 ): AccountSafetyPolicy {
   return {
     accountId: row.accountId,
-    resumePolicy: RESUME_POLICIES.includes(row.resumePolicy as ResumePolicy)
-      ? (row.resumePolicy as ResumePolicy)
-      : "automatic",
-    resumeDelayMinutes: row.resumeDelayMinutes,
     maxSessionMinutes: row.maxSessionMinutes,
     maxDailyMinutes: row.maxDailyMinutes,
     maxWeeklyMinutes: row.maxWeeklyMinutes,
@@ -296,7 +288,7 @@ function isErrorClass(value: unknown): value is SteamErrorClass {
 }
 
 function isRecoveryAction(value: unknown): value is RecoveryAction {
-  return ["none", "wait", "retry", "reauthenticate", "manual_resume"].includes(
+  return ["none", "wait", "retry", "reauthenticate", "attention"].includes(
     String(value),
   );
 }
@@ -308,7 +300,6 @@ function isHoldReason(value: unknown): value is SafetyHoldReason {
     "session_limit",
     "daily_limit",
     "weekly_limit",
-    "other_session_delay",
-    "other_session_manual",
+    "safety_failure",
   ].includes(String(value));
 }

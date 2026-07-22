@@ -56,13 +56,13 @@ export class ScheduleCoordinator {
 
   constructor(private readonly ports: ScheduleCoordinatorPorts) {}
 
-  start() {
+  start(options: { runInitialTick?: boolean } = {}) {
     if (this.timer) return;
 
     this.timer = setInterval(() => {
       this.runScheduledTick("interval");
     }, scheduleIntervalMs);
-    this.runScheduledTick("initial");
+    if (options.runInitialTick !== false) this.runScheduledTick("initial");
   }
 
   async stop() {

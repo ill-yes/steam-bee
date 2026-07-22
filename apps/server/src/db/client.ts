@@ -409,6 +409,126 @@ const migrations: Migration[] = [
       WHERE hold_reason IN ('pause_until', 'other_session_delay');
     `,
   },
+  {
+    id: "011_automatic_session_recovery",
+    description:
+      "Isolate notification revisions and normalize automatic recovery",
+    sql: `
+      ALTER TABLE notification_rule
+        ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE notification_rule
+        ADD COLUMN start_after_event_id INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE notification_delivery
+        ADD COLUMN rule_revision INTEGER NOT NULL DEFAULT 1;
+
+      UPDATE notification_rule
+      SET start_after_event_id = COALESCE((
+        SELECT MAX(event.id)
+        FROM steam_event AS event
+        WHERE event.created_at < notification_rule.created_at
+      ), 0);
+
+      UPDATE notification_delivery
+      SET rule_revision = COALESCE((
+        SELECT rule.revision
+        FROM notification_rule AS rule
+        WHERE rule.id = notification_delivery.rule_id
+      ), 1);
+
+      DELETE FROM notification_delivery
+      WHERE rule_id IN (
+        SELECT rule.id
+        FROM notification_rule AS rule, json_each(rule.event_types_json)
+        WHERE rule.target = 'browser'
+          AND json_each.value = 'steam.status.paused_other_session'
+      );
+
+      UPDATE notification_rule
+      SET event_types_json = (
+            SELECT json_group_array(selector)
+            FROM (
+              SELECT
+                CASE
+                  WHEN json_each.value = 'steam.status.paused_other_session'
+                    THEN 'steam.session.conflict'
+                  ELSE json_each.value
+                END AS selector,
+                MIN(CAST(json_each.key AS INTEGER)) AS first_position
+              FROM json_each(notification_rule.event_types_json)
+              GROUP BY selector
+              ORDER BY first_position
+            )
+          ),
+          revision = revision + 1,
+          start_after_event_id = COALESCE((SELECT MAX(id) FROM steam_event), 0),
+          updated_at = MAX(
+            updated_at,
+            CAST(strftime('%s', 'now') AS INTEGER) * 1000
+          )
+      WHERE target = 'browser'
+        AND EXISTS (
+          SELECT 1
+          FROM json_each(notification_rule.event_types_json)
+          WHERE json_each.value = 'steam.status.paused_other_session'
+        );
+
+      UPDATE steam_account
+      SET desired_state = 'running',
+          status = 'disconnected',
+          last_error = NULL
+      WHERE id IN (
+        SELECT account_id
+        FROM account_safety_policy
+        WHERE hold_reason IN ('other_session_delay', 'other_session_manual')
+      );
+
+      UPDATE account_health_state
+      SET next_retry_at = NULL,
+          retry_attempt = 0,
+          error_class = 'none',
+          error_code = NULL,
+          recovery_action = 'none'
+      WHERE account_id IN (
+        SELECT account_id
+        FROM account_safety_policy
+        WHERE hold_reason IN ('other_session_delay', 'other_session_manual')
+      );
+
+      UPDATE account_safety_policy
+      SET resume_policy = 'automatic',
+          resume_delay_minutes = 15,
+          pause_until = CASE
+            WHEN hold_reason IN ('other_session_delay', 'other_session_manual')
+              THEN NULL
+            ELSE pause_until
+          END,
+          hold_reason = CASE
+            WHEN hold_reason IN ('other_session_delay', 'other_session_manual')
+              THEN NULL
+            ELSE hold_reason
+          END,
+          hold_created_at = CASE
+            WHEN hold_reason IN ('other_session_delay', 'other_session_manual')
+              THEN NULL
+            ELSE hold_created_at
+          END,
+          hold_schedule_id = CASE
+            WHEN hold_reason IN ('other_session_delay', 'other_session_manual')
+              THEN NULL
+            ELSE hold_schedule_id
+          END,
+          hold_schedule_window = CASE
+            WHEN hold_reason IN ('other_session_delay', 'other_session_manual')
+              THEN NULL
+            ELSE hold_schedule_window
+          END,
+          hold_schedule_origin = CASE
+            WHEN hold_reason IN ('other_session_delay', 'other_session_manual')
+              THEN 'unscheduled'
+            ELSE hold_schedule_origin
+          END;
+    `,
+  },
 ];
 
 export function migrate() {

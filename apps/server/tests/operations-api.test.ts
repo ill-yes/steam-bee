@@ -94,10 +94,25 @@ describe("operations API", () => {
       expect(accounts.statusCode).toBe(200);
       expect(accounts.json()[0]).toMatchObject({
         health: { libraryImportedAt: now, retryAttempt: 0 },
-        safety: { resumePolicy: "automatic" },
+        safety: { holdReason: null },
       });
 
       const safety = await app.inject({
+        method: "PUT",
+        url: `/api/accounts/${accountId}/safety`,
+        ...auth,
+        payload: {
+          maxSessionMinutes: 60,
+          maxDailyMinutes: 120,
+          maxWeeklyMinutes: null,
+        },
+      });
+      expect(safety.statusCode).toBe(200);
+      expect(safety.json()).toMatchObject({
+        maxSessionMinutes: 60,
+      });
+
+      const legacySafety = await app.inject({
         method: "PUT",
         url: `/api/accounts/${accountId}/safety`,
         ...auth,
@@ -109,11 +124,7 @@ describe("operations API", () => {
           maxWeeklyMinutes: null,
         },
       });
-      expect(safety.statusCode).toBe(200);
-      expect(safety.json()).toMatchObject({
-        resumePolicy: "manual",
-        maxSessionMinutes: 60,
-      });
+      expect(legacySafety.statusCode).toBe(400);
 
       const goal = await app.inject({
         method: "PUT",
@@ -508,8 +519,71 @@ describe("operations API", () => {
         name: "New browser rule",
         target: "browser",
         failureCount: 0,
+        revision: 2,
+        startAfterEventId: event.id,
       });
-      expect(updated?.createdAt).toBeGreaterThan(eventAt);
+      expect(updated?.createdAt).toBe(eventAt - 1_000);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("increments notification revisions atomically across parallel updates", async () => {
+    const app = await buildApp({ initSteam: false });
+    try {
+      const setup = await app.inject({
+        method: "POST",
+        url: "/api/setup",
+        payload: {
+          password: "correct horse battery staple",
+          setupToken: "steam-bee-test-setup-token",
+        },
+      });
+      const cookie = setup.cookies.find(
+        (item) => item.name === "session",
+      )!.value;
+      const csrf = setup.json<{ csrfToken: string }>().csrfToken;
+      const ruleId = crypto.randomUUID();
+      const now = Date.now();
+      await db.insert(notificationRule).values({
+        id: ruleId,
+        name: "Original rule",
+        target: "browser",
+        enabled: true,
+        eventTypesJson: JSON.stringify(["steam.status.error"]),
+        webhookKeyVersion: 1,
+        failureCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const responses = await Promise.all(
+        ["First replacement", "Second replacement"].map((name) =>
+          app.inject({
+            method: "PUT",
+            url: `/api/notifications/rules/${ruleId}`,
+            cookies: { session: cookie },
+            headers: { "x-csrf-token": csrf },
+            payload: {
+              name,
+              target: "browser",
+              enabled: true,
+              eventTypes: ["steam.session.conflict"],
+            },
+          }),
+        ),
+      );
+
+      expect(responses.map((response) => response.statusCode)).toEqual([
+        200, 200,
+      ]);
+      const updated = await db.query.notificationRule.findFirst({
+        where: eq(notificationRule.id, ruleId),
+      });
+      expect(updated?.revision).toBe(3);
+      expect(["First replacement", "Second replacement"]).toContain(
+        updated?.name,
+      );
     } finally {
       await app.close();
     }
@@ -686,6 +760,40 @@ describe("operations API", () => {
         enabled: true,
         eventTypesJson: JSON.stringify(["steam.status.error"]),
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("rate limits notification rule reads explicitly", async () => {
+    const app = await buildApp({ initSteam: false });
+    try {
+      const setup = await app.inject({
+        method: "POST",
+        url: "/api/setup",
+        payload: {
+          password: "correct horse battery staple",
+          setupToken: "steam-bee-test-setup-token",
+        },
+      });
+      const cookie = setup.cookies.find(
+        (item) => item.name === "session",
+      )!.value;
+      const responses = [];
+      for (let index = 0; index < 61; index += 1) {
+        responses.push(
+          await app.inject({
+            method: "GET",
+            url: "/api/notifications/rules",
+            cookies: { session: cookie },
+          }),
+        );
+      }
+
+      expect(
+        responses.filter((response) => response.statusCode === 200),
+      ).toHaveLength(60);
+      expect(responses.at(-1)?.statusCode).toBe(429);
     } finally {
       await app.close();
     }

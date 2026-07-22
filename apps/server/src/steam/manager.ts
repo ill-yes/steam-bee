@@ -81,7 +81,7 @@ class SteamManager {
   private readonly safetyCoordinator = new SafetyCoordinator({
     runForAccount: (accountId, operation) =>
       this.accountOperations.run(accountId, operation),
-    pause: (accountId, context) => this.pauseNow(accountId, context),
+    pause: (accountId, context) => this.pauseForSafety(accountId, context),
     recordInfo: (accountId, type, message, metadata) =>
       this.recordInfo(accountId, type, message, metadata),
     onTickError: (error) => {
@@ -95,14 +95,15 @@ class SteamManager {
       { accountCount: accounts.length },
       "Initializing Steam workers",
     );
-    for (const account of accounts) {
+    for (const account of accounts) this.getOrCreateWorker(account);
+
+    await this.scheduleCoordinator.tick(new Date());
+
+    const reconciledAccounts = await db.select().from(steamAccount);
+    for (const account of reconciledAccounts) {
       const worker = this.getOrCreateWorker(account);
       const policy = await getAccountSafetyPolicy(account.id);
-      if (
-        (policy.holdReason === "pause_until" ||
-          policy.holdReason === "other_session_delay") &&
-        policy.pauseUntil !== null
-      ) {
+      if (policy.holdReason === "pause_until" && policy.pauseUntil !== null) {
         this.logger.info(
           {
             accountId: account.id,
@@ -131,6 +132,7 @@ class SteamManager {
           );
           continue;
         }
+        await clearRecoveryHealth(account.id);
         this.logger.info({ accountId: account.id }, "Auto-starting account");
         void worker.start().catch((error) => {
           this.logger.error(
@@ -140,7 +142,7 @@ class SteamManager {
         });
       }
     }
-    this.scheduleCoordinator.start();
+    this.scheduleCoordinator.start({ runInitialTick: false });
     this.safetyCoordinator.start();
   }
 
@@ -270,18 +272,16 @@ class SteamManager {
 
       const owner = await this.scheduleCoordinator.getHoldOwner(accountId);
       await setSafetyHold(accountId, "pause_until", until, owner);
-      try {
-        await this.pauseNow(accountId, {
-          ...context,
-          source: "safety",
-          action: "pause-until",
-          until,
-        });
-      } catch (error) {
-        await clearSafetyHold(accountId);
-        throw error;
+      await this.pauseForSafety(accountId, {
+        ...context,
+        source: "safety",
+        action: "pause-until",
+        until,
+      });
+      const policy = await getAccountSafetyPolicy(accountId);
+      if (policy.holdReason === "pause_until") {
+        this.scheduleSafetyResume(accountId, until, "pause_until");
       }
-      this.scheduleSafetyResume(accountId, until, "pause_until");
     });
   }
 
@@ -304,6 +304,46 @@ class SteamManager {
       "Boosting was paused.",
       this.accountOperations.metadata(accountId),
     );
+  }
+
+  private async pauseForSafety(accountId: string, context: OperationContext) {
+    const worker =
+      this.workers.get(accountId) ??
+      (await this.getWorkerForAccount(accountId));
+    try {
+      await this.pauseNow(accountId, context);
+      return;
+    } catch (pauseError) {
+      const pauseMessage = safeErrorMessage(pauseError);
+      try {
+        await worker.forceDisconnectForSafety(
+          "SteamBee force-disconnected after the safety pause failed.",
+        );
+        await this.recordError(
+          accountId,
+          "steam.safety.fallback",
+          `Safety pause failed; SteamBee force-disconnected its client: ${pauseMessage}`,
+          context,
+        );
+        return;
+      } catch (disconnectError) {
+        const disconnectMessage = safeErrorMessage(disconnectError);
+        await setSafetyHold(accountId, "safety_failure");
+        await worker.markSafetyAttention(
+          "Safety enforcement could not confirm that the Steam client stopped.",
+        );
+        await this.recordError(
+          accountId,
+          "steam.safety.failure",
+          `Safety enforcement failed and needs attention: ${disconnectMessage}`,
+          {
+            ...context,
+            pauseError: pauseMessage,
+          },
+        );
+        throw disconnectError;
+      }
+    }
   }
 
   async resume(accountId: string, context: OperationContext = {}) {
@@ -514,12 +554,20 @@ class SteamManager {
       const createdWorker = new SteamWorker(account, {
         runAccountOperation: (operation) =>
           this.accountOperations.run(account.id, operation),
-        canResumeOtherSessionDelay: () =>
-          getSafetyHoldOwner(account.id).then((owner) =>
-            this.scheduleCoordinator.canResumeHeldAccount(account.id, owner),
+        recordSessionConflict: ({ source: conflictSource, ...input }) =>
+          this.recordInfo(
+            account.id,
+            "steam.session.conflict",
+            input.cooldown
+              ? "Another Steam session is still active; retrying after a 60-minute cooldown."
+              : `Another Steam session is active; retry ${input.attempt} of 3 is scheduled.`,
+            {
+              source: "recovery",
+              action: "session-conflict-retry",
+              conflictSource,
+              ...input,
+            },
           ),
-        getOtherSessionDelayOwner: () =>
-          this.scheduleCoordinator.getHoldOwner(account.id),
       });
       this.logger.debug({ accountId: account.id }, "Created Steam worker");
       createdWorker.on("status", (payload) =>
@@ -624,7 +672,7 @@ class SteamManager {
   private scheduleSafetyResume(
     accountId: string,
     resumeAt: number,
-    expectedReason: "other_session_delay" | "pause_until",
+    expectedReason: "pause_until",
   ) {
     this.clearSafetyResume(accountId);
     const delay = Math.max(0, Math.min(resumeAt - Date.now(), 2_147_483_647));
@@ -643,21 +691,8 @@ class SteamManager {
             return;
           }
           const account = await getAccountOrThrow(accountId);
-          const expectedDesiredState =
-            expectedReason === "pause_until" ? "paused" : "running";
-          if (account.desiredState !== expectedDesiredState) {
+          if (account.desiredState !== "paused") {
             await clearSafetyHold(accountId);
-            return;
-          }
-          if (
-            expectedReason === "other_session_delay" &&
-            policy.resumePolicy === "manual"
-          ) {
-            await setSafetyHold(accountId, "other_session_manual");
-            await this.pauseNow(accountId, {
-              source: "safety",
-              action: "delayed-resume-became-manual",
-            });
             return;
           }
           if (
@@ -673,23 +708,9 @@ class SteamManager {
 
           const context = {
             source: "safety",
-            action:
-              expectedReason === "pause_until"
-                ? "pause-until-expired"
-                : "delayed-resume-after-restart",
+            action: "pause-until-expired",
           } satisfies OperationContext;
           const worker = await this.getWorkerForAccount(accountId);
-          if (expectedReason === "other_session_delay") {
-            if (worker.isConnected) {
-              await worker.resumeOtherSessionDelay();
-            } else {
-              await this.startNow(accountId, context, {
-                preserveSafetyHold: true,
-              });
-            }
-            return;
-          }
-
           await clearSafetyHold(accountId);
           if (worker.isConnected) {
             await this.resumeNow(accountId, context);

@@ -15,6 +15,8 @@ The product should feel like a quiet control plane, not a gaming launcher or a h
 - Use stable machine-readable API codes; localize user-facing copy in the browser.
 - Preserve the single-process architecture until measured constraints justify additional services.
 - Let safety controls end or pause existing activity, never initiate it.
+- Yield to another Steam session without taking it over, and recover
+  automatically once Steam reports the account free.
 - Keep progress goals read-only and tied to explicit library snapshots; do not poll Steam or run until a target.
 - Restrict group actions to safe pause, stop, and administration operations.
 

@@ -172,21 +172,28 @@ export function App() {
       }, 150);
     };
     source.addEventListener("event", (message) => {
+      let event: SteamEvent;
       try {
-        const event = JSON.parse((message as MessageEvent).data) as SteamEvent;
-        setEvents((current) => [event, ...current].slice(0, 100));
-        const status = event.metadata.status;
-        const eventKeys = [
-          event.type,
-          ...(typeof status === "string" ? [`${event.type}.${status}`] : []),
-        ];
-        const browserRule = notificationRulesRef.current.some(
-          (rule) =>
-            rule.enabled &&
-            rule.target === "browser" &&
-            (rule.eventTypes.includes("*") ||
-              eventKeys.some((eventKey) => rule.eventTypes.includes(eventKey))),
-        );
+        event = JSON.parse((message as MessageEvent).data) as SteamEvent;
+      } catch {
+        setError(t.errors.INVALID_RESPONSE);
+        return;
+      }
+      setEvents((current) => [event, ...current].slice(0, 100));
+      scheduleRefresh();
+      const status = event.metadata.status;
+      const eventKeys = [
+        event.type,
+        ...(typeof status === "string" ? [`${event.type}.${status}`] : []),
+      ];
+      const browserRule = notificationRulesRef.current.some(
+        (rule) =>
+          rule.enabled &&
+          rule.target === "browser" &&
+          (rule.eventTypes.includes("*") ||
+            eventKeys.some((eventKey) => rule.eventTypes.includes(eventKey))),
+      );
+      try {
         if (
           browserRule &&
           "Notification" in window &&
@@ -197,9 +204,8 @@ export function App() {
             tag: `steam-bee-${event.type}`,
           });
         }
-        scheduleRefresh();
       } catch {
-        setError(t.errors.INVALID_RESPONSE);
+        // Notification support can fail independently from a valid SSE event.
       }
     });
     source.addEventListener("status", scheduleRefresh);

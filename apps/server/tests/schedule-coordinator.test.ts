@@ -238,7 +238,7 @@ describe("ScheduleCoordinator", () => {
     ]);
     let holdActive = true;
     harness.ports.getActiveHold = async () =>
-      holdActive ? { reason: "other_session_delay", until: null } : null;
+      holdActive ? { reason: "session_limit", until: null } : null;
 
     await harness.coordinator.tick(afterWindow);
 

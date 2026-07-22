@@ -12,17 +12,23 @@ const authenticationResults = new Set([
   5, 17, 18, 26, 27, 43, 51, 63, 65, 66, 71, 73, 74, 77, 80, 83,
 ]);
 const rateLimitedResults = new Set([25, 84]);
-const sessionReplacedResult = 34;
+const sessionConflictResults = new Set([6, 34, 50]);
+export const sessionConflictRetryDelayMs = 5 * 60_000;
+export const sessionConflictCooldownMs = 60 * 60_000;
+
+export function sessionConflictDelay(attempt: number) {
+  return attempt >= 3 ? sessionConflictCooldownMs : sessionConflictRetryDelayMs;
+}
 
 export function classifySteamFailure(value: unknown): RetryDecision {
   const errorCode = extractEResult(value);
-  if (errorCode === sessionReplacedResult) {
+  if (errorCode !== null && sessionConflictResults.has(errorCode)) {
     return {
-      terminal: true,
+      terminal: false,
       errorClass: "session_replaced",
       errorCode,
-      recoveryAction: "manual_resume",
-      minimumDelayMs: 0,
+      recoveryAction: "retry",
+      minimumDelayMs: sessionConflictRetryDelayMs,
     };
   }
   if (errorCode !== null && authenticationResults.has(errorCode)) {

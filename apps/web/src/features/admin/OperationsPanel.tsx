@@ -291,6 +291,7 @@ export function OperationsPanel({
                       <Button
                         size="sm"
                         variant="outline"
+                        aria-label={`${o.pauseGroup}: ${group.name}`}
                         onClick={() => void groupAction(group, "pause")}
                         disabled={busy !== null}
                       >
@@ -299,6 +300,7 @@ export function OperationsPanel({
                       <Button
                         size="sm"
                         variant="outline"
+                        aria-label={`${o.stopGroup}: ${group.name}`}
                         onClick={() => void groupAction(group, "stop")}
                         disabled={busy !== null}
                       >

@@ -38,6 +38,31 @@ restarting.
 The container root filesystem is read-only. Only `/data` and the bounded
 `/tmp` tmpfs are writable, and Docker's `json-file` logs rotate by default.
 
+## Concurrent Steam Sessions and Safety Recovery
+
+SteamBee never forces another Steam session off the account. Steam results
+`6`, `34`, and `50`, together with the live occupied-account signal, enter one
+automatic recovery cycle. The first and second conflicts retry after five
+minutes; the third waits for a 60-minute cooldown. Further conflicts begin the
+same three-step cycle again without requiring a manual resume. The account's
+Recovery health panel shows the current attempt, next retry, or cooldown.
+
+If Steam reports the account free while a retry or cooldown is pending,
+SteamBee cancels that timer and resumes immediately. Pause, stop, schedule end,
+account deletion, and any other transition away from the running desired state
+cancel pending callbacks and clear the visible retry state. A container restart
+does not restore an old conflict counter or cooldown: eligible accounts begin a
+fresh cycle immediately at attempt 1, after schedules have first been reconciled
+so an expired window cannot cause a transient login.
+
+Authentication failures remain terminal and require a new sign-in. Generic
+network and rate-limit failures retain their separate backoff policy. If a
+safety pause fails, its hold remains active while SteamBee attempts both an
+empty `gamesPlayed` update and `logOff`. If that fallback cannot be confirmed,
+the account receives a persistent attention hold and is not auto-started until
+an operator resolves the failure. This safety fallback does not use Steam's
+forced session-takeover option.
+
 Named volumes are the supported default. On Unraid, you can replace the volume
 with an appdata bind mount if you want direct host-side backups:
 
@@ -71,7 +96,7 @@ Notification rules are managed in **Admin area → Operations**. The default
 rule subscribes to five operational selectors:
 
 - `steam.status.login_required`
-- `steam.status.paused_other_session`
+- `steam.session.conflict`
 - `steam.schedule.error`
 - `steam.safety.cap`
 - `steam.status.error`
@@ -103,7 +128,10 @@ private, link-local, multicast, or reserved address space are rejected. Each
 request has an 8-second timeout, and a response body above 64 KiB fails the
 delivery.
 
-Webhook delivery is durable. A failed delivery is tried at most three times:
+Webhook delivery is durable. Rule revisions are immutable delivery boundaries:
+events older than a new rule's event-ID boundary are not replayed, and a
+delivery already in flight keeps its original target and cannot update the
+replacement rule's health. A failed delivery is tried at most three times:
 immediately, then after approximately 30 and 60 seconds. Five consecutive
 delivery failures suspend the rule for one hour. The Operations tab shows
 whether a rule is active, retrying, failed, suspended, or disabled, together

@@ -1,5 +1,5 @@
 import type { SafetyHoldReason } from "@steam-bee/contracts";
-import { eq, isNull, or } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   accountSafetyPolicy,
@@ -7,7 +7,7 @@ import {
   steamAccount,
 } from "../db/schema.js";
 import type { OperationContext } from "../operation-context.js";
-import { clearSafetyHold, setSafetyHold } from "./operations-repository.js";
+import { setSafetyHold } from "./operations-repository.js";
 
 type SafetyPorts = {
   runForAccount: <T>(
@@ -72,12 +72,7 @@ export class SafetyCoordinator {
         steamAccount,
         eq(steamAccount.id, accountSafetyPolicy.accountId),
       )
-      .where(
-        or(
-          isNull(accountSafetyPolicy.holdReason),
-          eq(accountSafetyPolicy.holdReason, "other_session_delay"),
-        ),
-      );
+      .where(isNull(accountSafetyPolicy.holdReason));
 
     for (const policy of policies) {
       if (policy.status !== "boosting" || policy.desiredState !== "running") {
@@ -92,8 +87,7 @@ export class SafetyCoordinator {
           !current ||
           current.status !== "boosting" ||
           current.desiredState !== "running" ||
-          (current.holdReason !== null &&
-            current.holdReason !== "other_session_delay")
+          current.holdReason !== null
         ) {
           return;
         }
@@ -108,12 +102,7 @@ export class SafetyCoordinator {
           consumedMinutes: Math.ceil(currentCap.consumedMs / 60_000),
           limitMinutes: currentCap.limitMinutes,
         } satisfies OperationContext;
-        try {
-          await this.ports.pause(policy.accountId, context);
-        } catch (error) {
-          await clearSafetyHold(policy.accountId);
-          throw error;
-        }
+        await this.ports.pause(policy.accountId, context);
         await this.ports.recordInfo(
           policy.accountId,
           "steam.safety.cap",

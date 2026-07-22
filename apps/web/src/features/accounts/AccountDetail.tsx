@@ -74,6 +74,7 @@ export function AccountDetail({
     setSchedulePresetId,
     loadState,
     optionalStates,
+    setOptionalResourceState,
     loadAccountData,
   } = useAccountResources();
   const [personaState, setPersonaState] = useState(account.personaState);
@@ -461,13 +462,15 @@ export function AccountDetail({
   }
 
   async function refreshSchedulePreview() {
-    return runBusyAction("schedule-preview", async () => {
+    setOptionalResourceState("schedulePreview", "loading");
+    const succeeded = await runBusyAction("schedule-preview", async () => {
       setSchedulePreview(
         await api<SchedulePreview>(
           `/api/accounts/${account.id}/schedules/preview?days=7`,
         ),
       );
     });
+    setOptionalResourceState("schedulePreview", succeeded ? "ready" : "error");
   }
 
   async function skipNextSchedule(schedule: BoostSchedule) {
@@ -485,8 +488,6 @@ export function AccountDetail({
   }
 
   async function saveSafetyPolicy(input: {
-    resumePolicy: AccountSafetyPolicy["resumePolicy"];
-    resumeDelayMinutes: number;
     maxSessionMinutes: number | null;
     maxDailyMinutes: number | null;
     maxWeeklyMinutes: number | null;

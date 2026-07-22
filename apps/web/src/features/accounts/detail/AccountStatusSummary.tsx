@@ -105,6 +105,11 @@ export function AccountStatusSummary({
           {health?.retryAttempt ? (
             <span className="text-[10px] text-[var(--muted)]">
               {interpolate(o.retryAttempt, { count: health.retryAttempt })}
+              {health.errorClass === "session_replaced" ? " / 3" : null}
+              {health.errorClass === "session_replaced" &&
+              health.recoveryAction === "wait"
+                ? ` · ${o.sessionConflictCooldown}`
+                : null}
             </span>
           ) : null}
         </div>

@@ -3,7 +3,6 @@ import {
   ACCOUNT_STATUS_CAPABILITIES,
   ERROR_CODES,
   NOTIFICATION_TARGETS,
-  RESUME_POLICIES,
   type AccountGroup,
   type BulkAccountCommand,
   type BulkAccountCommandResult,
@@ -52,17 +51,13 @@ const nullableLimit = z
   .min(5)
   .max(7 * 24 * 60)
   .nullable();
-const safetySchema = z.object({
-  resumePolicy: z.enum(RESUME_POLICIES),
-  resumeDelayMinutes: z
-    .number()
-    .int()
-    .min(1)
-    .max(24 * 60),
-  maxSessionMinutes: nullableLimit,
-  maxDailyMinutes: nullableLimit,
-  maxWeeklyMinutes: nullableLimit,
-});
+const safetySchema = z
+  .object({
+    maxSessionMinutes: nullableLimit,
+    maxDailyMinutes: nullableLimit,
+    maxWeeklyMinutes: nullableLimit,
+  })
+  .strict();
 const groupSchema = z.object({
   name: z.string().trim().min(1).max(64),
   accountIds: z.array(z.string().uuid()).min(1).max(100),
@@ -465,7 +460,20 @@ async function listGoals(accountId: string): Promise<PlaytimeGoal[]> {
 }
 
 function registerNotificationRoutes(app: FastifyInstance) {
-  app.get("/api/notifications/rules", { preHandler: requireAuth }, listRules);
+  app.get(
+    "/api/notifications/rules",
+    {
+      preHandler: requireAuth,
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: "1 minute",
+          groupId: "notification-rules-read",
+        },
+      },
+    },
+    listRules,
+  );
   app.post(
     "/api/notifications/rules",
     { preHandler: requireAuth },
@@ -490,28 +498,30 @@ function registerNotificationRoutes(app: FastifyInstance) {
         .object({ ruleId: z.string().uuid() })
         .parse(request.params);
       const body = ruleSchema.parse(request.body);
-      const existing = await db.query.notificationRule.findFirst({
-        where: eq(notificationRule.id, ruleId),
-      });
-      if (!existing)
-        throw appError(
-          "Notification rule was not found.",
-          404,
-          ERROR_CODES.notFound,
-        );
       const now = Date.now();
+      const values = ruleValues(ruleId, body, now);
       const replaceRuleConfiguration = sqlite.transaction(() => {
+        const current = sqlite
+          .prepare("SELECT revision FROM notification_rule WHERE id = ?")
+          .get(ruleId) as { revision: number } | undefined;
+        if (!current)
+          throw appError(
+            "Notification rule was not found.",
+            404,
+            ERROR_CODES.notFound,
+          );
+        const revision = current.revision + 1;
+        const startAfterEventId = latestSteamEventId();
         sqlite
           .prepare("DELETE FROM notification_delivery WHERE rule_id = ?")
           .run(ruleId);
-        const values = ruleValues(ruleId, body, now);
         sqlite
           .prepare(
             `UPDATE notification_rule
              SET name = ?, target = ?, enabled = ?, event_types_json = ?,
                  webhook_ciphertext = ?, webhook_iv = ?, webhook_auth_tag = ?,
                  webhook_key_version = ?, failure_count = ?, disabled_until = ?,
-                 created_at = ?, updated_at = ?
+                 revision = ?, start_after_event_id = ?, updated_at = ?
              WHERE id = ?`,
           )
           .run(
@@ -525,7 +535,8 @@ function registerNotificationRoutes(app: FastifyInstance) {
             values.webhookKeyVersion,
             values.failureCount,
             values.disabledUntil,
-            values.createdAt,
+            revision,
+            startAfterEventId,
             values.updatedAt,
             ruleId,
           );
@@ -551,16 +562,18 @@ const upsertBrowserRule = sqlite.transaction(
   (body: z.infer<typeof ruleSchema>, now: number) => {
     const existing = sqlite
       .prepare(
-        `SELECT id
+        `SELECT id, revision
          FROM notification_rule
          WHERE target = 'browser'
          ORDER BY created_at, id
          LIMIT 1`,
       )
-      .get() as { id: string } | undefined;
+      .get() as { id: string; revision: number } | undefined;
     const ruleId = existing?.id ?? randomUUID();
     const values = ruleValues(ruleId, body, now);
     if (existing) {
+      const revision = existing.revision + 1;
+      const startAfterEventId = latestSteamEventId();
       sqlite
         .prepare("DELETE FROM notification_delivery WHERE rule_id = ?")
         .run(ruleId);
@@ -570,7 +583,7 @@ const upsertBrowserRule = sqlite.transaction(
            SET name = ?, target = ?, enabled = ?, event_types_json = ?,
                webhook_ciphertext = ?, webhook_iv = ?, webhook_auth_tag = ?,
                webhook_key_version = ?, failure_count = ?, disabled_until = ?,
-               created_at = ?, updated_at = ?
+               revision = ?, start_after_event_id = ?, updated_at = ?
            WHERE id = ?`,
         )
         .run(
@@ -584,7 +597,8 @@ const upsertBrowserRule = sqlite.transaction(
           values.webhookKeyVersion,
           values.failureCount,
           values.disabledUntil,
-          values.createdAt,
+          revision,
+          startAfterEventId,
           values.updatedAt,
           ruleId,
         );
@@ -593,13 +607,15 @@ const upsertBrowserRule = sqlite.transaction(
     sqlite
       .prepare(
         `INSERT INTO notification_rule (
-           id, name, target, enabled, event_types_json, webhook_ciphertext,
+           id, revision, start_after_event_id, name, target, enabled, event_types_json, webhook_ciphertext,
            webhook_iv, webhook_auth_tag, webhook_key_version, failure_count,
            disabled_until, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         values.id,
+        values.revision,
+        values.startAfterEventId,
         values.name,
         values.target,
         values.enabled ? 1 : 0,
@@ -620,10 +636,15 @@ async function listRules(): Promise<NotificationRule[]> {
   const rows = await db.select().from(notificationRule);
   const retryRows = sqlite
     .prepare(
-      `SELECT rule_id AS ruleId, MIN(next_attempt_at) AS nextRetryAt
-       FROM notification_delivery
-       WHERE status = 'retry' AND next_attempt_at IS NOT NULL
-       GROUP BY rule_id`,
+      `SELECT delivery.rule_id AS ruleId,
+              MIN(delivery.next_attempt_at) AS nextRetryAt
+       FROM notification_delivery AS delivery
+       INNER JOIN notification_rule AS rule
+         ON rule.id = delivery.rule_id
+        AND rule.revision = delivery.rule_revision
+       WHERE delivery.status = 'retry'
+         AND delivery.next_attempt_at IS NOT NULL
+       GROUP BY delivery.rule_id`,
     )
     .all() as Array<{ ruleId: string; nextRetryAt: number }>;
   const nextRetryByRule = new Map(
@@ -689,6 +710,8 @@ function ruleValues(
       : null;
   return {
     id,
+    revision: 1,
+    startAfterEventId: latestSteamEventId(),
     name: body.name,
     target: body.target,
     enabled: body.enabled,
@@ -702,6 +725,13 @@ function ruleValues(
     createdAt,
     updatedAt: now,
   };
+}
+
+function latestSteamEventId() {
+  const row = sqlite
+    .prepare("SELECT COALESCE(MAX(id), 0) AS id FROM steam_event")
+    .get() as { id: number };
+  return row.id;
 }
 
 function registerBackupRoute(app: FastifyInstance) {

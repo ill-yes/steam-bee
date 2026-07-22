@@ -307,6 +307,8 @@ export const playtimeGoal = sqliteTable(
 
 export const notificationRule = sqliteTable("notification_rule", {
   id: text("id").primaryKey(),
+  revision: integer("revision").notNull().default(1),
+  startAfterEventId: integer("start_after_event_id").notNull().default(0),
   name: text("name").notNull(),
   target: text("target").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
@@ -328,6 +330,7 @@ export const notificationDelivery = sqliteTable(
     ruleId: text("rule_id")
       .notNull()
       .references(() => notificationRule.id, { onDelete: "cascade" }),
+    ruleRevision: integer("rule_revision").notNull().default(1),
     eventId: integer("event_id")
       .notNull()
       .references(() => steamEvent.id, { onDelete: "cascade" }),

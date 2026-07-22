@@ -80,7 +80,7 @@ describe("encrypted backup format", () => {
         "before",
       );
       writeFileSync(join(dataDir, "instance.secret"), currentSecret);
-      createDatabase(backupDatabase, "008_notifications", "after");
+      createDatabase(backupDatabase, "011_automatic_session_recovery", "after");
       writeFileSync(
         inputPath,
         encryptBackup(
@@ -92,7 +92,7 @@ describe("encrypted backup format", () => {
             { path: "instance.secret", data: Buffer.from(backupSecret) },
           ],
           "correct horse battery staple",
-          "008_notifications",
+          "011_automatic_session_recovery",
         ),
       );
 
@@ -259,6 +259,7 @@ const migrationIds = [
   "008_notifications",
   "009_timed_hold_schedule_ownership",
   "010_timed_hold_ownership_provenance",
+  "011_automatic_session_recovery",
 ];
 
 function readProbe(path: string) {

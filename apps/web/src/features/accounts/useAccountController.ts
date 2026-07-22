@@ -36,6 +36,12 @@ export function useAccountResources() {
   });
   const generation = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  const setOptionalResourceState = useCallback(
+    (resource: keyof OptionalResourceStates, state: ResourceLoadState) => {
+      setOptionalStates((current) => ({ ...current, [resource]: state }));
+    },
+    [],
+  );
 
   const loadAccountData = useCallback(async (accountId: string) => {
     const nextGeneration = generation.current + 1;
@@ -136,6 +142,7 @@ export function useAccountResources() {
     setSchedulePresetId,
     loadState,
     optionalStates,
+    setOptionalResourceState,
     loadAccountData,
   };
 }

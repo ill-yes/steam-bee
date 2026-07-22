@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -176,6 +177,33 @@ describe("web smoke", () => {
     expect(screen.getAllByRole("button", { name: "Resume" })).toHaveLength(1);
   });
 
+  it("shows the session-conflict attempt and cooldown state", async () => {
+    renderAccountDetail({
+      ...pausedAccount,
+      status: "reconnecting",
+      runtimeStatus: "reconnecting",
+      desiredState: "running",
+      health: {
+        lastSteamContactAt: Date.now(),
+        nextRetryAt: Date.now() + 60 * 60_000,
+        retryAttempt: 3,
+        errorClass: "session_replaced",
+        errorCode: 34,
+        recoveryAction: "wait",
+        libraryImportedAt: null,
+      },
+    });
+
+    expect(
+      await screen.findByText(
+        /(Retry attempt|Reconnect-Versuch) 3 \/ 3.*(60-minute cooldown|60-Minuten-Cooldown)/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Session replaced|Sitzung wurde ersetzt/),
+    ).toBeInTheDocument();
+  });
+
   it("places presets, schedules and analytics inside the boost tools panel without export actions", async () => {
     renderAccountDetail();
 
@@ -217,8 +245,6 @@ describe("web smoke", () => {
       <SafetyPanel
         policy={{
           accountId: "account-1",
-          resumePolicy: "automatic",
-          resumeDelayMinutes: 15,
           maxSessionMinutes: 60,
           maxDailyMinutes: null,
           maxWeeklyMinutes: null,
@@ -254,8 +280,6 @@ describe("web smoke", () => {
     expect(save).toBeEnabled();
     fireEvent.click(save);
     expect(onSave).toHaveBeenCalledWith({
-      resumePolicy: "automatic",
-      resumeDelayMinutes: 15,
       maxSessionMinutes: null,
       maxDailyMinutes: null,
       maxWeeklyMinutes: null,
@@ -263,16 +287,20 @@ describe("web smoke", () => {
   });
 
   it("distinguishes optional resource failures from valid empty states", async () => {
+    let previewRequests = 0;
     apiMock.mockImplementation(async (path: string) => {
       if (path.endsWith("/library")) return library;
       if (path.endsWith("/presets")) return presets;
       if (path.endsWith("/schedules")) return schedules;
       if (path.endsWith("/analytics")) return analytics;
-      if (
-        path.endsWith("/safety") ||
-        path.includes("/schedules/preview") ||
-        path.endsWith("/goals")
-      ) {
+      if (path.includes("/schedules/preview")) {
+        previewRequests += 1;
+        if (previewRequests === 1) {
+          throw new Error("Optional endpoint unavailable");
+        }
+        return emptySchedulePreview();
+      }
+      if (path.endsWith("/safety") || path.endsWith("/goals")) {
         throw new Error("Optional endpoint unavailable");
       }
       return [];
@@ -284,6 +312,16 @@ describe("web smoke", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /operation failed|Aktion ist fehlgeschlagen/i,
     );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Refresh preview|Vorschau aktualisieren/,
+      }),
+    );
+    expect(
+      await screen.findByText(
+        /No upcoming schedule windows|Keine bevorstehenden Zeitplanfenster/,
+      ),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /operation failed|Aktion ist fehlgeschlagen/i,
@@ -292,6 +330,117 @@ describe("web smoke", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /operation failed|Aktion ist fehlgeschlagen/i,
     );
+  });
+
+  it("refreshes valid SSE events even when browser notifications throw", async () => {
+    let eventListener: ((event: MessageEvent) => void) | undefined;
+    class FakeEventSource {
+      onerror: (() => void) | null = null;
+      addEventListener(type: string, listener: (event: MessageEvent) => void) {
+        if (type === "event") eventListener = listener;
+      }
+      close() {}
+    }
+    const originalNotification = window.Notification;
+    const notification = Object.assign(
+      vi.fn(() => {
+        throw new Error("Notification constructor failed");
+      }),
+      { permission: "granted" as NotificationPermission },
+    );
+    vi.stubGlobal("EventSource", FakeEventSource);
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: notification,
+    });
+    apiMock.mockImplementation(async (path: string) => {
+      if (path === "/api/me") {
+        return {
+          setupComplete: true,
+          setupTokenRequired: false,
+          authenticated: true,
+          csrfToken: "csrf",
+        };
+      }
+      if (path === "/api/accounts") return [pausedAccount];
+      if (path === "/api/events/recent") return [];
+      if (path === "/api/diagnostics") return diagnostics;
+      if (path === "/api/system/status") return readySystemStatus;
+      if (path === "/api/notifications/rules") {
+        return [
+          {
+            id: crypto.randomUUID(),
+            name: "Browser alerts",
+            target: "browser",
+            enabled: true,
+            effectiveEnabled: true,
+            effectiveStatus: "healthy",
+            failureCount: 0,
+            suspendedUntil: null,
+            nextRetryAt: null,
+            eventTypes: ["steam.session.conflict"],
+            webhookConfigured: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        ];
+      }
+      if (path.endsWith("/library")) return library;
+      if (path.endsWith("/presets")) return presets;
+      if (path.includes("/schedules/preview")) return emptySchedulePreview();
+      if (path.endsWith("/schedules")) return schedules;
+      if (path.endsWith("/analytics")) return analytics;
+      if (path.endsWith("/safety")) return safetyPolicy("account-1");
+      if (path.endsWith("/goals")) return [];
+      return [];
+    });
+
+    try {
+      renderWithProviders(<App />);
+      await screen.findByText("tester");
+      expect(eventListener).toBeDefined();
+      const accountCallsBefore = apiMock.mock.calls.filter(
+        ([path]) => path === "/api/accounts",
+      ).length;
+      const statusCallsBefore = apiMock.mock.calls.filter(
+        ([path]) => path === "/api/system/status",
+      ).length;
+
+      await act(async () => {
+        eventListener?.(
+          new MessageEvent("event", {
+            data: JSON.stringify({
+              id: crypto.randomUUID(),
+              accountId: pausedAccount.id,
+              type: "steam.session.conflict",
+              level: "warning",
+              message: "Another Steam session is active.",
+              metadata: {},
+              createdAt: Date.now(),
+            }),
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(
+          apiMock.mock.calls.filter(([path]) => path === "/api/accounts"),
+        ).toHaveLength(accountCallsBefore + 1);
+        expect(
+          apiMock.mock.calls.filter(([path]) => path === "/api/system/status"),
+        ).toHaveLength(statusCallsBefore + 1);
+      });
+      expect(notification).toHaveBeenCalledTimes(1);
+      expect(
+        screen.queryByText(/Invalid response|Ungültige Antwort/),
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+      Object.defineProperty(window, "Notification", {
+        configurable: true,
+        value: originalNotification,
+      });
+    }
   });
 
   it("updates library metadata from the library row actions", async () => {
@@ -638,7 +787,7 @@ describe("web smoke", () => {
               enabled: true,
               eventTypes: [
                 "steam.status.login_required",
-                "steam.status.paused_other_session",
+                "steam.session.conflict",
                 "steam.schedule.error",
                 "steam.safety.cap",
                 "steam.status.error",
@@ -758,6 +907,17 @@ describe("web smoke", () => {
       />,
     );
 
+    expect(
+      await screen.findByRole("button", {
+        name: /Pause group: Weekend hold|Gruppe pausieren: Weekend hold/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Stop group: Weekend hold|Gruppe stoppen: Weekend hold/,
+      }),
+    ).toBeInTheDocument();
+
     fireEvent.click(
       await screen.findByRole("button", {
         name: /Delete group: Weekend hold|Gruppe löschen: Weekend hold/,
@@ -829,8 +989,6 @@ function mockAccountData() {
     if (path.endsWith("/safety")) {
       return {
         accountId: "account-1",
-        resumePolicy: "automatic",
-        resumeDelayMinutes: 15,
         maxSessionMinutes: null,
         maxDailyMinutes: null,
         maxWeeklyMinutes: null,
@@ -963,8 +1121,6 @@ function emptySchedulePreview() {
 function safetyPolicy(accountId: string) {
   return {
     accountId,
-    resumePolicy: "automatic" as const,
-    resumeDelayMinutes: 15,
     maxSessionMinutes: null,
     maxDailyMinutes: null,
     maxWeeklyMinutes: null,

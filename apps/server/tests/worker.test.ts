@@ -53,6 +53,7 @@ import {
   steamAccountGame,
   steamAccountLibrary,
   steamAppCache,
+  steamEvent,
 } from "../src/db/schema.js";
 import { steamManager } from "../src/steam/manager.js";
 import {
@@ -115,6 +116,54 @@ describe("SteamWorker", () => {
     const client = steamMock.instances.at(-1);
     expect(client?.gamesPlayed).toHaveBeenCalledWith([]);
     expect(client?.gamesPlayed).not.toHaveBeenCalledWith([], true);
+  });
+
+  it("keeps the safety hold and still logs off when clearing games fails", async () => {
+    const now = Date.now();
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `safety-hard-stop-${now}`,
+      steamId: null,
+      status: "boosting",
+      desiredState: "running",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: null,
+      tokenIv: null,
+      tokenAuthTag: null,
+      tokenExpiresAt: null,
+      tokenKeyVersion: 1,
+      lastError: null,
+      latestBoostStartedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.insert(steamAccount).values(account);
+    await setSafetyHold(account.id, "session_limit");
+    const worker = new SteamWorker(account);
+    const client = steamMock.instances.at(-1);
+    client?.gamesPlayed.mockImplementationOnce(() => {
+      throw new Error("gamesPlayed failed");
+    });
+
+    await expect(
+      worker.forceDisconnectForSafety("Safety fallback"),
+    ).rejects.toThrow("gamesPlayed failed");
+
+    expect(client?.gamesPlayed).toHaveBeenCalledWith([]);
+    expect(client?.logOff).toHaveBeenCalledTimes(1);
+    expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
+      "session_limit",
+    );
+    const [updated] = await db
+      .select()
+      .from(steamAccount)
+      .where(eq(steamAccount.id, account.id));
+    expect(updated).toMatchObject({
+      desiredState: "paused",
+      status: "paused_manual",
+    });
   });
 
   it("shuts down without changing the desired running state", async () => {
@@ -310,12 +359,74 @@ describe("SteamWorker", () => {
     }
   });
 
-  it("stops reconnecting after Steam replaces the session", async () => {
+  it.each([6, 34, 50])(
+    "retries session conflict result %i without changing desired state",
+    async (eresult) => {
+      const now = Date.now();
+      const encrypted = encryptSecret("refresh-token");
+      const account = {
+        id: crypto.randomUUID(),
+        accountName: `session-replaced-${now}`,
+        steamId: null,
+        status: "disconnected",
+        desiredState: "stopped",
+        personaState: 7,
+        customTitle: null,
+        tokenCiphertext: encrypted.ciphertext,
+        tokenIv: encrypted.iv,
+        tokenAuthTag: encrypted.authTag,
+        tokenExpiresAt: null,
+        tokenKeyVersion: encrypted.keyVersion,
+        lastError: null,
+        latestBoostStartedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.insert(steamAccount).values(account);
+
+      const worker = new SteamWorker(account);
+      await worker.start();
+      const client = steamMock.instances.at(-1);
+      client?.emit(
+        "error",
+        Object.assign(new Error("Logged in elsewhere"), { eresult }),
+      );
+
+      await vi.waitFor(async () => {
+        const [updatedAccount] = await db
+          .select()
+          .from(steamAccount)
+          .where(eq(steamAccount.id, account.id));
+        const [health] = await db
+          .select()
+          .from(accountHealthState)
+          .where(eq(accountHealthState.accountId, account.id));
+        expect(updatedAccount).toMatchObject({
+          status: "reconnecting",
+          desiredState: "running",
+        });
+        expect(health).toMatchObject({
+          retryAttempt: 1,
+          errorClass: "session_replaced",
+          errorCode: eresult,
+          recoveryAction: "retry",
+        });
+        expect(health?.nextRetryAt).toBeGreaterThanOrEqual(now + 5 * 60_000);
+      });
+
+      expect(client?.logOn).toHaveBeenCalledTimes(1);
+      await worker.shutdown();
+    },
+  );
+
+  it("uses 5m, 5m and 60m conflict retries and deduplicates callbacks", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 6, 8, 10, 0));
     const now = Date.now();
     const encrypted = encryptSecret("refresh-token");
     const account = {
       id: crypto.randomUUID(),
-      accountName: `session-replaced-${now}`,
+      accountName: `session-cycle-${now}`,
       steamId: null,
       status: "disconnected",
       desiredState: "stopped",
@@ -331,40 +442,181 @@ describe("SteamWorker", () => {
       createdAt: now,
       updatedAt: now,
     };
-    await db.insert(steamAccount).values(account);
+    const conflicts = vi.fn(async () => undefined);
+    try {
+      await db.insert(steamAccount).values(account);
+      const worker = new SteamWorker(account, {
+        recordSessionConflict: conflicts,
+      });
+      await worker.start();
+      const client = steamMock.instances.at(-1);
 
-    const worker = new SteamWorker(account);
-    await worker.start();
-    const client = steamMock.instances.at(-1);
-    client?.emit(
-      "error",
-      Object.assign(new Error("Logged in elsewhere"), { eresult: 34 }),
-    );
+      client?.emit("error", { eresult: 34 });
+      client?.emit("disconnected");
+      await vi.waitFor(() => expect(conflicts).toHaveBeenCalledTimes(1));
+      expect(conflicts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ attempt: 1, cooldown: false }),
+      );
 
-    await vi.waitFor(async () => {
-      const [updatedAccount] = await db
-        .select()
-        .from(steamAccount)
-        .where(eq(steamAccount.id, account.id));
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(client?.logOn).toHaveBeenCalledTimes(2);
+      client?.emit("error", { eresult: 34 });
+      await vi.waitFor(() => expect(conflicts).toHaveBeenCalledTimes(2));
+      expect(conflicts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ attempt: 2, cooldown: false }),
+      );
+
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(client?.logOn).toHaveBeenCalledTimes(3);
+      client?.emit("error", { eresult: 34 });
+      await vi.waitFor(() => expect(conflicts).toHaveBeenCalledTimes(3));
+      expect(conflicts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ attempt: 3, cooldown: true }),
+      );
+
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(client?.logOn).toHaveBeenCalledTimes(4);
+      client?.emit("error", { eresult: 34 });
+      await vi.waitFor(() => expect(conflicts).toHaveBeenCalledTimes(4));
+      expect(conflicts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ attempt: 1, cooldown: false }),
+      );
+      await worker.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not run an admitted session-conflict retry after pause", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 6, 8, 10, 0));
+    const now = Date.now();
+    const encrypted = encryptSecret("refresh-token");
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `stale-session-conflict-${now}`,
+      steamId: null,
+      status: "disconnected",
+      desiredState: "stopped",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenExpiresAt: null,
+      tokenKeyVersion: encrypted.keyVersion,
+      lastError: null,
+      latestBoostStartedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    let holdAccountOperations = false;
+    let releaseRetry = () => {};
+    let markRetryAdmitted = () => {};
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetry = resolve;
+    });
+    const retryAdmitted = new Promise<void>((resolve) => {
+      markRetryAdmitted = resolve;
+    });
+    const operations: Promise<unknown>[] = [];
+    const runAccountOperation = <T>(operation: () => Promise<T>) => {
+      const pending = (async () => {
+        if (holdAccountOperations) {
+          markRetryAdmitted();
+          await retryGate;
+        }
+        return operation();
+      })();
+      operations.push(pending);
+      return pending;
+    };
+
+    try {
+      await db.insert(steamAccount).values(account);
+      const worker = new SteamWorker(account, { runAccountOperation });
+      await worker.start();
+      const client = steamMock.instances.at(-1);
+      client?.emit("error", { eresult: 34 });
+      await operations[0];
+
+      holdAccountOperations = true;
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      await retryAdmitted;
+      await worker.pause();
+      releaseRetry();
+      await operations[1];
+
+      expect(client?.logOn).toHaveBeenCalledTimes(1);
       const [health] = await db
         .select()
         .from(accountHealthState)
         .where(eq(accountHealthState.accountId, account.id));
-      expect(updatedAccount).toMatchObject({
-        status: "error",
-        desiredState: "paused",
-      });
       expect(health).toMatchObject({
-        nextRetryAt: null,
         retryAttempt: 0,
+        errorClass: "none",
+        recoveryAction: "none",
+      });
+      await worker.shutdown();
+    } finally {
+      releaseRetry();
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts a new conflict cycle at attempt one after manager restart", async () => {
+    const now = Date.now();
+    const encrypted = encryptSecret("refresh-token");
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `session-conflict-restart-${now}`,
+      steamId: null,
+      status: "reconnecting",
+      desiredState: "running",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenExpiresAt: null,
+      tokenKeyVersion: encrypted.keyVersion,
+      lastError: null,
+      latestBoostStartedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      await db.insert(steamAccount).values(account);
+      await db.insert(accountHealthState).values({
+        accountId: account.id,
+        nextRetryAt: now + 60 * 60_000,
+        retryAttempt: 3,
         errorClass: "session_replaced",
         errorCode: 34,
-        recoveryAction: "manual_resume",
+        recoveryAction: "wait",
+        updatedAt: now,
       });
-    });
 
-    expect(client?.logOn).toHaveBeenCalledTimes(1);
-    await worker.shutdown();
+      await steamManager.init();
+      const client = steamMock.instances.at(-1);
+      await vi.waitFor(() => expect(client?.logOn).toHaveBeenCalledTimes(1));
+      client?.emit("error", { eresult: 34 });
+
+      await vi.waitFor(async () => {
+        const [health] = await db
+          .select()
+          .from(accountHealthState)
+          .where(eq(accountHealthState.accountId, account.id));
+        expect(health).toMatchObject({
+          retryAttempt: 1,
+          errorClass: "session_replaced",
+          recoveryAction: "retry",
+        });
+      });
+    } finally {
+      await steamManager.shutdown();
+    }
   });
 
   it("requires a fresh login before boosting after a terminal error", async () => {
@@ -408,7 +660,7 @@ describe("SteamWorker", () => {
 
     client?.emit(
       "error",
-      Object.assign(new Error("Logged in elsewhere"), { eresult: 34 }),
+      Object.assign(new Error("Invalid password"), { eresult: 5 }),
     );
     await vi.waitFor(async () => {
       const [updated] = await db
@@ -417,7 +669,7 @@ describe("SteamWorker", () => {
         .where(eq(steamAccount.id, account.id));
       expect(updated).toMatchObject({
         desiredState: "paused",
-        status: "error",
+        status: "login_required",
       });
     });
 
@@ -467,7 +719,7 @@ describe("SteamWorker", () => {
     const client = steamMock.instances.at(-1);
     client?.emit(
       "error",
-      Object.assign(new Error("Logged in elsewhere"), { eresult: 34 }),
+      Object.assign(new Error("Invalid password"), { eresult: 5 }),
     );
     client?.emit("loggedOn");
 
@@ -482,9 +734,9 @@ describe("SteamWorker", () => {
         .where(eq(accountHealthState.accountId, account.id));
       expect(updated).toMatchObject({
         desiredState: "paused",
-        status: "error",
+        status: "login_required",
       });
-      expect(health?.recoveryAction).toBe("manual_resume");
+      expect(health?.recoveryAction).toBe("reauthenticate");
     });
     expect(client?.setPersona).not.toHaveBeenCalled();
     expect(client?.gamesPlayed).not.toHaveBeenCalledWith([730]);
@@ -554,7 +806,7 @@ describe("SteamWorker", () => {
       const client = steamMock.instances.at(-1);
       client?.emit(
         "error",
-        Object.assign(new Error("Logged in elsewhere"), { eresult: 34 }),
+        Object.assign(new Error("Invalid password"), { eresult: 5 }),
       );
       await vi.waitFor(async () => {
         const [updated] = await db
@@ -567,9 +819,9 @@ describe("SteamWorker", () => {
           .where(eq(accountHealthState.accountId, account.id));
         expect(updated).toMatchObject({
           desiredState: "paused",
-          status: "error",
+          status: "login_required",
         });
-        expect(health?.recoveryAction).toBe("manual_resume");
+        expect(health?.recoveryAction).toBe("reauthenticate");
       });
 
       vi.setSystemTime(scheduledAt);
@@ -665,7 +917,7 @@ describe("SteamWorker", () => {
 
       client?.emit(
         "error",
-        Object.assign(new Error("Logged in elsewhere"), { eresult: 34 }),
+        Object.assign(new Error("Invalid password"), { eresult: 5 }),
       );
       await Promise.resolve();
       const [healthWhileBlocked] = await db
@@ -687,9 +939,9 @@ describe("SteamWorker", () => {
           .where(eq(accountHealthState.accountId, account.id));
         expect(updated).toMatchObject({
           desiredState: "paused",
-          status: "error",
+          status: "login_required",
         });
-        expect(health?.recoveryAction).toBe("manual_resume");
+        expect(health?.recoveryAction).toBe("reauthenticate");
       });
 
       const logOnCalls = client?.logOn.mock.calls.length ?? 0;
@@ -699,491 +951,12 @@ describe("SteamWorker", () => {
         .select()
         .from(accountHealthState)
         .where(eq(accountHealthState.accountId, account.id));
-      expect(held?.recoveryAction).toBe("manual_resume");
+      expect(held?.recoveryAction).toBe("reauthenticate");
     } finally {
       releasePreset();
       await tick?.catch(() => undefined);
       updateSpy.mockRestore();
       await steamManager.shutdown();
-    }
-  });
-
-  it("keeps a delayed other-session hold across reconnect before expiry", async () => {
-    vi.useFakeTimers();
-    const now = Date.now();
-    vi.setSystemTime(now);
-    const encrypted = encryptSecret("refresh-token");
-    const account = {
-      id: crypto.randomUUID(),
-      accountName: `delayed-reconnect-before-${now}`,
-      steamId: "76561198000000001",
-      status: "online",
-      desiredState: "running",
-      personaState: 7,
-      customTitle: null,
-      tokenCiphertext: encrypted.ciphertext,
-      tokenIv: encrypted.iv,
-      tokenAuthTag: encrypted.authTag,
-      tokenExpiresAt: null,
-      tokenKeyVersion: encrypted.keyVersion,
-      lastError: null,
-      latestBoostStartedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const accountOperations = new AccountOperationState();
-    let worker: SteamWorker | null = null;
-
-    try {
-      await db.insert(steamAccount).values(account);
-      await db.insert(steamAccountGame).values({
-        accountId: account.id,
-        appId: 730,
-        enabled: true,
-        source: "manual",
-        createdAt: now,
-      });
-      await updateSafetyPolicy(account.id, {
-        resumePolicy: "delayed",
-        resumeDelayMinutes: 1,
-        maxSessionMinutes: null,
-        maxDailyMinutes: null,
-        maxWeeklyMinutes: null,
-      });
-      worker = new SteamWorker(account, {
-        runAccountOperation: (operation) =>
-          accountOperations.run(account.id, operation),
-      });
-      const client = steamMock.instances.at(-1);
-      client?.emit("loggedOn");
-      await vi.waitFor(() =>
-        expect(client?.gamesPlayed).toHaveBeenLastCalledWith([730]),
-      );
-      const initialBoostCalls = boostCallCount(client);
-
-      client?.emit("playingState", true);
-      await vi.waitFor(() =>
-        expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]),
-      );
-      client?.emit("playingState", false);
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_delay",
-        ),
-      );
-
-      client?.emit("disconnected");
-      await vi.waitFor(() => expect(worker?.isConnected).toBe(false));
-      client?.emit("loggedOn");
-      await vi.waitFor(async () => {
-        expect(worker?.currentStatus).toBe("paused_other_session");
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_delay",
-        );
-      });
-      expect(boostCallCount(client)).toBe(initialBoostCalls);
-
-      const resumeAt = (await getAccountSafetyPolicy(account.id)).pauseUntil;
-      const remainingDelay = (resumeAt ?? Date.now()) - Date.now();
-      expect(remainingDelay).toBeGreaterThan(1);
-      await vi.advanceTimersByTimeAsync(remainingDelay - 1);
-      expect(boostCallCount(client)).toBe(initialBoostCalls);
-      await vi.advanceTimersByTimeAsync(2);
-      await vi.waitFor(async () => {
-        expect(boostCallCount(client)).toBe(initialBoostCalls + 1);
-        expect(
-          (await getAccountSafetyPolicy(account.id)).holdReason,
-        ).toBeNull();
-      });
-    } finally {
-      await worker?.shutdown();
-      vi.useRealTimers();
-    }
-  });
-
-  it("waits for login when a delayed hold expires while disconnected", async () => {
-    vi.useFakeTimers();
-    const now = Date.now();
-    vi.setSystemTime(now);
-    const encrypted = encryptSecret("refresh-token");
-    const account = {
-      id: crypto.randomUUID(),
-      accountName: `delayed-reconnect-after-${now}`,
-      steamId: "76561198000000001",
-      status: "online",
-      desiredState: "running",
-      personaState: 7,
-      customTitle: null,
-      tokenCiphertext: encrypted.ciphertext,
-      tokenIv: encrypted.iv,
-      tokenAuthTag: encrypted.authTag,
-      tokenExpiresAt: null,
-      tokenKeyVersion: encrypted.keyVersion,
-      lastError: null,
-      latestBoostStartedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const accountOperations = new AccountOperationState();
-    let worker: SteamWorker | null = null;
-
-    try {
-      await db.insert(steamAccount).values(account);
-      await db.insert(steamAccountGame).values({
-        accountId: account.id,
-        appId: 730,
-        enabled: true,
-        source: "manual",
-        createdAt: now,
-      });
-      await updateSafetyPolicy(account.id, {
-        resumePolicy: "delayed",
-        resumeDelayMinutes: 1,
-        maxSessionMinutes: null,
-        maxDailyMinutes: null,
-        maxWeeklyMinutes: null,
-      });
-      worker = new SteamWorker(account, {
-        runAccountOperation: (operation) =>
-          accountOperations.run(account.id, operation),
-      });
-      const client = steamMock.instances.at(-1);
-      client?.emit("loggedOn");
-      await vi.waitFor(() =>
-        expect(client?.gamesPlayed).toHaveBeenLastCalledWith([730]),
-      );
-      const initialBoostCalls = boostCallCount(client);
-
-      client?.emit("playingState", true);
-      await vi.waitFor(() =>
-        expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]),
-      );
-      client?.emit("playingState", false);
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_delay",
-        ),
-      );
-      client?.emit("disconnected");
-      await vi.waitFor(() => expect(worker?.isConnected).toBe(false));
-
-      await vi.advanceTimersByTimeAsync(60_001);
-      await vi.waitFor(async () => {
-        expect(worker?.currentStatus).not.toBe("boosting");
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_delay",
-        );
-      });
-      expect(boostCallCount(client)).toBe(initialBoostCalls);
-      expect(client?.logOn).toHaveBeenCalledTimes(1);
-
-      client?.emit("loggedOn");
-      await vi.waitFor(async () => {
-        expect(boostCallCount(client)).toBe(initialBoostCalls + 1);
-        expect(worker?.currentStatus).toBe("boosting");
-        expect(
-          (await getAccountSafetyPolicy(account.id)).holdReason,
-        ).toBeNull();
-      });
-    } finally {
-      await worker?.shutdown();
-      vi.useRealTimers();
-    }
-  });
-
-  it("honors a delayed safety hold across a manager restart", async () => {
-    vi.useFakeTimers();
-    const now = Date.UTC(2026, 6, 8, 10, 30);
-    vi.setSystemTime(now);
-    const encrypted = encryptSecret("refresh-token");
-    const account = {
-      id: crypto.randomUUID(),
-      accountName: `delayed-restart-${now}`,
-      steamId: null,
-      status: "paused_other_session",
-      desiredState: "running",
-      personaState: 7,
-      customTitle: null,
-      tokenCiphertext: encrypted.ciphertext,
-      tokenIv: encrypted.iv,
-      tokenAuthTag: encrypted.authTag,
-      tokenExpiresAt: null,
-      tokenKeyVersion: encrypted.keyVersion,
-      lastError: null,
-      latestBoostStartedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    try {
-      await db.insert(steamAccount).values(account);
-      const presetId = crypto.randomUUID();
-      await db.insert(boostPreset).values({
-        id: presetId,
-        accountId: account.id,
-        name: "Restart hold preset",
-        personaState: 7,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await db.insert(boostSchedule).values({
-        id: crypto.randomUUID(),
-        accountId: account.id,
-        presetId,
-        name: "Restart hold schedule",
-        enabled: true,
-        weekdaysJson: `[${new Date(now).getUTCDay()}]`,
-        startTime: "10:00",
-        endTime: "11:00",
-        timezone: "UTC",
-        createdAt: now,
-        updatedAt: now,
-      });
-      await setSafetyHold(account.id, "other_session_delay", now + 60_000);
-
-      await steamManager.init();
-      const client = steamMock.instances.at(-1);
-      expect(client?.logOn).not.toHaveBeenCalled();
-
-      await vi.advanceTimersByTimeAsync(60_001);
-      await vi.waitFor(() => expect(client?.logOn).toHaveBeenCalledTimes(1));
-      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-        "other_session_delay",
-      );
-
-      client?.emit("disconnected");
-      await vi.waitFor(async () => {
-        const [updated] = await db
-          .select()
-          .from(steamAccount)
-          .where(eq(steamAccount.id, account.id));
-        expect(updated?.status).toBe("reconnecting");
-      });
-      await steamManager.tickSchedules(new Date(now + 60_001));
-      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-        "other_session_delay",
-      );
-
-      client?.emit("loggedOn");
-      await vi.waitFor(async () =>
-        expect(
-          (await getAccountSafetyPolicy(account.id)).holdReason,
-        ).toBeNull(),
-      );
-    } finally {
-      await steamManager.shutdown();
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not resume a restored delay after its owner is deleted and the manager restarts", async () => {
-    vi.useFakeTimers();
-    const now = Date.UTC(2026, 6, 8, 10, 30);
-    const afterWindow = Date.UTC(2026, 6, 8, 11, 5);
-    vi.setSystemTime(now);
-    const encrypted = encryptSecret("refresh-token");
-    const account = {
-      id: crypto.randomUUID(),
-      accountName: `delayed-after-window-${now}`,
-      steamId: null,
-      status: "paused_other_session",
-      desiredState: "running",
-      personaState: 7,
-      customTitle: null,
-      tokenCiphertext: encrypted.ciphertext,
-      tokenIv: encrypted.iv,
-      tokenAuthTag: encrypted.authTag,
-      tokenExpiresAt: null,
-      tokenKeyVersion: encrypted.keyVersion,
-      lastError: null,
-      latestBoostStartedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    try {
-      await db.insert(steamAccount).values(account);
-      await db.insert(steamAccountGame).values({
-        accountId: account.id,
-        appId: 730,
-        enabled: true,
-        source: "manual",
-        createdAt: now,
-      });
-      const presetId = crypto.randomUUID();
-      const scheduleId = crypto.randomUUID();
-      const windowId = `${scheduleId}:2026-07-08:10:00-11:00`;
-      await db.insert(boostPreset).values({
-        id: presetId,
-        accountId: account.id,
-        name: "Expired owner preset",
-        personaState: 7,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await db.insert(boostSchedule).values({
-        id: scheduleId,
-        accountId: account.id,
-        presetId,
-        name: "Expired owner schedule",
-        enabled: true,
-        weekdaysJson: `[${new Date(now).getUTCDay()}]`,
-        startTime: "10:00",
-        endTime: "11:00",
-        timezone: "UTC",
-        lastStartedWindow: windowId,
-        createdAt: now,
-        updatedAt: now,
-      });
-      await setSafetyHold(account.id, "other_session_delay", now + 60_000, {
-        kind: "scheduled",
-        scheduleId,
-        windowId,
-      });
-
-      await steamManager.init();
-      const client = steamMock.instances.at(-1);
-      await vi.advanceTimersByTimeAsync(60_001);
-      await vi.waitFor(() => expect(client?.logOn).toHaveBeenCalledTimes(1));
-
-      client?.emit("disconnected");
-      await vi.waitFor(async () => {
-        const [updated] = await db
-          .select()
-          .from(steamAccount)
-          .where(eq(steamAccount.id, account.id));
-        expect(updated?.status).toBe("reconnecting");
-      });
-
-      vi.setSystemTime(afterWindow);
-      await steamManager.tickSchedules(new Date(afterWindow));
-      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-        "other_session_delay",
-      );
-      const [heldSchedule] = await db
-        .select()
-        .from(boostSchedule)
-        .where(eq(boostSchedule.id, scheduleId));
-      expect(heldSchedule?.lastStoppedWindow).toBeNull();
-
-      await db.delete(boostSchedule).where(eq(boostSchedule.id, scheduleId));
-      expect(await getSafetyHoldOwner(account.id)).toEqual({
-        kind: "scheduled",
-        scheduleId,
-        windowId,
-      });
-      await steamManager.shutdown();
-      await steamManager.init();
-      const restartedClient = steamMock.instances.at(-1);
-      expect(restartedClient).not.toBe(client);
-      await vi.advanceTimersByTimeAsync(0);
-      await vi.waitFor(() =>
-        expect(restartedClient?.logOn).toHaveBeenCalledTimes(1),
-      );
-
-      restartedClient?.emit("loggedOn");
-      await vi.waitFor(async () => {
-        const [updated] = await db
-          .select()
-          .from(steamAccount)
-          .where(eq(steamAccount.id, account.id));
-        expect(updated).toMatchObject({
-          desiredState: "paused",
-          status: "paused_manual",
-        });
-        expect(
-          (await getAccountSafetyPolicy(account.id)).holdReason,
-        ).toBeNull();
-      });
-      expect(boostCallCount(restartedClient)).toBe(0);
-    } finally {
-      await steamManager.shutdown();
-      vi.useRealTimers();
-    }
-  });
-
-  it("serializes a manual policy update racing a restored delayed expiry", async () => {
-    vi.useFakeTimers();
-    const now = Date.now();
-    vi.setSystemTime(now);
-    const encrypted = encryptSecret("refresh-token");
-    const account = {
-      id: crypto.randomUUID(),
-      accountName: `delayed-manual-restart-${now}`,
-      steamId: null,
-      status: "paused_other_session",
-      desiredState: "running",
-      personaState: 7,
-      customTitle: null,
-      tokenCiphertext: encrypted.ciphertext,
-      tokenIv: encrypted.iv,
-      tokenAuthTag: encrypted.authTag,
-      tokenExpiresAt: null,
-      tokenKeyVersion: encrypted.keyVersion,
-      lastError: null,
-      latestBoostStartedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    let releasePolicyUpdate: (() => void) | undefined;
-    let policyUpdate: Promise<void> | undefined;
-
-    try {
-      await db.insert(steamAccount).values(account);
-      await updateSafetyPolicy(account.id, {
-        resumePolicy: "delayed",
-        resumeDelayMinutes: 1,
-        maxSessionMinutes: null,
-        maxDailyMinutes: null,
-        maxWeeklyMinutes: null,
-      });
-      await setSafetyHold(account.id, "other_session_delay", now + 60_000);
-
-      await steamManager.init();
-      expect(steamMock.instances.at(-1)?.logOn).not.toHaveBeenCalled();
-      await steamManager.shutdown();
-
-      await steamManager.init();
-      const restartedClient = steamMock.instances.at(-1);
-      const policyGate = new Promise<void>((resolve) => {
-        releasePolicyUpdate = resolve;
-      });
-      policyUpdate = steamManager.runAccountOperation(account.id, async () => {
-        await updateSafetyPolicy(account.id, {
-          resumePolicy: "manual",
-          resumeDelayMinutes: 1,
-          maxSessionMinutes: null,
-          maxDailyMinutes: null,
-          maxWeeklyMinutes: null,
-        });
-        await policyGate;
-      });
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).resumePolicy).toBe(
-          "manual",
-        ),
-      );
-      await vi.advanceTimersByTimeAsync(60_001);
-      expect(restartedClient?.logOn).not.toHaveBeenCalled();
-      releasePolicyUpdate();
-      await policyUpdate;
-
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_manual",
-        ),
-      );
-      expect(restartedClient?.logOn).not.toHaveBeenCalled();
-      const [updated] = await db
-        .select()
-        .from(steamAccount)
-        .where(eq(steamAccount.id, account.id));
-      expect(updated?.desiredState).toBe("paused");
-    } finally {
-      releasePolicyUpdate?.();
-      await policyUpdate?.catch(() => undefined);
-      await steamManager.shutdown();
-      vi.useRealTimers();
     }
   });
 
@@ -1296,6 +1069,212 @@ describe("SteamWorker", () => {
     }
   });
 
+  it("reconciles an expired schedule window before startup auto-login", async () => {
+    vi.useFakeTimers();
+    const now = Date.UTC(2026, 6, 9, 12, 0);
+    vi.setSystemTime(now);
+    const encrypted = encryptSecret("refresh-token");
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `expired-startup-window-${now}`,
+      steamId: null,
+      status: "boosting",
+      desiredState: "running",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenExpiresAt: null,
+      tokenKeyVersion: encrypted.keyVersion,
+      lastError: null,
+      latestBoostStartedAt: now - 60_000,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const presetId = crypto.randomUUID();
+    const scheduleId = crypto.randomUUID();
+    const expiredWindow = `${scheduleId}:2026-07-08:10:00-11:00`;
+
+    try {
+      await db.insert(steamAccount).values(account);
+      await db.insert(boostPreset).values({
+        id: presetId,
+        accountId: account.id,
+        name: "Expired startup preset",
+        personaState: 7,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(boostSchedule).values({
+        id: scheduleId,
+        accountId: account.id,
+        presetId,
+        name: "Expired startup schedule",
+        enabled: true,
+        weekdaysJson: `[${new Date(now - 24 * 60 * 60_000).getUTCDay()}]`,
+        startTime: "10:00",
+        endTime: "11:00",
+        timezone: "UTC",
+        lastStartedWindow: expiredWindow,
+        lastStoppedWindow: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await steamManager.init();
+
+      const client = steamMock.instances.at(-1);
+      expect(client?.logOn).not.toHaveBeenCalled();
+      expect(client?.gamesPlayed).toHaveBeenCalledWith([]);
+      const [updated] = await db
+        .select()
+        .from(steamAccount)
+        .where(eq(steamAccount.id, account.id));
+      const [schedule] = await db
+        .select()
+        .from(boostSchedule)
+        .where(eq(boostSchedule.id, scheduleId));
+      expect(updated).toMatchObject({
+        desiredState: "paused",
+        status: "paused_manual",
+      });
+      expect(schedule?.lastStoppedWindow).toBe(expiredWindow);
+    } finally {
+      await steamManager.shutdown();
+      vi.useRealTimers();
+    }
+  });
+
+  it("persists attention and blocks restart when both safety stops fail", async () => {
+    const now = Date.now();
+    const encrypted = encryptSecret("refresh-token");
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `safety-double-failure-${now}`,
+      steamId: null,
+      status: "disconnected",
+      desiredState: "stopped",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenExpiresAt: null,
+      tokenKeyVersion: encrypted.keyVersion,
+      lastError: null,
+      latestBoostStartedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      await db.insert(steamAccount).values(account);
+      await steamManager.start(account.id);
+      const client = steamMock.instances.at(-1);
+      client?.gamesPlayed.mockImplementation(() => {
+        throw new Error("gamesPlayed failed");
+      });
+      client?.logOff.mockImplementation(() => {
+        throw new Error("logOff failed");
+      });
+
+      await expect(
+        steamManager.pauseUntil(account.id, now + 60_000),
+      ).rejects.toThrow("gamesPlayed failed");
+
+      expect(client?.gamesPlayed).toHaveBeenCalledWith([]);
+      expect(client?.logOff).toHaveBeenCalledTimes(1);
+      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
+        "safety_failure",
+      );
+      const [health] = await db
+        .select()
+        .from(accountHealthState)
+        .where(eq(accountHealthState.accountId, account.id));
+      const [updated] = await db
+        .select()
+        .from(steamAccount)
+        .where(eq(steamAccount.id, account.id));
+      const failureEvents = await db
+        .select()
+        .from(steamEvent)
+        .where(eq(steamEvent.type, "steam.safety.failure"));
+      expect(health?.recoveryAction).toBe("attention");
+      expect(updated).toMatchObject({
+        desiredState: "paused",
+        status: "error",
+      });
+      expect(failureEvents).toHaveLength(1);
+
+      client?.gamesPlayed.mockImplementation(() => undefined);
+      client?.logOff.mockImplementation(() => undefined);
+      await steamManager.shutdown();
+      await steamManager.init();
+      const restartedClient = steamMock.instances.at(-1);
+      expect(restartedClient).not.toBe(client);
+      expect(restartedClient?.logOn).not.toHaveBeenCalled();
+    } finally {
+      await steamManager.shutdown();
+    }
+  });
+
+  it("uses the loaded worker for the safety fallback when a second lookup fails", async () => {
+    const now = Date.now();
+    const encrypted = encryptSecret("refresh-token");
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `safety-loaded-worker-${now}`,
+      steamId: null,
+      status: "disconnected",
+      desiredState: "stopped",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenExpiresAt: null,
+      tokenKeyVersion: encrypted.keyVersion,
+      lastError: null,
+      latestBoostStartedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const managerInternals = steamManager as unknown as {
+      getWorkerForAccount(accountId: string): Promise<SteamWorker>;
+    };
+    await db.insert(steamAccount).values(account);
+    await steamManager.start(account.id);
+    const originalGetWorker =
+      managerInternals.getWorkerForAccount.bind(steamManager);
+    const workerLookup = vi
+      .spyOn(managerInternals, "getWorkerForAccount")
+      .mockImplementationOnce(originalGetWorker)
+      .mockRejectedValueOnce(new Error("database unavailable"));
+
+    try {
+      const client = steamMock.instances.at(-1);
+      client?.gamesPlayed.mockImplementationOnce(() => {
+        throw new Error("initial pause failed");
+      });
+
+      await expect(
+        steamManager.pauseUntil(account.id, now + 60_000),
+      ).resolves.toBeUndefined();
+
+      expect(workerLookup).toHaveBeenCalledTimes(1);
+      expect(client?.gamesPlayed).toHaveBeenCalledTimes(2);
+      expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect(client?.logOff).toHaveBeenCalledTimes(1);
+      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
+        "pause_until",
+      );
+    } finally {
+      workerLookup.mockRestore();
+      await steamManager.shutdown();
+    }
+  });
+
   it("does not resume pause-until after its owning schedule is deleted", async () => {
     vi.useFakeTimers();
     const now = Date.UTC(2026, 6, 8, 10, 30);
@@ -1382,210 +1361,6 @@ describe("SteamWorker", () => {
       expect(boostCallCount(client)).toBe(1);
     } finally {
       await steamManager.shutdown();
-      vi.useRealTimers();
-    }
-  });
-
-  it("serializes a manual policy update racing a live delayed resume", async () => {
-    vi.useFakeTimers();
-    const now = Date.now();
-    vi.setSystemTime(now);
-    const account = {
-      id: crypto.randomUUID(),
-      accountName: `delayed-policy-${now}`,
-      steamId: "76561198000000001",
-      status: "online",
-      desiredState: "running",
-      personaState: 7,
-      customTitle: null,
-      tokenCiphertext: null,
-      tokenIv: null,
-      tokenAuthTag: null,
-      tokenExpiresAt: null,
-      tokenKeyVersion: 1,
-      lastError: null,
-      latestBoostStartedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    let worker: SteamWorker | null = null;
-    const accountOperations = new AccountOperationState();
-    let releasePolicyUpdate: (() => void) | undefined;
-    let policyUpdate: Promise<void> | undefined;
-
-    try {
-      await db.insert(steamAccount).values(account);
-      await db.insert(steamAccountGame).values({
-        accountId: account.id,
-        appId: 730,
-        enabled: true,
-        source: "manual",
-        createdAt: now,
-      });
-      await updateSafetyPolicy(account.id, {
-        resumePolicy: "delayed",
-        resumeDelayMinutes: 1,
-        maxSessionMinutes: null,
-        maxDailyMinutes: null,
-        maxWeeklyMinutes: null,
-      });
-      worker = new SteamWorker(account, {
-        runAccountOperation: (operation) =>
-          accountOperations.run(account.id, operation),
-      });
-      const client = steamMock.instances.at(-1);
-      client?.emit("loggedOn");
-      await vi.waitFor(() => expect(worker?.isConnected).toBe(true));
-      await worker.updateAccount(account);
-      client?.emit("playingState", true);
-      await vi.waitFor(() =>
-        expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]),
-      );
-      client?.emit("playingState", false);
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_delay",
-        ),
-      );
-
-      const policyGate = new Promise<void>((resolve) => {
-        releasePolicyUpdate = resolve;
-      });
-      policyUpdate = accountOperations.run(account.id, async () => {
-        await updateSafetyPolicy(account.id, {
-          resumePolicy: "manual",
-          resumeDelayMinutes: 1,
-          maxSessionMinutes: null,
-          maxDailyMinutes: null,
-          maxWeeklyMinutes: null,
-        });
-        await policyGate;
-      });
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).resumePolicy).toBe(
-          "manual",
-        ),
-      );
-      await vi.advanceTimersByTimeAsync(60_001);
-      expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]);
-      releasePolicyUpdate();
-      await policyUpdate;
-
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_manual",
-        ),
-      );
-      expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]);
-      const [updated] = await db
-        .select()
-        .from(steamAccount)
-        .where(eq(steamAccount.id, account.id));
-      expect(updated?.desiredState).toBe("paused");
-    } finally {
-      releasePolicyUpdate?.();
-      await policyUpdate?.catch(() => undefined);
-      await worker?.shutdown();
-      vi.useRealTimers();
-    }
-  });
-
-  it("quiesces an admitted delayed resume before shutdown drains work", async () => {
-    vi.useFakeTimers();
-    const now = Date.now();
-    vi.setSystemTime(now);
-    const account = {
-      id: crypto.randomUUID(),
-      accountName: `delayed-shutdown-${now}`,
-      steamId: "76561198000000001",
-      status: "online",
-      desiredState: "running",
-      personaState: 7,
-      customTitle: null,
-      tokenCiphertext: null,
-      tokenIv: null,
-      tokenAuthTag: null,
-      tokenExpiresAt: null,
-      tokenKeyVersion: 1,
-      lastError: null,
-      latestBoostStartedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const accountOperations = new AccountOperationState();
-    let worker: SteamWorker | null = null;
-    let releaseBlocker: (() => void) | undefined;
-    let blocker: Promise<void> | undefined;
-
-    try {
-      await db.insert(steamAccount).values(account);
-      await db.insert(steamAccountGame).values({
-        accountId: account.id,
-        appId: 730,
-        enabled: true,
-        source: "manual",
-        createdAt: now,
-      });
-      await updateSafetyPolicy(account.id, {
-        resumePolicy: "delayed",
-        resumeDelayMinutes: 1,
-        maxSessionMinutes: null,
-        maxDailyMinutes: null,
-        maxWeeklyMinutes: null,
-      });
-      worker = new SteamWorker(account, {
-        runAccountOperation: (operation) =>
-          accountOperations.run(account.id, operation),
-      });
-      const client = steamMock.instances.at(-1);
-      client?.emit("loggedOn");
-      await vi.waitFor(() => expect(worker?.isConnected).toBe(true));
-      await worker.updateAccount(account);
-      client?.emit("playingState", true);
-      await vi.waitFor(() =>
-        expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]),
-      );
-      client?.emit("playingState", false);
-      await vi.waitFor(async () =>
-        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
-          "other_session_delay",
-        ),
-      );
-
-      let markBlockerStarted = () => {};
-      const blockerStarted = new Promise<void>((resolve) => {
-        markBlockerStarted = resolve;
-      });
-      const blockerGate = new Promise<void>((resolve) => {
-        releaseBlocker = resolve;
-      });
-      blocker = accountOperations.run(account.id, async () => {
-        markBlockerStarted();
-        await blockerGate;
-      });
-      await blockerStarted;
-
-      await vi.advanceTimersByTimeAsync(60_001);
-      const boostCallsBeforeShutdown = client?.gamesPlayed.mock.calls.filter(
-        ([games]) => Array.isArray(games) && games.includes(730),
-      ).length;
-
-      worker.beginShutdown();
-      const drain = accountOperations.drain();
-      releaseBlocker();
-      await Promise.all([blocker, drain]);
-      await worker.shutdown();
-
-      expect(
-        client?.gamesPlayed.mock.calls.filter(
-          ([games]) => Array.isArray(games) && games.includes(730),
-        ),
-      ).toHaveLength(boostCallsBeforeShutdown ?? 0);
-      expect(client?.gamesPlayed).toHaveBeenLastCalledWith([]);
-    } finally {
-      releaseBlocker?.();
-      await blocker?.catch(() => undefined);
-      await worker?.shutdown();
       vi.useRealTimers();
     }
   });
@@ -1804,6 +1579,7 @@ describe("SteamWorker", () => {
   });
 
   it("pauses on blocked playingState and resumes only when the account is free", async () => {
+    vi.useFakeTimers();
     const now = Date.now();
     const account = {
       id: crypto.randomUUID(),
@@ -1849,8 +1625,97 @@ describe("SteamWorker", () => {
     await vi.waitFor(() => {
       expect(client?.gamesPlayed).toHaveBeenLastCalledWith([730]);
     });
+    const boostCallsAfterRelease = boostCallCount(client);
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(boostCallCount(client)).toBe(boostCallsAfterRelease);
+    const [health] = await db
+      .select()
+      .from(accountHealthState)
+      .where(eq(accountHealthState.accountId, account.id));
+    expect(health).toMatchObject({
+      retryAttempt: 0,
+      errorClass: "none",
+      recoveryAction: "none",
+    });
     expect(client?.gamesPlayed).not.toHaveBeenCalledWith([730], true);
     expect(client?.gamesPlayed).not.toHaveBeenCalledWith([], true);
+    vi.useRealTimers();
+  });
+
+  it("starts a fresh live-conflict cycle after pause and resume", async () => {
+    vi.useFakeTimers();
+    const now = Date.now();
+    vi.setSystemTime(now);
+    const account = {
+      id: crypto.randomUUID(),
+      accountName: `blocked-resume-${now}`,
+      steamId: "76561198000000001",
+      status: "online",
+      desiredState: "running",
+      personaState: 7,
+      customTitle: null,
+      tokenCiphertext: null,
+      tokenIv: null,
+      tokenAuthTag: null,
+      tokenExpiresAt: null,
+      tokenKeyVersion: 1,
+      lastError: null,
+      latestBoostStartedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      await db.insert(steamAccount).values(account);
+      await db.insert(steamAccountGame).values({
+        accountId: account.id,
+        appId: 730,
+        enabled: true,
+        source: "manual",
+        createdAt: now,
+      });
+
+      const worker = new SteamWorker(account);
+      const client = steamMock.instances.at(-1);
+      client?.emit("loggedOn");
+      await vi.waitFor(() => expect(worker.isConnected).toBe(true));
+      await worker.updateAccount(account);
+
+      client?.emit("playingState", true);
+      await vi.waitFor(async () => {
+        const [health] = await db
+          .select()
+          .from(accountHealthState)
+          .where(eq(accountHealthState.accountId, account.id));
+        expect(health).toMatchObject({
+          retryAttempt: 1,
+          errorClass: "session_replaced",
+          recoveryAction: "retry",
+        });
+      });
+
+      await worker.pause();
+      await worker.resume();
+      expect(client?.gamesPlayed).toHaveBeenLastCalledWith([730]);
+
+      client?.emit("playingState", true);
+      await vi.waitFor(async () => {
+        const [health] = await db
+          .select()
+          .from(accountHealthState)
+          .where(eq(accountHealthState.accountId, account.id));
+        expect(health).toMatchObject({
+          retryAttempt: 1,
+          errorClass: "session_replaced",
+          recoveryAction: "retry",
+        });
+        expect(health?.nextRetryAt).toBe(health!.updatedAt + 5 * 60_000);
+      });
+
+      await worker.pause();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

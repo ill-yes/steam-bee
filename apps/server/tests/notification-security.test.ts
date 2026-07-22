@@ -111,6 +111,61 @@ describe("webhook address policy", () => {
     });
   });
 
+  it("uses an event ID boundary even when timestamps are identical", async () => {
+    const occurredAt = Date.now();
+    const oldEvent = await insertEvent("steam.status", {}, occurredAt);
+    const ruleId = await insertRule("steam.status");
+    await db
+      .update(notificationRule)
+      .set({ startAfterEventId: oldEvent.id })
+      .where(eq(notificationRule.id, ruleId));
+    const newEvent = await insertEvent("steam.status", {}, occurredAt);
+    const dispatcher = new NotificationDispatcher();
+
+    await dispatcher.reconcile();
+
+    const deliveries = await db.select().from(notificationDelivery);
+    expect(deliveries).toEqual([
+      expect.objectContaining({ eventId: newEvent.id, ruleRevision: 1 }),
+    ]);
+  });
+
+  it("does not let an in-flight old revision update a replacement rule", async () => {
+    let releaseWebhook: (() => void) | undefined;
+    const webhookGate = new Promise<void>((resolve) => {
+      releaseWebhook = resolve;
+    });
+    const targets: string[] = [];
+    const dispatcher = new NotificationDispatcher(async (target) => {
+      targets.push(target);
+      await webhookGate;
+    });
+    const ruleId = await insertRule("steam.status", "https://old.example/hook");
+    const event = await insertEvent("steam.status");
+    await dispatcher.enqueue(event);
+    const delivery = await deliveryFor(event.id);
+
+    const inFlight = deliver(dispatcher, delivery.id);
+    await vi.waitFor(() =>
+      expect(targets).toEqual(["https://old.example/hook"]),
+    );
+    await db
+      .update(notificationRule)
+      .set({ revision: 2, failureCount: 7, startAfterEventId: event.id })
+      .where(eq(notificationRule.id, ruleId));
+    await db
+      .delete(notificationDelivery)
+      .where(eq(notificationDelivery.ruleId, ruleId));
+    releaseWebhook?.();
+    await inFlight;
+
+    const rule = await db.query.notificationRule.findFirst({
+      where: eq(notificationRule.id, ruleId),
+    });
+    expect(rule).toMatchObject({ revision: 2, failureCount: 7 });
+    expect(await db.select().from(notificationDelivery)).toEqual([]);
+  });
+
   it("bounds retries and opens the rule circuit breaker", async () => {
     const dispatcher = new NotificationDispatcher();
     const ruleId = await insertRule("*", "http://127.0.0.1/hook");

@@ -129,6 +129,49 @@ describe("SafetyCoordinator", () => {
     expect(policy?.holdReason).toBeNull();
   });
 
+  it("retains the safety hold when enforcement fails", async () => {
+    const now = Date.now();
+    const accountId = crypto.randomUUID();
+    await db.insert(steamAccount).values({
+      id: accountId,
+      accountName: `safety-failure-${now}`,
+      status: "boosting",
+      desiredState: "running",
+      personaState: 7,
+      tokenKeyVersion: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(accountSafetyPolicy).values({
+      accountId,
+      maxSessionMinutes: 5,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(boostSession).values({
+      id: crypto.randomUUID(),
+      accountId,
+      appIdsJson: "[730]",
+      startedAt: now - 6 * 60_000,
+      createdAt: now - 6 * 60_000,
+    });
+    const coordinator = new SafetyCoordinator({
+      runForAccount: async (_accountId, operation) => operation(),
+      pause: vi.fn(async () => {
+        throw new Error("pause failed");
+      }),
+      recordInfo: vi.fn(async () => undefined),
+      onTickError: vi.fn(),
+    });
+
+    await expect(coordinator.tick(now)).rejects.toThrow("pause failed");
+
+    const policy = await db.query.accountSafetyPolicy.findFirst({
+      where: eq(accountSafetyPolicy.accountId, accountId),
+    });
+    expect(policy?.holdReason).toBe("session_limit");
+  });
+
   it("resets daily limits at UTC midnight even in a non-UTC process timezone", async () => {
     const previousTimezone = process.env.TZ;
     process.env.TZ = "America/Los_Angeles";

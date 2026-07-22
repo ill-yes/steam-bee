@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AccountSafetyPolicy } from "../../../api";
 import { Button } from "../../../components/ui/button";
-import { Input, Select } from "../../../components/ui/form";
+import { Input } from "../../../components/ui/form";
 import { interpolate, useI18n } from "../../../i18n";
 import type { ResourceLoadState } from "../useAccountController";
 
@@ -18,8 +18,6 @@ export function SafetyPanel({
   busy: boolean;
   canPauseUntil: boolean;
   onSave: (input: {
-    resumePolicy: AccountSafetyPolicy["resumePolicy"];
-    resumeDelayMinutes: number;
     maxSessionMinutes: number | null;
     maxDailyMinutes: number | null;
     maxWeeklyMinutes: number | null;
@@ -28,31 +26,21 @@ export function SafetyPanel({
 }) {
   const { messages: t, localeInfo } = useI18n();
   const o = t.operations;
-  const [resumePolicy, setResumePolicy] =
-    useState<AccountSafetyPolicy["resumePolicy"]>("automatic");
-  const [resumeDelay, setResumeDelay] = useState("15");
   const [sessionLimit, setSessionLimit] = useState("");
   const [dailyLimit, setDailyLimit] = useState("");
   const [weeklyLimit, setWeeklyLimit] = useState("");
 
   useEffect(() => {
     if (!policy) return;
-    setResumePolicy(policy.resumePolicy);
-    setResumeDelay(String(policy.resumeDelayMinutes));
     setSessionLimit(stringLimit(policy.maxSessionMinutes));
     setDailyLimit(stringLimit(policy.maxDailyMinutes));
     setWeeklyLimit(stringLimit(policy.maxWeeklyMinutes));
   }, [policy]);
 
-  const resumeDelayMinutes =
-    resumePolicy === "delayed"
-      ? parseRequiredMinutes(resumeDelay, 1, 24 * 60)
-      : (policy?.resumeDelayMinutes ?? 15);
   const maxSessionMinutes = parseLimit(sessionLimit);
   const maxDailyMinutes = parseLimit(dailyLimit);
   const maxWeeklyMinutes = parseLimit(weeklyLimit);
   const inputsValid =
-    resumeDelayMinutes !== null &&
     maxSessionMinutes !== undefined &&
     maxDailyMinutes !== undefined &&
     maxWeeklyMinutes !== undefined;
@@ -88,31 +76,6 @@ export function SafetyPanel({
               })
             : null}
         </div>
-      ) : null}
-      <label className="grid gap-1 text-xs font-semibold text-[var(--muted-strong)]">
-        {o.resumePolicy}
-        <Select
-          value={resumePolicy}
-          onChange={(event) =>
-            setResumePolicy(
-              event.target.value as AccountSafetyPolicy["resumePolicy"],
-            )
-          }
-        >
-          <option value="automatic">{o.resumeAutomatic}</option>
-          <option value="delayed">{o.resumeDelayed}</option>
-          <option value="manual">{o.resumeManual}</option>
-        </Select>
-      </label>
-      {resumePolicy === "delayed" ? (
-        <NumberField
-          label={o.resumeDelay}
-          value={resumeDelay}
-          onChange={setResumeDelay}
-          min={1}
-          max={24 * 60}
-          invalid={resumeDelayMinutes === null}
-        />
       ) : null}
       <div className="grid gap-2 sm:grid-cols-3">
         <NumberField
@@ -150,7 +113,6 @@ export function SafetyPanel({
         disabled={busy || !policy || !inputsValid}
         onClick={() => {
           if (
-            resumeDelayMinutes === null ||
             maxSessionMinutes === undefined ||
             maxDailyMinutes === undefined ||
             maxWeeklyMinutes === undefined
@@ -158,8 +120,6 @@ export function SafetyPanel({
             return;
           }
           onSave({
-            resumePolicy,
-            resumeDelayMinutes,
             maxSessionMinutes,
             maxDailyMinutes,
             maxWeeklyMinutes,
@@ -227,13 +187,6 @@ function parseLimit(value: string) {
   return Number.isInteger(parsed) && parsed >= 5 && parsed <= 7 * 24 * 60
     ? parsed
     : undefined;
-}
-
-function parseRequiredMinutes(value: string, min: number, max: number) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed >= min && parsed <= max
-    ? parsed
-    : null;
 }
 
 function stringLimit(value: number | null) {

@@ -4,7 +4,7 @@ import { request as httpRequest } from "node:http";
 import { BlockList, isIP } from "node:net";
 import { request as httpsRequest } from "node:https";
 import type { SteamEvent } from "@steam-bee/contracts";
-import { and, asc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { db } from "../db/client.js";
 import {
   notificationDelivery,
@@ -101,7 +101,7 @@ export class NotificationDispatcher {
       const events = await db
         .select()
         .from(steamEvent)
-        .where(gte(steamEvent.createdAt, rule.createdAt));
+        .where(gt(steamEvent.id, rule.startAfterEventId));
       await this.enqueueForRules(
         events.map((event) => ({
           id: event.id,
@@ -132,6 +132,7 @@ export class NotificationDispatcher {
           .values({
             id: randomUUID(),
             ruleId: rule.id,
+            ruleRevision: rule.revision,
             eventId: event.id,
             status: "pending",
             attempts: 0,
@@ -209,7 +210,12 @@ export class NotificationDispatcher {
       where: eq(notificationRule.id, delivery.ruleId),
     });
     if (stopSensitive && !this.running) return;
-    if (!rule || !rule.enabled || rule.target !== "webhook") {
+    if (
+      !rule ||
+      rule.revision !== delivery.ruleRevision ||
+      !rule.enabled ||
+      rule.target !== "webhook"
+    ) {
       await db
         .update(notificationDelivery)
         .set({
@@ -218,7 +224,12 @@ export class NotificationDispatcher {
           lastError: "Notification rule is no longer active.",
           updatedAt: Date.now(),
         })
-        .where(eq(notificationDelivery.id, delivery.id));
+        .where(
+          and(
+            eq(notificationDelivery.id, delivery.id),
+            eq(notificationDelivery.ruleRevision, delivery.ruleRevision),
+          ),
+        );
       return;
     }
     if (rule.disabledUntil && rule.disabledUntil > Date.now()) {
@@ -229,7 +240,12 @@ export class NotificationDispatcher {
           nextAttemptAt: rule.disabledUntil,
           updatedAt: Date.now(),
         })
-        .where(eq(notificationDelivery.id, delivery.id));
+        .where(
+          and(
+            eq(notificationDelivery.id, delivery.id),
+            eq(notificationDelivery.ruleRevision, delivery.ruleRevision),
+          ),
+        );
       return;
     }
     if (!rule.webhookCiphertext || !rule.webhookIv || !rule.webhookAuthTag) {
@@ -277,11 +293,21 @@ export class NotificationDispatcher {
           lastError: null,
           updatedAt: Date.now(),
         })
-        .where(eq(notificationDelivery.id, delivery.id));
+        .where(
+          and(
+            eq(notificationDelivery.id, delivery.id),
+            eq(notificationDelivery.ruleRevision, delivery.ruleRevision),
+          ),
+        );
       await db
         .update(notificationRule)
         .set({ failureCount: 0, disabledUntil: null, updatedAt: Date.now() })
-        .where(eq(notificationRule.id, rule.id));
+        .where(
+          and(
+            eq(notificationRule.id, rule.id),
+            eq(notificationRule.revision, delivery.ruleRevision),
+          ),
+        );
     } catch (error) {
       if (!this.running && errorIsAbort(error)) return;
       await this.fail(delivery, rule.id, safeErrorMessage(error));
@@ -297,8 +323,12 @@ export class NotificationDispatcher {
     const terminal = attempts >= maxAttempts;
     const now = Date.now();
     const rule = await db.query.notificationRule.findFirst({
-      where: eq(notificationRule.id, ruleId),
+      where: and(
+        eq(notificationRule.id, ruleId),
+        eq(notificationRule.revision, delivery.ruleRevision),
+      ),
     });
+    if (!rule) return;
     const failureCount = (rule?.failureCount ?? 0) + 1;
     await db
       .update(notificationDelivery)
@@ -309,7 +339,12 @@ export class NotificationDispatcher {
         lastError: message,
         updatedAt: now,
       })
-      .where(eq(notificationDelivery.id, delivery.id));
+      .where(
+        and(
+          eq(notificationDelivery.id, delivery.id),
+          eq(notificationDelivery.ruleRevision, delivery.ruleRevision),
+        ),
+      );
     await db
       .update(notificationRule)
       .set({
@@ -317,7 +352,12 @@ export class NotificationDispatcher {
         disabledUntil: failureCount >= 5 ? now + 60 * 60_000 : null,
         updatedAt: now,
       })
-      .where(eq(notificationRule.id, ruleId));
+      .where(
+        and(
+          eq(notificationRule.id, ruleId),
+          eq(notificationRule.revision, delivery.ruleRevision),
+        ),
+      );
   }
 }
 

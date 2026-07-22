@@ -65,11 +65,6 @@ export const operationsEn = {
   safetyTitle: "Session safety",
   safetyDescription:
     "Safety caps only pause an existing session. A timed pause resumes that same session when it expires; caps never start a stopped account. Daily and weekly limits reset on UTC calendar boundaries.",
-  resumePolicy: "After a real Steam session",
-  resumeAutomatic: "Resume automatically",
-  resumeDelayed: "Resume after a delay",
-  resumeManual: "Require manual resume",
-  resumeDelay: "Delay (minutes)",
   sessionLimit: "Maximum session (minutes)",
   dailyLimit: "Maximum per day (minutes)",
   weeklyLimit: "Maximum per week (minutes)",
@@ -85,6 +80,7 @@ export const operationsEn = {
   lastSteamContact: "Last Steam contact",
   nextRetry: "Next retry",
   retryAttempt: "Retry attempt {count}",
+  sessionConflictCooldown: "60-minute cooldown",
   librarySnapshot: "Library snapshot",
   tokenExpiry: "Token expiry",
   never: "Not recorded",
@@ -112,8 +108,7 @@ export const operationsEn = {
     session_limit: "Session limit",
     daily_limit: "Daily limit",
     weekly_limit: "Weekly limit",
-    other_session_delay: "Other Steam session; delayed resume",
-    other_session_manual: "Other Steam session; manual resume",
+    safety_failure: "Safety enforcement needs attention",
   },
   errorClasses: {
     none: "No error",
@@ -129,7 +124,7 @@ export const operationsEn = {
     wait: "Wait and retry",
     retry: "Reconnect",
     reauthenticate: "Sign in again",
-    manual_resume: "Resume manually",
+    attention: "Inspect and stop the Steam client",
   },
 } as const;
 
@@ -209,11 +204,6 @@ export const operationsDe: OperationsCopy = {
   safetyTitle: "Session-Sicherheit",
   safetyDescription:
     "Safety-Limits pausieren nur laufende Sessions. Eine zeitlich begrenzte Pause setzt dieselbe Session nach Ablauf fort; Limits starten keinen gestoppten Account. Tages- und Wochenlimits werden an UTC-Kalendergrenzen zurückgesetzt.",
-  resumePolicy: "Nach einer echten Steam-Sitzung",
-  resumeAutomatic: "Automatisch fortsetzen",
-  resumeDelayed: "Nach einer Wartezeit fortsetzen",
-  resumeManual: "Manuelles Fortsetzen verlangen",
-  resumeDelay: "Wartezeit (Minuten)",
   sessionLimit: "Maximale Session (Minuten)",
   dailyLimit: "Maximum pro Tag (Minuten)",
   weeklyLimit: "Maximum pro Woche (Minuten)",
@@ -229,6 +219,7 @@ export const operationsDe: OperationsCopy = {
   lastSteamContact: "Letzter Steam-Kontakt",
   nextRetry: "Nächster Versuch",
   retryAttempt: "Reconnect-Versuch {count}",
+  sessionConflictCooldown: "60-Minuten-Cooldown",
   librarySnapshot: "Library-Snapshot",
   tokenExpiry: "Token-Ablauf",
   never: "Nicht erfasst",
@@ -256,8 +247,7 @@ export const operationsDe: OperationsCopy = {
     session_limit: "Session-Limit",
     daily_limit: "Tageslimit",
     weekly_limit: "Wochenlimit",
-    other_session_delay: "Andere Steam-Sitzung; verzögertes Fortsetzen",
-    other_session_manual: "Andere Steam-Sitzung; manuelles Fortsetzen",
+    safety_failure: "Sicherheitsstopp erfordert Aufmerksamkeit",
   },
   errorClasses: {
     none: "Kein Fehler",
@@ -273,7 +263,7 @@ export const operationsDe: OperationsCopy = {
     wait: "Warten und erneut versuchen",
     retry: "Neu verbinden",
     reauthenticate: "Erneut anmelden",
-    manual_resume: "Manuell fortsetzen",
+    attention: "Steam-Client prüfen und stoppen",
   },
 };
 
@@ -340,11 +330,6 @@ export const operationsZhHans: OperationsCopy = {
   safetyTitle: "会话安全",
   safetyDescription:
     "安全上限只会暂停现有会话。限时暂停到期后会恢复同一会话；上限绝不会启动已停止的账户。每日和每周限额按 UTC 日历边界重置。",
-  resumePolicy: "检测到真实 Steam 会话后",
-  resumeAutomatic: "自动恢复",
-  resumeDelayed: "延迟后恢复",
-  resumeManual: "需要手动恢复",
-  resumeDelay: "延迟时间（分钟）",
   sessionLimit: "单次会话上限（分钟）",
   dailyLimit: "每日上限（分钟）",
   weeklyLimit: "每周上限（分钟）",
@@ -360,6 +345,7 @@ export const operationsZhHans: OperationsCopy = {
   lastSteamContact: "上次联系 Steam",
   nextRetry: "下次重试",
   retryAttempt: "第 {count} 次重试",
+  sessionConflictCooldown: "60 分钟冷却期",
   librarySnapshot: "库快照",
   tokenExpiry: "令牌到期时间",
   never: "未记录",
@@ -387,8 +373,7 @@ export const operationsZhHans: OperationsCopy = {
     session_limit: "单次会话上限",
     daily_limit: "每日上限",
     weekly_limit: "每周上限",
-    other_session_delay: "其他 Steam 会话；延迟恢复",
-    other_session_manual: "其他 Steam 会话；手动恢复",
+    safety_failure: "安全停止需要处理",
   },
   errorClasses: {
     none: "无错误",
@@ -404,7 +389,7 @@ export const operationsZhHans: OperationsCopy = {
     wait: "等待后重试",
     retry: "重新连接",
     reauthenticate: "重新登录",
-    manual_resume: "手动恢复",
+    attention: "检查并停止 Steam 客户端",
   },
 };
 
@@ -474,11 +459,6 @@ export const operationsHi: OperationsCopy = {
   safetyTitle: "सत्र सुरक्षा",
   safetyDescription:
     "सुरक्षा सीमाएँ केवल मौजूदा सत्र को रोकती हैं। समयबद्ध विराम समाप्त होने पर वही सत्र फिर शुरू होता है; सीमाएँ बंद खाते को कभी शुरू नहीं करतीं। दैनिक और साप्ताहिक सीमाएँ UTC कैलेंडर सीमाओं पर रीसेट होती हैं।",
-  resumePolicy: "वास्तविक Steam सत्र के बाद",
-  resumeAutomatic: "अपने-आप फिर शुरू करें",
-  resumeDelayed: "देरी के बाद फिर शुरू करें",
-  resumeManual: "हाथ से फिर शुरू करना आवश्यक",
-  resumeDelay: "देरी (मिनट)",
   sessionLimit: "अधिकतम सत्र (मिनट)",
   dailyLimit: "प्रतिदिन अधिकतम (मिनट)",
   weeklyLimit: "प्रति सप्ताह अधिकतम (मिनट)",
@@ -494,6 +474,7 @@ export const operationsHi: OperationsCopy = {
   lastSteamContact: "Steam से अंतिम संपर्क",
   nextRetry: "अगला प्रयास",
   retryAttempt: "दोबारा कनेक्ट करने का प्रयास {count}",
+  sessionConflictCooldown: "60 मिनट का कूलडाउन",
   librarySnapshot: "लाइब्रेरी स्नैपशॉट",
   tokenExpiry: "टोकन की समाप्ति",
   never: "दर्ज नहीं",
@@ -521,8 +502,7 @@ export const operationsHi: OperationsCopy = {
     session_limit: "सत्र सीमा",
     daily_limit: "दैनिक सीमा",
     weekly_limit: "साप्ताहिक सीमा",
-    other_session_delay: "अन्य Steam सत्र; विलंबित पुनरारंभ",
-    other_session_manual: "अन्य Steam सत्र; मैन्युअल पुनरारंभ",
+    safety_failure: "सुरक्षा रोक पर ध्यान आवश्यक है",
   },
   errorClasses: {
     none: "कोई त्रुटि नहीं",
@@ -538,7 +518,7 @@ export const operationsHi: OperationsCopy = {
     wait: "प्रतीक्षा करके फिर प्रयास करें",
     retry: "फिर कनेक्ट करें",
     reauthenticate: "फिर लॉगिन करें",
-    manual_resume: "हाथ से फिर शुरू करें",
+    attention: "Steam क्लाइंट जाँचें और रोकें",
   },
 };
 
@@ -610,11 +590,6 @@ export const operationsEs: OperationsCopy = {
   safetyTitle: "Seguridad de la sesión",
   safetyDescription:
     "Los límites de seguridad solo pausan una sesión existente. Una pausa temporizada reanuda esa misma sesión al finalizar; los límites nunca inician una cuenta detenida. Los límites diarios y semanales se reinician según el calendario UTC.",
-  resumePolicy: "Después de una sesión real de Steam",
-  resumeAutomatic: "Reanudar automáticamente",
-  resumeDelayed: "Reanudar tras una espera",
-  resumeManual: "Requerir reanudación manual",
-  resumeDelay: "Espera (minutos)",
   sessionLimit: "Sesión máxima (minutos)",
   dailyLimit: "Máximo diario (minutos)",
   weeklyLimit: "Máximo semanal (minutos)",
@@ -630,6 +605,7 @@ export const operationsEs: OperationsCopy = {
   lastSteamContact: "Último contacto con Steam",
   nextRetry: "Próximo intento",
   retryAttempt: "Intento de reconexión {count}",
+  sessionConflictCooldown: "Enfriamiento de 60 minutos",
   librarySnapshot: "Instantánea de la biblioteca",
   tokenExpiry: "Caducidad del token",
   never: "Sin registrar",
@@ -657,8 +633,7 @@ export const operationsEs: OperationsCopy = {
     session_limit: "Límite de sesión",
     daily_limit: "Límite diario",
     weekly_limit: "Límite semanal",
-    other_session_delay: "Otra sesión de Steam; reanudación aplazada",
-    other_session_manual: "Otra sesión de Steam; reanudación manual",
+    safety_failure: "La parada de seguridad requiere atención",
   },
   errorClasses: {
     none: "Sin errores",
@@ -674,7 +649,7 @@ export const operationsEs: OperationsCopy = {
     wait: "Esperar y volver a intentarlo",
     retry: "Volver a conectar",
     reauthenticate: "Volver a iniciar sesión",
-    manual_resume: "Reanudar manualmente",
+    attention: "Revisar y detener el cliente de Steam",
   },
 };
 
@@ -744,11 +719,6 @@ export const operationsAr: OperationsCopy = {
   safetyTitle: "أمان الجلسة",
   safetyDescription:
     "توقف حدود الأمان جلسة موجودة مؤقتًا فقط. يستأنف التوقف المحدد بوقت الجلسة نفسها عند انتهائه؛ ولا تبدأ الحدود حسابًا متوقفًا. تُعاد تهيئة الحدود اليومية والأسبوعية عند حدود تقويم UTC.",
-  resumePolicy: "بعد جلسة Steam فعلية",
-  resumeAutomatic: "الاستئناف تلقائيًا",
-  resumeDelayed: "الاستئناف بعد مهلة",
-  resumeManual: "اشتراط الاستئناف اليدوي",
-  resumeDelay: "المهلة (بالدقائق)",
   sessionLimit: "الحد الأقصى للجلسة (بالدقائق)",
   dailyLimit: "الحد الأقصى يوميًا (بالدقائق)",
   weeklyLimit: "الحد الأقصى أسبوعيًا (بالدقائق)",
@@ -764,6 +734,7 @@ export const operationsAr: OperationsCopy = {
   lastSteamContact: "آخر اتصال مع Steam",
   nextRetry: "المحاولة التالية",
   retryAttempt: "محاولة إعادة الاتصال {count}",
+  sessionConflictCooldown: "فترة تهدئة لمدة 60 دقيقة",
   librarySnapshot: "لقطة المكتبة",
   tokenExpiry: "انتهاء صلاحية الرمز",
   never: "غير مسجل",
@@ -791,8 +762,7 @@ export const operationsAr: OperationsCopy = {
     session_limit: "حد الجلسة",
     daily_limit: "الحد اليومي",
     weekly_limit: "الحد الأسبوعي",
-    other_session_delay: "جلسة Steam أخرى؛ استئناف مؤجل",
-    other_session_manual: "جلسة Steam أخرى؛ استئناف يدوي",
+    safety_failure: "إيقاف الأمان يحتاج إلى تدخل",
   },
   errorClasses: {
     none: "لا يوجد خطأ",
@@ -808,7 +778,7 @@ export const operationsAr: OperationsCopy = {
     wait: "الانتظار ثم إعادة المحاولة",
     retry: "إعادة الاتصال",
     reauthenticate: "تسجيل الدخول مجددًا",
-    manual_resume: "الاستئناف يدويًا",
+    attention: "افحص عميل Steam وأوقفه",
   },
 };
 
@@ -882,11 +852,6 @@ export const operationsFr: OperationsCopy = {
   safetyTitle: "Sécurité de la session",
   safetyDescription:
     "Les limites de sécurité mettent uniquement en pause une session existante. Une pause temporisée reprend cette session à son expiration ; les limites ne démarrent jamais un compte arrêté. Les limites quotidiennes et hebdomadaires suivent le calendrier UTC.",
-  resumePolicy: "Après une véritable session Steam",
-  resumeAutomatic: "Reprendre automatiquement",
-  resumeDelayed: "Reprendre après un délai",
-  resumeManual: "Exiger une reprise manuelle",
-  resumeDelay: "Délai (minutes)",
   sessionLimit: "Durée maximale de session (minutes)",
   dailyLimit: "Maximum par jour (minutes)",
   weeklyLimit: "Maximum par semaine (minutes)",
@@ -902,6 +867,7 @@ export const operationsFr: OperationsCopy = {
   lastSteamContact: "Dernier contact avec Steam",
   nextRetry: "Prochaine tentative",
   retryAttempt: "Tentative de reconnexion {count}",
+  sessionConflictCooldown: "Pause de récupération de 60 minutes",
   librarySnapshot: "Instantané de la bibliothèque",
   tokenExpiry: "Expiration du jeton",
   never: "Non enregistré",
@@ -929,8 +895,7 @@ export const operationsFr: OperationsCopy = {
     session_limit: "Limite de session",
     daily_limit: "Limite quotidienne",
     weekly_limit: "Limite hebdomadaire",
-    other_session_delay: "Autre session Steam ; reprise différée",
-    other_session_manual: "Autre session Steam ; reprise manuelle",
+    safety_failure: "L’arrêt de sécurité nécessite une intervention",
   },
   errorClasses: {
     none: "Aucune erreur",
@@ -946,7 +911,7 @@ export const operationsFr: OperationsCopy = {
     wait: "Attendre puis réessayer",
     retry: "Se reconnecter",
     reauthenticate: "Se reconnecter au compte",
-    manual_resume: "Reprendre manuellement",
+    attention: "Vérifier et arrêter le client Steam",
   },
 };
 
@@ -1018,11 +983,6 @@ export const operationsBn: OperationsCopy = {
   safetyTitle: "সেশনের নিরাপত্তা",
   safetyDescription:
     "নিরাপত্তা সীমা শুধু বিদ্যমান সেশনকে বিরতিতে রাখে। সময়সীমাবদ্ধ বিরতি শেষ হলে একই সেশন আবার চালু হয়; সীমা কখনও বন্ধ অ্যাকাউন্ট চালু করে না। দৈনিক ও সাপ্তাহিক সীমা UTC ক্যালেন্ডারের সীমানায় পুনরায় শুরু হয়।",
-  resumePolicy: "বাস্তব Steam সেশনের পরে",
-  resumeAutomatic: "স্বয়ংক্রিয়ভাবে আবার চালু করুন",
-  resumeDelayed: "বিলম্বের পরে আবার চালু করুন",
-  resumeManual: "নিজে আবার চালু করা আবশ্যক",
-  resumeDelay: "বিলম্ব (মিনিট)",
   sessionLimit: "সর্বোচ্চ সেশন (মিনিট)",
   dailyLimit: "প্রতিদিন সর্বোচ্চ (মিনিট)",
   weeklyLimit: "প্রতি সপ্তাহে সর্বোচ্চ (মিনিট)",
@@ -1038,6 +998,7 @@ export const operationsBn: OperationsCopy = {
   lastSteamContact: "Steam-এর সঙ্গে সর্বশেষ যোগাযোগ",
   nextRetry: "পরবর্তী চেষ্টা",
   retryAttempt: "পুনঃসংযোগের চেষ্টা {count}",
+  sessionConflictCooldown: "৬০ মিনিটের কুলডাউন",
   librarySnapshot: "লাইব্রেরি স্ন্যাপশট",
   tokenExpiry: "টোকেনের মেয়াদ",
   never: "রেকর্ড করা হয়নি",
@@ -1065,8 +1026,7 @@ export const operationsBn: OperationsCopy = {
     session_limit: "সেশন সীমা",
     daily_limit: "দৈনিক সীমা",
     weekly_limit: "সাপ্তাহিক সীমা",
-    other_session_delay: "অন্য Steam সেশন; বিলম্বিত পুনরারম্ভ",
-    other_session_manual: "অন্য Steam সেশন; ম্যানুয়াল পুনরারম্ভ",
+    safety_failure: "নিরাপত্তা বন্ধে মনোযোগ প্রয়োজন",
   },
   errorClasses: {
     none: "কোনো ত্রুটি নেই",
@@ -1082,7 +1042,7 @@ export const operationsBn: OperationsCopy = {
     wait: "অপেক্ষা করে আবার চেষ্টা করুন",
     retry: "আবার সংযোগ করুন",
     reauthenticate: "আবার লগইন করুন",
-    manual_resume: "নিজে আবার চালু করুন",
+    attention: "Steam ক্লায়েন্ট পরীক্ষা করে বন্ধ করুন",
   },
 };
 
@@ -1154,11 +1114,6 @@ export const operationsPt: OperationsCopy = {
   safetyTitle: "Segurança da sessão",
   safetyDescription:
     "Os limites de segurança apenas pausam uma sessão existente. Uma pausa temporizada retoma essa sessão quando expira; os limites nunca iniciam uma conta parada. Os limites diários e semanais seguem o calendário UTC.",
-  resumePolicy: "Após uma sessão real do Steam",
-  resumeAutomatic: "Retomar automaticamente",
-  resumeDelayed: "Retomar após um atraso",
-  resumeManual: "Exigir retomada manual",
-  resumeDelay: "Atraso (minutos)",
   sessionLimit: "Sessão máxima (minutos)",
   dailyLimit: "Máximo por dia (minutos)",
   weeklyLimit: "Máximo por semana (minutos)",
@@ -1174,6 +1129,7 @@ export const operationsPt: OperationsCopy = {
   lastSteamContact: "Último contato com o Steam",
   nextRetry: "Próxima tentativa",
   retryAttempt: "Tentativa de reconexão {count}",
+  sessionConflictCooldown: "Intervalo de 60 minutos",
   librarySnapshot: "Snapshot da biblioteca",
   tokenExpiry: "Expiração do token",
   never: "Não registrado",
@@ -1201,8 +1157,7 @@ export const operationsPt: OperationsCopy = {
     session_limit: "Limite da sessão",
     daily_limit: "Limite diário",
     weekly_limit: "Limite semanal",
-    other_session_delay: "Outra sessão do Steam; retomada adiada",
-    other_session_manual: "Outra sessão do Steam; retomada manual",
+    safety_failure: "A parada de segurança requer atenção",
   },
   errorClasses: {
     none: "Sem erro",
@@ -1218,7 +1173,7 @@ export const operationsPt: OperationsCopy = {
     wait: "Aguardar e tentar novamente",
     retry: "Reconectar",
     reauthenticate: "Entrar novamente",
-    manual_resume: "Retomar manualmente",
+    attention: "Verificar e parar o cliente Steam",
   },
 };
 
@@ -1290,11 +1245,6 @@ export const operationsId: OperationsCopy = {
   safetyTitle: "Keamanan sesi",
   safetyDescription:
     "Batas keamanan hanya menjeda sesi yang sudah ada. Jeda berjangka melanjutkan sesi yang sama setelah berakhir; batas tidak pernah memulai akun yang dihentikan. Batas harian dan mingguan diatur ulang pada batas kalender UTC.",
-  resumePolicy: "Setelah sesi Steam nyata",
-  resumeAutomatic: "Lanjutkan otomatis",
-  resumeDelayed: "Lanjutkan setelah penundaan",
-  resumeManual: "Wajib dilanjutkan secara manual",
-  resumeDelay: "Penundaan (menit)",
   sessionLimit: "Sesi maksimum (menit)",
   dailyLimit: "Maksimum per hari (menit)",
   weeklyLimit: "Maksimum per minggu (menit)",
@@ -1310,6 +1260,7 @@ export const operationsId: OperationsCopy = {
   lastSteamContact: "Kontak terakhir dengan Steam",
   nextRetry: "Percobaan berikutnya",
   retryAttempt: "Percobaan koneksi ulang {count}",
+  sessionConflictCooldown: "Jeda 60 menit",
   librarySnapshot: "Snapshot pustaka",
   tokenExpiry: "Kedaluwarsa token",
   never: "Belum tercatat",
@@ -1337,8 +1288,7 @@ export const operationsId: OperationsCopy = {
     session_limit: "Batas sesi",
     daily_limit: "Batas harian",
     weekly_limit: "Batas mingguan",
-    other_session_delay: "Sesi Steam lain; lanjut tertunda",
-    other_session_manual: "Sesi Steam lain; lanjut manual",
+    safety_failure: "Penghentian keamanan perlu diperiksa",
   },
   errorClasses: {
     none: "Tidak ada kesalahan",
@@ -1354,7 +1304,7 @@ export const operationsId: OperationsCopy = {
     wait: "Tunggu lalu coba lagi",
     retry: "Hubungkan kembali",
     reauthenticate: "Masuk kembali",
-    manual_resume: "Lanjutkan secara manual",
+    attention: "Periksa dan hentikan klien Steam",
   },
 };
 
@@ -1425,11 +1375,6 @@ export const operationsUr: OperationsCopy = {
   safetyTitle: "سیشن کی حفاظت",
   safetyDescription:
     "حفاظتی حدود صرف موجودہ سیشن کو عارضی طور پر روکتی ہیں۔ مقررہ مدت کا توقف ختم ہونے پر وہی سیشن دوبارہ شروع ہوتا ہے؛ حدود کبھی بند اکاؤنٹ کو شروع نہیں کرتیں۔ روزانہ اور ہفتہ وار حدود UTC کیلنڈر کی سرحدوں پر دوبارہ مقرر ہوتی ہیں۔",
-  resumePolicy: "حقیقی Steam سیشن کے بعد",
-  resumeAutomatic: "خودکار طور پر دوبارہ شروع کریں",
-  resumeDelayed: "وقفے کے بعد دوبارہ شروع کریں",
-  resumeManual: "دستی طور پر دوبارہ شروع کرنا لازم",
-  resumeDelay: "وقفہ (منٹ)",
   sessionLimit: "زیادہ سے زیادہ سیشن (منٹ)",
   dailyLimit: "روزانہ زیادہ سے زیادہ (منٹ)",
   weeklyLimit: "ہفتہ وار زیادہ سے زیادہ (منٹ)",
@@ -1445,6 +1390,7 @@ export const operationsUr: OperationsCopy = {
   lastSteamContact: "Steam سے آخری رابطہ",
   nextRetry: "اگلی کوشش",
   retryAttempt: "دوبارہ اتصال کی کوشش {count}",
+  sessionConflictCooldown: "60 منٹ کا کول ڈاؤن",
   librarySnapshot: "لائبریری اسنیپ شاٹ",
   tokenExpiry: "ٹوکن کی میعاد",
   never: "درج نہیں",
@@ -1472,8 +1418,7 @@ export const operationsUr: OperationsCopy = {
     session_limit: "سیشن کی حد",
     daily_limit: "روزانہ کی حد",
     weekly_limit: "ہفتہ وار حد",
-    other_session_delay: "دوسرا Steam سیشن؛ تاخیر سے دوبارہ آغاز",
-    other_session_manual: "دوسرا Steam سیشن؛ دستی دوبارہ آغاز",
+    safety_failure: "حفاظتی روک پر توجہ درکار ہے",
   },
   errorClasses: {
     none: "کوئی خرابی نہیں",
@@ -1489,6 +1434,6 @@ export const operationsUr: OperationsCopy = {
     wait: "انتظار کر کے دوبارہ کوشش کریں",
     retry: "دوبارہ منسلک کریں",
     reauthenticate: "دوبارہ لاگ اِن کریں",
-    manual_resume: "دستی طور پر دوبارہ شروع کریں",
+    attention: "Steam کلائنٹ کو جانچ کر روکیں",
   },
 };

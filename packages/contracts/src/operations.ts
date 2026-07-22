@@ -3,7 +3,7 @@ export const RECOVERY_ACTIONS = [
   "wait",
   "retry",
   "reauthenticate",
-  "manual_resume",
+  "attention",
 ] as const;
 export type RecoveryAction = (typeof RECOVERY_ACTIONS)[number];
 
@@ -28,24 +28,18 @@ export type AccountHealth = {
   libraryImportedAt: number | null;
 };
 
-export const RESUME_POLICIES = ["automatic", "delayed", "manual"] as const;
-export type ResumePolicy = (typeof RESUME_POLICIES)[number];
-
 export const SAFETY_HOLD_REASONS = [
   "manual",
   "pause_until",
   "session_limit",
   "daily_limit",
   "weekly_limit",
-  "other_session_delay",
-  "other_session_manual",
+  "safety_failure",
 ] as const;
 export type SafetyHoldReason = (typeof SAFETY_HOLD_REASONS)[number];
 
 export type AccountSafetyPolicy = {
   accountId: string;
-  resumePolicy: ResumePolicy;
-  resumeDelayMinutes: number;
   maxSessionMinutes: number | null;
   maxDailyMinutes: number | null;
   maxWeeklyMinutes: number | null;

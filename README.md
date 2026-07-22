@@ -56,9 +56,12 @@ These screenshots use synthetic demo accounts and fake SteamIDs.
 - Presets, schedules, session history, and local logs.
 - Recovery health with last Steam contact, retry timing, error class, token
   expiry, and library-snapshot age.
-- Session safety limits and configurable resume behavior after a real Steam
-  session; limits can pause but never start a session, and daily/weekly limits
-  use explicit UTC calendar boundaries.
+- Automatic recovery when another Steam session temporarily owns the account:
+  two retries five minutes apart, then a 60-minute cooldown, repeated until
+  Steam reports the account free. A restart begins a fresh retry cycle.
+- Session safety limits with a fail-closed disconnect fallback; limits can
+  pause but never start a session, and daily/weekly limits use explicit UTC
+  calendar boundaries.
 - Seven-day schedule preview, overlap winners, skip-next, and pause-until.
 - Account groups with per-account bulk results for pause and stop only.
 - Local browser notifications and optional generic webhooks with private-network

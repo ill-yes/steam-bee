@@ -10,6 +10,7 @@ trustPolicyExclude:
   - "undici-types@6.21.0"
 blockExoticSubdeps: true
 overrides:
+  fast-uri: 3.1.4
   protobufjs: 7.6.5
   "steam-user@5.3.0>adm-zip": 0.6.0
 onlyBuiltDependencies:
