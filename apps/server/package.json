@@ -25,7 +25,7 @@
     "@node-rs/argon2": "^2.0.2",
     "better-sqlite3": "^12.11.1",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.2.1",
+    "fastify": "^5.12.1",
     "pino": "^9.6.0",
     "steam-session": "^1.9.4",
     "steam-user": "^5.3.0",
