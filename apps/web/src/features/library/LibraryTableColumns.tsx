@@ -1,11 +1,26 @@
 import { useMemo } from "react";
 import { EyeOff, Star } from "lucide-react";
-import type { ColumnDef } from "@tanstack/react-table";
+import {
+  columnVisibilityFeature,
+  createSortedRowModel,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_text,
+  tableFeatures,
+  type ColumnDef,
+} from "@tanstack/react-table";
 import { Button } from "../../components/ui/button";
 import { formatPlaytime } from "../../lib/format";
 import { interpolate, useI18n } from "../../i18n";
 import { SteamAppArtwork } from "./SteamAppArtwork";
 import type { LibraryRow, LibraryUpdatePatch } from "./types";
+
+export const libraryTableFeatures = tableFeatures({
+  columnVisibilityFeature,
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
+});
 
 export function useLibraryTableColumns({
   onToggleApp,
@@ -16,7 +31,7 @@ export function useLibraryTableColumns({
 }) {
   const { messages: t, localeInfo } = useI18n();
 
-  return useMemo<ColumnDef<LibraryRow>[]>(
+  return useMemo<ColumnDef<typeof libraryTableFeatures, LibraryRow>[]>(
     () => [
       {
         id: "select",

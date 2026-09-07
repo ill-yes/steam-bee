@@ -4,6 +4,7 @@ import {
   libraryMetaSchema,
   presetSchema,
   scheduleSchema,
+  scheduleUpdateSchema,
 } from "../src/steam/validation.js";
 
 describe("Steam input validation", () => {
@@ -59,6 +60,28 @@ describe("Steam input validation", () => {
         timezone: "Europe/Berlin",
       }).success,
     ).toBe(false);
+  });
+
+  it("only defaults enabled when creating a schedule, not on partial updates", () => {
+    const schedule = {
+      name: "Evening",
+      presetId: crypto.randomUUID(),
+      weekdays: [1],
+      startTime: "18:00",
+      endTime: "19:00",
+      timezone: "Europe/Berlin",
+    };
+    expect(scheduleSchema.parse(schedule).enabled).toBe(true);
+    expect(scheduleUpdateSchema.parse({ name: "Renamed" })).toEqual({
+      name: "Renamed",
+    });
+    expect(scheduleUpdateSchema.parse({})).toEqual({});
+    expect(scheduleUpdateSchema.parse({ enabled: false })).toEqual({
+      enabled: false,
+    });
+    expect(scheduleUpdateSchema.parse({ enabled: true })).toEqual({
+      enabled: true,
+    });
   });
 
   it("keeps library metadata bounded", () => {
