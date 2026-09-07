@@ -80,6 +80,8 @@ export const scheduleSchema = scheduleBaseSchema.refine(
 
 export const scheduleUpdateSchema = scheduleBaseSchema
   .partial()
+  // Zod 4 applies nested defaults through partial(); updates must not enable schedules.
+  .extend({ enabled: z.boolean().optional() })
   .refine(
     (value) =>
       !value.startTime || !value.endTime || value.startTime !== value.endTime,

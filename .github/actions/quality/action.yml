@@ -4,14 +4,19 @@ description: Run the shared SteamBee source quality checks
 runs:
   using: composite
   steps:
-    - name: Enable Corepack
-      shell: bash
-      run: corepack enable
-
     - name: Set up Node.js
       uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
       with:
-        node-version: 22
+        node-version: 26.8.1
+
+    - name: Enable Corepack
+      shell: bash
+      run: npm install --global corepack@0.36.0 && corepack enable
+
+    - name: Restore pnpm cache
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      with:
+        node-version: 26.8.1
         cache: pnpm
         cache-dependency-path: pnpm-lock.yaml
 
