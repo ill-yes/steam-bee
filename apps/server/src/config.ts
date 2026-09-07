@@ -20,16 +20,16 @@ const falseProxyAliases = new Set(["false", "no", "off", "0"]);
 
 process.umask(0o077);
 
-export type TrustProxyConfig = false | number | string[];
+export type TrustProxyConfig = false | string[];
 
 export function parseTrustProxy(value: string | undefined): TrustProxyConfig {
   const normalized = value?.trim().toLowerCase() ?? "";
   if (normalized === "" || falseProxyAliases.has(normalized)) return false;
-  if (trueProxyAliases.has(normalized)) return 1;
-
-  if (/^\d+$/.test(normalized)) {
-    const hops = Number(normalized);
-    if (Number.isSafeInteger(hops)) return hops === 0 ? false : hops;
+  if (trueProxyAliases.has(normalized) || /^\d+$/.test(normalized)) {
+    if (/^0+$/.test(normalized)) return false;
+    throw new Error(
+      "TRUST_PROXY no longer accepts true aliases or proxy-hop counts. Set false or explicit trusted proxy IP addresses/CIDRs; hop counts cannot verify the immediate peer.",
+    );
   }
 
   const addresses = normalized.split(",").map((address) => address.trim());
@@ -38,7 +38,7 @@ export function parseTrustProxy(value: string | undefined): TrustProxyConfig {
   }
 
   throw new Error(
-    "TRUST_PROXY must be false, a true alias, a non-negative integer hop count, or a comma-separated list of IP addresses/CIDRs.",
+    "TRUST_PROXY must be false or a comma-separated list of trusted proxy IP addresses/CIDRs.",
   );
 }
 

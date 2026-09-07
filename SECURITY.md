@@ -44,10 +44,12 @@ Never share or commit:
 
 The supported deployment path is Docker Compose with persistent `/data`
 storage. Public internet deployments should put SteamBee behind a reverse
-proxy and set `TRUST_PROXY=1` and `COOKIE_SECURE=true` when served over HTTPS
-through one trusted proxy. Keep the application port inaccessible from
-untrusted networks and use an exact hop count or trusted CIDR list for more
-complex proxy chains.
+proxy and set `COOKIE_SECURE=true` when served over HTTPS. Set `TRUST_PROXY`
+to the verified proxy IP addresses or narrowly scoped CIDRs as seen by SteamBee;
+the default `false` ignores forwarded headers. Numeric hop counts and
+`true`/`yes`/`on` aliases are rejected because they cannot verify the immediate
+peer. Keep the application port inaccessible from untrusted networks and
+configure trusted proxies to replace untrusted forwarded headers.
 
 The standard image runs as UID/GID `10001`; the supported Compose files also
 drop all capabilities. The Unraid template starts a restricted ownership

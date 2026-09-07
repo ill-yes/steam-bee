@@ -123,18 +123,28 @@ docker compose -f compose.image.yml -f compose.proxy.yml up -d
 Use the existing external network name instead of `proxy` when your Caddy,
 Nginx Proxy Manager, SWAG, or Traefik installation already provides one.
 
-When the public URL uses HTTPS behind exactly one reverse proxy, set these
-values in `.env`:
+When the public URL uses HTTPS behind a reverse proxy, set its exact IP address
+or narrowly scoped CIDR as seen by SteamBee. For example, only if the proxy's
+actual source address is `172.20.0.2`, set these values in `.env`:
 
 ```bash
-TRUST_PROXY=1
+TRUST_PROXY=172.20.0.2
 COOKIE_SECURE=true
 ```
 
-`TRUST_PROXY` accepts a positive proxy-hop count or a comma-separated list of
-trusted IP addresses/CIDRs. Do not expose the application port directly when
-proxy trust is enabled, and configure the proxy to replace forwarded headers
-instead of appending untrusted client values.
+Replace the example address with your verified proxy address; do not copy it
+without checking the network configuration. `TRUST_PROXY` accepts `false`
+(the unchanged default) or a comma-separated list of trusted IP addresses/CIDRs.
+The immediate peer must match this list before forwarded headers are trusted.
+Do not expose the application port directly when proxy trust is enabled, and
+configure the proxy to replace forwarded headers instead of appending untrusted
+client values.
+
+**Upgrade note:** Numeric hop counts and the former `true`/`yes`/`on` aliases
+now fail startup with a migration message. They cannot verify that the immediate
+peer is a proxy and permit spoofed forwarded headers. Before upgrading an
+installation using these settings, replace them with verified proxy IPs/CIDRs
+or `false`. No broad network or trust-all setting is substituted automatically.
 
 Keep response buffering disabled in Nginx-compatible proxies so SSE status and
 log updates are delivered immediately. SteamBee also sends

@@ -30,13 +30,13 @@ describe("api auth flow", () => {
     `);
   });
 
-  it("parses trusted proxy aliases, hop counts and CIDRs safely", () => {
-    for (const alias of ["true", "TRUE", " yes ", "on", "1"]) {
-      expect(parseTrustProxy(alias)).toBe(1);
+  it("requires explicit trusted proxy addresses instead of unsafe hop counts", () => {
+    for (const alias of ["true", "TRUE", " yes ", "on", "1", "3"]) {
+      expect(() => parseTrustProxy(alias)).toThrow(/explicit trusted proxy/);
     }
     expect(parseTrustProxy(undefined)).toBe(false);
     expect(parseTrustProxy("off")).toBe(false);
-    expect(parseTrustProxy("3")).toBe(3);
+    expect(parseTrustProxy("0")).toBe(false);
     expect(parseTrustProxy("10.0.0.0/8, fd00::/8")).toEqual([
       "10.0.0.0/8",
       "fd00::/8",
@@ -59,7 +59,7 @@ describe("api auth flow", () => {
 
   it("does not let forwarded IP rotation bypass the admin auth limit", async () => {
     const originalTrustProxy = config.trustProxy;
-    config.trustProxy = 1;
+    config.trustProxy = ["127.0.0.1"];
     const app = await buildApp({ initSteam: false });
 
     try {
