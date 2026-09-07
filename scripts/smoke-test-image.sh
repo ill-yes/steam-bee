@@ -16,6 +16,7 @@ guard_volume=$prefix-guard-data
 outside_volume=$prefix-outside-data
 nest_volume=$prefix-nested-data
 invalid_volume=$prefix-invalid-data
+legacy_volume=$prefix-legacy-data
 restore_stage=$(mktemp -d "${TMPDIR:-/tmp}/steam-bee-restore-stage.XXXXXX")
 host_uid=$(id -u)
 host_gid=$(id -g)
@@ -38,7 +39,8 @@ cleanup() {
     "$guard_volume" \
     "$outside_volume" \
     "$nest_volume" \
-    "$invalid_volume"
+    "$invalid_volume" \
+    "$legacy_volume"
   do
     docker volume rm "$volume" >/dev/null 2>&1 || true
   done
@@ -310,6 +312,29 @@ wait_for_health "$default_container"
 assert_runtime_process "$default_container" 10001 10001 /home/steambee
 docker exec "$default_container" sh -c \
   'test "$(stat -c "%u:%g:%a" /data)" = "10001:10001:700" && test "$(stat -c "%u:%g:%a" /data/steam-data)" = "10001:10001:700" && test "$(stat -c "%u:%g:%a" /data/instance.secret)" = "10001:10001:600"'
+guard_inode=$(docker exec "$default_container" stat -c '%d:%i' /data/.steam-bee-instance)
+ownership_before=$(docker exec "$default_container" sh -c 'find /data -xdev -printf "%p %U:%G\n" | sort')
+assert_unraid_init_fails \
+  "ownership does not match PUID/PGID" \
+  -v "$default_volume:/data"
+test "$(docker exec "$default_container" sh -c 'find /data -xdev -printf "%p %U:%G\n" | sort')" = "$ownership_before"
+test "$(docker exec "$default_container" stat -c '%d:%i' /data/.steam-bee-instance)" = "$guard_inode"
+wait_for_app "$default_container"
+wait_for_health "$default_container"
+assert_runtime_process "$default_container" 10001 10001 /home/steambee
+
+# Matching IDs may pass root initialization without chown or creating a marker;
+# the application still has to acquire the already-held SQLite guard itself.
+guard_ctime=$(docker exec "$default_container" stat -c '%Z:%z' /data/.steam-bee-instance)
+docker run --rm --user 0:0 \
+  --entrypoint /usr/local/bin/steam-bee-entrypoint \
+  --cap-drop ALL --cap-add DAC_READ_SEARCH --cap-add SETGID \
+  --cap-add SETPCAP --cap-add SETUID \
+  --security-opt no-new-privileges=true --read-only \
+  -v "$default_volume:/data" \
+  -e PUID=10001 -e PGID=10001 -e STEAM_BEE_DATA_INIT=true \
+  "$image" sh -c 'test ! -e /data/.steam-bee-data-v1'
+test "$(docker exec "$default_container" stat -c '%Z:%z' /data/.steam-bee-instance)" = "$guard_ctime"
 docker exec "$default_container" sh -c \
   'printf migration-ok > /data/steam-data/migration-sentinel'
 docker exec -d "$default_container" node -e '
@@ -370,7 +395,7 @@ docker stop -t 10 "$default_container" >/dev/null
 test "$(docker inspect "$default_container" --format '{{.State.ExitCode}}')" = "0"
 docker rm "$default_container" >/dev/null
 docker run --rm --user 0:0 --entrypoint sh -v "$default_volume:/data" "$image" \
-  -c 'test ! -e /data/.steam-bee-instance'
+  -c 'test -f /data/.steam-bee-instance'
 
 docker volume create "$restore_volume" >/dev/null
 docker run --rm --user 0:0 --entrypoint sh -v "$restore_volume:/data" "$image" \
@@ -388,7 +413,7 @@ printf '%s\n' "correct horse battery staple" | docker run --rm -i \
   --input /source/steam-data/restore.sbb --data-dir /data
 docker run --rm --user 10001:10001 --entrypoint sh \
   -v "$restore_volume:/data" "$image" \
-  -c 'test ! -e /data/.steam-bee-instance && test -d /data/.steam-bee-restore-rollback && test -s /data/steam-bee.sqlite && test -s /data/instance.secret'
+  -c 'test -f /data/.steam-bee-instance && test -d /data/.steam-bee-restore-rollback && test -s /data/steam-bee.sqlite && test -s /data/instance.secret'
 test "$(docker run --rm --user 10001:10001 --entrypoint sha256sum -v "$restore_volume:/data" "$image" /data/instance.secret | awk '{print $1}')" = "$secret_hash"
 docker run --rm --user 10001:10001 --entrypoint node \
   -v "$restore_volume:/data" "$image" \
@@ -417,6 +442,16 @@ docker rm "$restore_container" >/dev/null
 
 docker run --rm --user 0:0 --entrypoint sh -v "$default_volume:/data" "$image" \
   -c 'mkdir -m 700 /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001 && printf "%s" "{\"ownerId\":\"stale\"}" > /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001/owner.json && chmod 600 /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001/owner.json && chown -R 0:0 /data/.steam-bee-instance.stale-00000000-0000-4000-8000-000000000001' >/dev/null
+
+# A stopped owner does not authorize automatic ownership migration either.
+assert_unraid_init_fails \
+  "ownership does not match PUID/PGID" \
+  -v "$default_volume:/data"
+# Explicit offline fixture preparation: no app uses this volume now, and the
+# permanent guard inode is retained throughout the ownership migration.
+docker run --rm --user 0:0 --entrypoint sh -v "$default_volume:/data" "$image" \
+  -c 'mkdir -m 700 /data/.steam-bee-data-v1 && chown -R 99:100 /data'
+test "$(docker run --rm --user 99:100 --entrypoint stat -v "$default_volume:/data" "$image" -c '%d:%i' /data/.steam-bee-instance)" = "$guard_inode"
 
 docker run -d \
   --name "$migration_container" \
@@ -528,6 +563,15 @@ assert_container_fails \
   "$image" node dist/index.js
 docker run --rm --user 0:0 --entrypoint sh -v "$invalid_volume:/data" "$image" \
   -c 'test "$(stat -c "%u:%g" /data/untouched)" = "0:0"'
+
+docker volume create "$legacy_volume" >/dev/null
+docker run --rm --user 0:0 --entrypoint sh -v "$legacy_volume:/data" "$image" \
+  -c 'mkdir -m 700 /data/.steam-bee-data-v1 /data/.steam-bee-instance; printf legacy-owner > /data/.steam-bee-instance/owner.json; chown -R 0:0 /data' >/dev/null
+assert_unraid_init_fails \
+  "a legacy instance lease exists" \
+  -v "$legacy_volume:/data"
+docker run --rm --user 0:0 --entrypoint sh -v "$legacy_volume:/data" "$image" \
+  -c 'test "$(stat -c "%u:%g" /data)" = "0:0" && test "$(stat -c "%u:%g" /data/.steam-bee-instance/owner.json)" = "0:0" && test "$(cat /data/.steam-bee-instance/owner.json)" = "legacy-owner"'
 
 docker volume create "$guard_volume" >/dev/null
 docker run --rm --user 0:0 --entrypoint sh -v "$guard_volume:/data" "$image" \

@@ -11,6 +11,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
+COPY patches ./patches
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM deps AS build
@@ -64,6 +65,7 @@ RUN groupadd --gid 10001 steambee \
   && mkdir -p /data \
   && chown -R steambee:steambee /data /app
 COPY --from=build --chown=steambee:steambee /prod ./
+RUN node -e 'const SteamUser=require("steam-user");if(require("steam-user/package.json").version!=="5.3.0"||["steamBeeBeginShutdown","steamBeeDrainRefreshTokens","steamBeeLogOffAndDrain"].some(name=>typeof SteamUser.prototype[name]!=="function"))throw new Error("Required Steam lifecycle patch is missing from the production image")'
 COPY --chmod=0755 docker/steam-bee-entrypoint.sh /usr/local/bin/steam-bee-entrypoint
 USER 10001:10001
 EXPOSE 3000

@@ -109,7 +109,15 @@ validate_data_layout() {
         validate_known_path "$path" directory
         ;;
       .steam-bee-instance)
-        validate_lease_directory "$path"
+        if [ -d "$path" ]; then
+          validate_lease_directory "$path"
+        else
+          validate_known_path "$path" file
+        fi
+        ;;
+      .steam-bee-instance-journal)
+        validate_known_path "$path" file
+        validate_known_path /data/.steam-bee-instance file
         ;;
       .steam-bee-instance.stale-*)
         validate_stale_lease_name "${path##*/}"
@@ -163,7 +171,21 @@ validate_data_tree() {
     fail "refusing ownership changes: /data contains a hardlinked file."
 }
 
+validate_guarded_ownership() {
+  mismatched_owner=$(
+    find /data -xdev \( ! -uid "$runtime_uid" -o ! -gid "$runtime_gid" \) -print -quit
+  ) || fail "could not verify ownership of the guarded SteamBee data tree."
+  [ -z "$mismatched_owner" ] ||
+    fail "an instance guard exists and /data ownership does not match PUID/PGID; stop all instances and perform an explicit offline ownership migration."
+}
+
+require_no_instance_guard() {
+  [ ! -e /data/.steam-bee-instance ] && [ ! -L /data/.steam-bee-instance ] ||
+    fail "an instance guard appeared during initialization; stop all instances and inspect /data before retrying."
+}
+
 migrate_data_ownership() {
+  require_no_instance_guard
   chown --no-dereference "$runtime_uid:$runtime_gid" -- /data
 
   for path in \
@@ -173,13 +195,17 @@ migrate_data_ownership() {
     /data/steam-bee.sqlite-wal \
     /data/steam-bee.sqlite-shm \
     /data/steam-bee.sqlite-journal \
+    /data/.steam-bee-instance \
+    /data/.steam-bee-instance-journal \
     "$data_marker"
   do
     [ -e "$path" ] || continue
+    require_no_instance_guard
     chown --no-dereference "$runtime_uid:$runtime_gid" -- "$path"
   done
 
   if [ -d /data/steam-data ]; then
+    require_no_instance_guard
     find /data/steam-data -xdev \
       \( -type d -o -type f \) \
       \( ! -uid "$runtime_uid" -o ! -gid "$runtime_gid" \) \
@@ -188,6 +214,7 @@ migrate_data_ownership() {
 
   for lease_dir in /data/.steam-bee-instance /data/.steam-bee-instance.stale-*; do
     [ -d "$lease_dir" ] || continue
+    require_no_instance_guard
     find "$lease_dir" -xdev \
       \( -type d -o -type f \) \
       \( ! -uid "$runtime_uid" -o ! -gid "$runtime_gid" \) \
@@ -196,6 +223,7 @@ migrate_data_ownership() {
 
   for restore_dir in /data/.steam-bee-restore-staging /data/.steam-bee-restore-rollback; do
     [ -d "$restore_dir" ] || continue
+    require_no_instance_guard
     find "$restore_dir" -xdev \
       \( -type d -o -type f \) \
       \( ! -uid "$runtime_uid" -o ! -gid "$runtime_gid" \) \
@@ -205,6 +233,7 @@ migrate_data_ownership() {
 
 create_data_marker() {
   [ -d "$data_marker" ] && return
+  require_no_instance_guard
 
   # $1 is expanded by the unprivileged child shell, not this entrypoint.
   # shellcheck disable=SC2016
@@ -265,6 +294,15 @@ if [ "$current_uid" -eq 0 ]; then
   validate_data_mount
   validate_data_layout
   validate_data_tree
+
+  if [ -e /data/.steam-bee-instance ]; then
+    [ ! -d /data/.steam-bee-instance ] ||
+      fail "a legacy instance lease exists; stop all instances and follow the offline guard migration procedure."
+    validate_guarded_ownership
+    # A live SQLite owner may hold this permanent inode. Even a same-ID chown
+    # or marker write belongs after acquisition, never in root initialization.
+    exec_as_runtime_user "$upstream_entrypoint" "$@"
+  fi
 
   printf 'SteamBee: preparing /data for PUID=%s PGID=%s\n' \
     "$runtime_uid" "$runtime_gid"

@@ -15,6 +15,11 @@ vi.mock("steam-user", () => {
     logOn = vi.fn();
     setPersona = vi.fn();
     getUserOwnedApps = vi.fn(async () => ({ apps: [] }));
+    steamBeeBeginShutdown = vi.fn();
+    steamBeeDrainRefreshTokens = vi.fn(async () => undefined);
+    steamBeeLogOffAndDrain = vi.fn(async () => {
+      this.logOff();
+    });
 
     constructor() {
       steamMock.instances.push(this);
@@ -37,6 +42,10 @@ vi.mock("steam-user", () => {
       if (event) this.listeners.delete(event);
       else this.listeners.clear();
       return this;
+    }
+
+    listenerCount(event: string) {
+      return this.listeners.get(event)?.length ?? 0;
     }
   }
 
@@ -64,7 +73,8 @@ import {
 } from "../src/steam/operations-repository.js";
 import { SteamWorker } from "../src/steam/worker.js";
 import { AccountOperationState } from "../src/steam/account-operation-state.js";
-import { encryptSecret } from "../src/util/crypto.js";
+import { decryptSecret, encryptSecret } from "../src/util/crypto.js";
+import { closeWithLeaseCleanup, ShutdownTimeoutError } from "../src/startup.js";
 
 describe("SteamWorker", () => {
   beforeEach(async () => {
@@ -78,6 +88,345 @@ describe("SteamWorker", () => {
       DELETE FROM steam_app_cache;
       DELETE FROM steam_account;
     `);
+  });
+
+  it.each(["pause", "stop"] as const)(
+    "persists an admitted renewal after %s without restarting Steam",
+    async (action) => {
+      const account = await credentialAccount();
+      const worker = new SteamWorker(account);
+      const client = steamMock.instances.at(-1)!;
+      const intent = worker[action]();
+      client.emit("steamBeeRefreshToken", renewedCredential);
+      await intent;
+      await flushCredentials(worker);
+      expect(storedCredential(account.id)).toBe("renewed-token");
+      expect(client.logOn).not.toHaveBeenCalled();
+      expect(
+        client.gamesPlayed.mock.calls.every(([games]) => games.length === 0),
+      ).toBe(true);
+      await worker.shutdown();
+    },
+  );
+
+  it("does not overwrite a newer QR credential, even between read and update", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker(account);
+    const client = steamMock.instances.at(-1)!;
+    const qr = encryptSecret("new-qr-token");
+    const originalUpdate = db.update.bind(db);
+    const updateSpy = vi.spyOn(db, "update").mockImplementationOnce((table) => {
+      sqlite
+        .prepare(
+          "UPDATE steam_account SET token_ciphertext = ?, token_iv = ?, token_auth_tag = ? WHERE id = ?",
+        )
+        .run(qr.ciphertext, qr.iv, qr.authTag, account.id);
+      return originalUpdate(table);
+    });
+    try {
+      client.emit("steamBeeRefreshToken", renewedCredential);
+      await flushCredentials(worker);
+      expect(storedCredential(account.id)).toBe("new-qr-token");
+    } finally {
+      updateSpy.mockRestore();
+      await worker.shutdown();
+    }
+  });
+
+  it("ignores renewed credentials for a deleted account or different Steam identity", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker(account);
+    const client = steamMock.instances.at(-1)!;
+    client.emit("steamBeeRefreshToken", {
+      ...renewedCredential,
+      steamId: "76561198000000002",
+    });
+    await flushCredentials(worker);
+    expect(storedCredential(account.id)).toBe("previous-token");
+    await db.delete(steamAccount).where(eq(steamAccount.id, account.id));
+    client.emit("steamBeeRefreshToken", renewedCredential);
+    await flushCredentials(worker);
+    expect(
+      db
+        .select()
+        .from(steamAccount)
+        .where(eq(steamAccount.id, account.id))
+        .get(),
+    ).toBeUndefined();
+    await worker.shutdown();
+  });
+
+  it("does not cache a failed commit and permits the same renewal to be persisted again", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker(account);
+    const client = steamMock.instances.at(-1)!;
+    const updateSpy = vi.spyOn(db, "update").mockImplementationOnce(() => {
+      throw new Error("synthetic credential commit failure");
+    });
+    client.emit("steamBeeRefreshToken", renewedCredential);
+    await flushCredentials(worker);
+    updateSpy.mockRestore();
+    await worker.start();
+    expect(client.logOn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ refreshToken: "previous-token" }),
+    );
+    client.emit("steamBeeRefreshToken", renewedCredential);
+    await flushCredentials(worker);
+    expect(storedCredential(account.id)).toBe("renewed-token");
+    await expect(worker.shutdown()).rejects.toThrow(
+      "Could not persist a renewed Steam credential",
+    );
+  });
+
+  it("drains late credentials before listener removal and rejects work throughout shutdown", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker(account);
+    const client = steamMock.instances.at(-1)!;
+    let finishRenewal = () => {};
+    client.steamBeeDrainRefreshTokens.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRenewal = () => {
+            client.emit("steamBeeRefreshToken", renewedCredential);
+            resolve();
+          };
+        }),
+    );
+    const shutdown = worker.shutdown();
+    expect(worker.shutdown()).toBe(shutdown);
+    expect(client.steamBeeBeginShutdown).toHaveBeenCalledTimes(1);
+    await expect(worker.start()).rejects.toThrow("shutting down");
+    client.emit("loggedOn");
+    client.emit("error", new Error("late Steam error"));
+    expect(storedCredential(account.id)).toBe("previous-token");
+    finishRenewal();
+    await shutdown;
+    expect(storedCredential(account.id)).toBe("renewed-token");
+    expect(client.logOn).not.toHaveBeenCalled();
+    client.emit("steamBeeRefreshToken", {
+      ...renewedCredential,
+      previousRefreshToken: "renewed-token",
+      refreshToken: "too-late",
+    });
+    await flushCredentials(worker);
+    expect(storedCredential(account.id)).toBe("renewed-token");
+  });
+
+  it("drains manager account operations and renewal persistence without admitting new work", async () => {
+    const account = await credentialAccount();
+    await steamManager.start(account.id);
+    const client = steamMock.instances.at(-1)!;
+    let finishRenewal = () => {};
+    client.steamBeeDrainRefreshTokens.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishRenewal = resolve;
+      }),
+    );
+    const shutdown = steamManager.shutdown();
+    await expect(steamManager.start(account.id)).rejects.toThrow(
+      "shutting down",
+    );
+    await expect(
+      steamManager.runAccountOperation(account.id, async () => undefined),
+    ).rejects.toThrow("shutting down");
+    client.emit("steamBeeRefreshToken", renewedCredential);
+    finishRenewal();
+    await shutdown;
+    expect(storedCredential(account.id)).toBe("renewed-token");
+    expect(client.logOn).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains the lease and listeners until the actual Steam transport is closed", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker({ ...account, status: "online" });
+    const client = steamMock.instances.at(-1)!;
+    let finishTransport = () => {};
+    client.steamBeeLogOffAndDrain.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          client.logOff();
+          finishTransport = resolve;
+        }),
+    );
+    const lease = { release: vi.fn() };
+    const closing = closeWithLeaseCleanup(
+      { close: () => worker.shutdown() },
+      lease,
+    );
+    await vi.waitFor(() => expect(client.logOff).toHaveBeenCalledTimes(1));
+    expect(lease.release).not.toHaveBeenCalled();
+    expect(worker.currentStatus).toBe("online");
+    expect(client.listenerCount("steamBeeRefreshToken")).toBe(1);
+    finishTransport();
+    await closing;
+    expect(worker.currentStatus).toBe("disconnected");
+    expect(client.listenerCount("steamBeeRefreshToken")).toBe(0);
+    expect(lease.release).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists a late transport-close credential before status, listeners and lease are finalized", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker({ ...account, status: "online" });
+    const client = steamMock.instances.at(-1)!;
+    let finishTransport = () => {};
+    let finishPersistence = () => {};
+    client.steamBeeLogOffAndDrain.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishTransport = () => {
+            client.emit("steamBeeRefreshToken", renewedCredential);
+            client.emit("loggedOn");
+            resolve();
+          };
+        }),
+    );
+    const statuses: string[] = [];
+    worker.on("status", ({ status }) => statuses.push(status));
+    const lease = {
+      release: vi.fn(() => {
+        expect(storedCredential(account.id)).toBe("renewed-token");
+      }),
+    };
+    const closing = closeWithLeaseCleanup(
+      { close: () => worker.shutdown() },
+      lease,
+    );
+    await vi.waitFor(() =>
+      expect(client.steamBeeLogOffAndDrain).toHaveBeenCalledTimes(1),
+    );
+    // Hold the new queue snapshot after the initial renewal drain has completed.
+    (worker as unknown as { credentialQueue: Promise<void> }).credentialQueue =
+      new Promise<void>((resolve) => {
+        finishPersistence = resolve;
+      });
+    try {
+      finishTransport();
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+      expect(lease.release).not.toHaveBeenCalled();
+      expect(worker.currentStatus).toBe("online");
+      expect(statuses).toEqual([]);
+      expect(client.listenerCount("steamBeeRefreshToken")).toBe(1);
+      expect(storedCredential(account.id)).toBe("previous-token");
+      finishPersistence();
+      await closing;
+      expect(storedCredential(account.id)).toBe("renewed-token");
+      expect(lease.release).toHaveBeenCalledTimes(1);
+      expect(statuses).toEqual(["disconnected"]);
+      expect(client.listenerCount("steamBeeRefreshToken")).toBe(0);
+      expect(client.logOn).not.toHaveBeenCalled();
+      expect(client.setPersona).not.toHaveBeenCalled();
+      expect(
+        client.gamesPlayed.mock.calls.every(([games]) => games.length === 0),
+      ).toBe(true);
+    } finally {
+      finishPersistence();
+      await closing;
+    }
+  });
+
+  it("does not delete an account or replace its worker before transport closure", async () => {
+    const account = await credentialAccount();
+    await steamManager.start(account.id);
+    const client = steamMock.instances.at(-1)!;
+    let finishTransport = () => {};
+    client.steamBeeLogOffAndDrain.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishTransport = resolve;
+        }),
+    );
+    const deleting = steamManager.deleteAccount(account.id);
+    await vi.waitFor(() =>
+      expect(client.steamBeeLogOffAndDrain).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      db
+        .select()
+        .from(steamAccount)
+        .where(eq(steamAccount.id, account.id))
+        .get(),
+    ).toBeDefined();
+    expect(steamMock.instances).toHaveLength(1);
+    finishTransport();
+    await deleting;
+    expect(
+      db
+        .select()
+        .from(steamAccount)
+        .where(eq(steamAccount.id, account.id))
+        .get(),
+    ).toBeUndefined();
+  });
+
+  it("retains a quiesced worker after forget timeout instead of admitting a replacement", async () => {
+    const account = await credentialAccount();
+    await steamManager.start(account.id);
+    const client = steamMock.instances.at(-1)!;
+    let finishTransport = () => {};
+    client.steamBeeLogOffAndDrain.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishTransport = resolve;
+        }),
+    );
+    vi.useFakeTimers();
+    try {
+      const forgotten = steamManager.forget(account.id);
+      const rejected =
+        expect(forgotten).rejects.toBeInstanceOf(ShutdownTimeoutError);
+      await vi.advanceTimersByTimeAsync(25_000);
+      await rejected;
+      await expect(steamManager.start(account.id)).rejects.toThrow(
+        "shutting down",
+      );
+      expect(steamMock.instances).toHaveLength(1);
+      expect(
+        db
+          .select()
+          .from(steamAccount)
+          .where(eq(steamAccount.id, account.id))
+          .get(),
+      ).toBeDefined();
+      finishTransport();
+      await steamManager.shutdown();
+    } finally {
+      finishTransport();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the shared deadline and lease when a Steam transport never closes", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker(account);
+    const client = steamMock.instances.at(-1)!;
+    let finishTransport = () => {};
+    client.steamBeeLogOffAndDrain.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishTransport = resolve;
+        }),
+    );
+    const lease = { release: vi.fn() };
+    vi.useFakeTimers();
+    try {
+      const closing = closeWithLeaseCleanup(
+        { close: () => worker.shutdown() },
+        lease,
+      );
+      const rejected =
+        expect(closing).rejects.toBeInstanceOf(ShutdownTimeoutError);
+      await vi.advanceTimersByTimeAsync(25_000);
+      await rejected;
+      expect(lease.release).not.toHaveBeenCalled();
+      expect(client.listenerCount("steamBeeRefreshToken")).toBe(1);
+      await expect(worker.start()).rejects.toThrow("shutting down");
+      finishTransport();
+      await worker.shutdown();
+      expect(lease.release).not.toHaveBeenCalled();
+    } finally {
+      finishTransport();
+      vi.useRealTimers();
+    }
   });
 
   it("pauses without forcing another Steam session off", async () => {
@@ -1727,4 +2076,50 @@ function boostCallCount(
       ([games]) => Array.isArray(games) && games.includes(730),
     ).length ?? 0
   );
+}
+
+const renewedCredential = {
+  previousRefreshToken: "previous-token",
+  refreshToken: "renewed-token",
+  steamId: "76561198000000001",
+};
+
+async function credentialAccount() {
+  const encrypted = encryptSecret(renewedCredential.previousRefreshToken);
+  const [account] = await db
+    .insert(steamAccount)
+    .values({
+      id: crypto.randomUUID(),
+      accountName: `credential-${crypto.randomUUID()}`,
+      steamId: renewedCredential.steamId,
+      status: "disconnected",
+      desiredState: "running",
+      tokenCiphertext: encrypted.ciphertext,
+      tokenIv: encrypted.iv,
+      tokenAuthTag: encrypted.authTag,
+      tokenKeyVersion: encrypted.keyVersion,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    .returning();
+  return account!;
+}
+
+function storedCredential(accountId: string) {
+  const account = db
+    .select()
+    .from(steamAccount)
+    .where(eq(steamAccount.id, accountId))
+    .get()!;
+  return decryptSecret({
+    ciphertext: account.tokenCiphertext!,
+    iv: account.tokenIv!,
+    authTag: account.tokenAuthTag!,
+    keyVersion: account.tokenKeyVersion,
+  });
+}
+
+async function flushCredentials(worker: SteamWorker) {
+  await (worker as unknown as { credentialQueue: Promise<void> })
+    .credentialQueue;
 }

@@ -1,0 +1,523 @@
+diff --git a/components/00-base.js b/components/00-base.js
+index 0690c12..56bffef 100644
+--- a/components/00-base.js
++++ b/components/00-base.js
+@@ -20,6 +20,115 @@ const IMPORTANT_BACKOFFS = [
+  * Inheritance follows filenames sorted alphabetically with numbers first.
+  */
+ class SteamUserBase extends EventEmitter {
++	_steamBeeGeneration = 0;
++	_steamBeeStopping = false;
++	_steamBeeRenewals = new Map();
++	_steamBeeUncertainRefreshTokens = new Set();
++	_steamBeeAuthRequests = new Set();
++
++	_steamBeeCancelAuthRequests() {
++		for (let cancel of [...this._steamBeeAuthRequests]) {
++			cancel();
++		}
++	}
++
++	_steamBeeInvalidate() {
++		this._steamBeeGeneration++;
++		this._resetExponentialBackoff('webLogOn');
++		clearInterval(this._heartbeatInterval);
++	}
++
++	_steamBeeCurrent(generation) {
++		return !this._steamBeeStopping && generation === this._steamBeeGeneration;
++	}
++
++	steamBeeBeginShutdown() {
++		this._steamBeeStopping = true;
++		this._steamBeeInvalidate();
++	}
++
++	async steamBeeDrainRefreshTokens() {
++		await Promise.allSettled([...this._steamBeeRenewals.values()]);
++	}
++
++	async steamBeeLogOffAndDrain() {
++		this.steamBeeBeginShutdown();
++		let connection = this._connection;
++		let socket = connection?.connectionType === 'WS' ? connection.stream?._socket : connection?.stream;
++		if (connection && (!socket || typeof socket.destroy !== 'function')) {
++			throw new Error('Steam transport closure cannot be verified');
++		}
++		this._disconnect(true);
++		if (!socket || (socket._readableState?.closeEmitted && socket._writableState?.closeEmitted)) {
++			return;
++		}
++		// end(true) removes stream listeners; observe the underlying socket after teardown begins.
++		await new Promise((resolve, reject) => {
++			socket.once('close', resolve);
++			try {
++				socket.destroy();
++			} catch (err) {
++				socket.removeListener('close', resolve);
++				reject(new Error('Steam transport closure failed'));
++			}
++		});
++	}
++
++	_steamBeeAsyncFailure(generation) {
++		if (!this._steamBeeCurrent(generation)) {
++			return;
++		}
++		// Internal failures must terminate the session without leaking auth error details.
++		try {
++			this._disconnect(true);
++		} catch (err) {
++			// This is a terminal promise sink, including failures during teardown.
++			this._steamBeeGeneration++;
++			clearInterval(this._heartbeatInterval);
++		}
++		try {
++			if (!this._steamBeeStopping && this.listenerCount('error')) {
++				this.emit('error', new Error('Steam session lifecycle failed'));
++			}
++		} catch (err) {
++			// A throwing consumer must not create another unobserved rejection.
++		}
++	}
++
++	_steamBeeRenewRefreshToken(session, previousRefreshToken, steamId) {
++		if (this._steamBeeUncertainRefreshTokens.has(previousRefreshToken)) {
++			return Promise.resolve(null);
++		}
++		let pending = this._steamBeeRenewals.get(previousRefreshToken);
++		if (pending) {
++			return pending;
++		}
++		pending = Promise.resolve().then(async () => {
++			session.refreshToken = previousRefreshToken;
++			let renewed;
++			try {
++				renewed = await session.renewRefreshToken();
++			} catch (err) {
++				if (err.steamBeeAuthInterrupted) {
++					// The server may have rotated a lost response: never rotate that predecessor again on this client.
++					this._steamBeeUncertainRefreshTokens.add(previousRefreshToken);
++				}
++				throw err;
++			}
++			if (!renewed) {
++				return null;
++			}
++			// Rotation invalidates the predecessor even when its connection is already gone.
++			let outcome = Object.freeze({refreshToken: session.refreshToken, previousRefreshToken, steamId});
++			this.emit('steamBeeRefreshToken', outcome);
++			return outcome;
++		});
++		this._steamBeeRenewals.set(previousRefreshToken, pending);
++		let remove = () => this._steamBeeRenewals.delete(previousRefreshToken);
++		pending.then(remove, remove);
++		return pending;
++	}
++
+ 	/** @var {{[name: string]: ExponentialBackoff}} */
+ 	_exponentialBackoffs = {};
+ 
+diff --git a/components/02-connection.js b/components/02-connection.js
+index 3bbbd1a..999cf1e 100644
+--- a/components/02-connection.js
++++ b/components/02-connection.js
+@@ -55,6 +55,8 @@ class SteamUserConnection extends SteamUserEnums {
+ 	}
+ 
+ 	_cleanupClosedConnection() {
++		this._steamBeeInvalidate();
++		this._steamBeeCancelAuthRequests();
+ 		this._connecting = false;
+ 		this._loggingOff = false;
+ 
+diff --git a/components/07-web.js b/components/07-web.js
+index 7de2ada..4efd761 100644
+--- a/components/07-web.js
++++ b/components/07-web.js
+@@ -8,6 +8,9 @@ class SteamUserWeb extends SteamUserWebAPI {
+ 	 * Log onto steamcommunity.com. Emits {@link SteamUser#event:webSession} on success.
+ 	 */
+ 	webLogOn() {
++		if (this._steamBeeStopping) {
++			return;
++		}
+ 		// Verify logged on
+ 		if (!this.steamID) {
+ 			throw new Error('Cannot log onto steamcommunity.com without first being connected to Steam network');
+@@ -27,8 +30,17 @@ class SteamUserWeb extends SteamUserWebAPI {
+ 		// access token available from your initial auth, the client always requests a new one, so let's mimic that behavior.
+ 
+ 		let session = this._getLoginSession();
++		let generation = this._steamBeeGeneration;
++		let logOnDetails = this._logOnDetails;
++		let steamId = this.steamID.getSteamID64();
++		let current = () => this._steamBeeCurrent(generation)
++			&& this._loginSession === session && this._logOnDetails === logOnDetails
++			&& this.steamID && this.steamID.getSteamID64() === steamId;
+ 		session.refreshToken = this._logOnDetails.access_token;
+-		session.getWebCookies().then((cookies) => {
++		Promise.resolve().then(() => current() ? session.getWebCookies() : null).then((cookies) => {
++			if (!current()) {
++				return;
++			}
+ 			if (!cookies.some(c => c.startsWith('sessionid='))) {
+ 				let sessionId = Crypto.randomBytes(12).toString('hex');
+ 				cookies.push(`sessionid=${sessionId}`);
+@@ -52,12 +64,24 @@ class SteamUserWeb extends SteamUserWebAPI {
+ 			this._resetExponentialBackoff('webLogOn');
+ 			process.nextTick(() => {
+ 				// Emit this after next tick so we avoid swallowing any exceptions emitted by event handlers
+-				this.emit('webSession', sessionId, cookies);
++				if (current()) {
++					this.emit('webSession', sessionId, cookies);
++				}
+ 			});
+ 		}).catch((err) => {
+-			this.emit('debug', `Failed to get web session: ${err.message}`);
+-			this._exponentialBackoff('webLogOn', 1000, 60000).then(() => this.webLogOn());
+-		});
++			if (!current()) {
++				return;
++			}
++			this.emit('debug', 'Failed to get web session; retrying');
++			if (!current()) {
++				return;
++			}
++			return this._exponentialBackoff('webLogOn', 1000, 60000).then(() => {
++				if (current()) {
++					this.webLogOn();
++				}
++			});
++		}).catch(() => this._steamBeeAsyncFailure(generation));
+ 	}
+ }
+ 
+diff --git a/components/09-logon.js b/components/09-logon.js
+index 010914b..322742d 100644
+--- a/components/09-logon.js
++++ b/components/09-logon.js
+@@ -42,12 +42,24 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 	 * @param {LogOnDetails} details
+ 	 */
+ 	logOn(details) {
++		if (this._steamBeeStopping) {
++			return;
++		}
++		if (!this.steamID && !this._connecting) {
++			this._steamBeeInvalidate();
++			this._steamBeeCancelAuthRequests();
++		}
++		let generation = this._steamBeeGeneration;
+ 		// Delay the actual logon by one tick, so if users call logOn from the error event they won't get a crash because
+ 		// they appear to be already logged on (the steamID property is set to null only *after* the error event is emitted).
+ 		// Go ahead and create the Error now, so that we'll have a useful stack trace if we need to throw it.
+ 		let alreadyLoggedOnError = new Error('Already logged on, cannot log on again');
+ 		let alreadyConnectingError = new Error('Already attempting to log on, cannot log on again');
+-		process.nextTick(async () => {
++		process.nextTick(() => {
++			let run = async () => {
++			if (!this._steamBeeCurrent(generation)) {
++				return;
++			}
+ 			if (this.steamID) {
+ 				throw alreadyLoggedOnError;
+ 			}
+@@ -195,6 +207,9 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 			}
+ 
+ 			let files = await this._readFiles(filenames);
++			if (!this._steamBeeCurrent(generation)) {
++				return;
++			}
+ 
+ 			files.forEach((file) => {
+ 				if (file.filename.match(/^cellid/) && file.contents) {
+@@ -212,6 +227,9 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 			// Machine auth token (only necessary if logging on with account name and password)
+ 			if (!anonLogin && !this._machineAuthToken && this._logOnDetails.account_name) {
+ 				let tokenContent = this._logOnDetails._machineAuthToken || await this._readFile(this._getMachineAuthFilename());
++				if (!this._steamBeeCurrent(generation)) {
++					return;
++				}
+ 				if (tokenContent) {
+ 					this._machineAuthToken = tokenContent.toString('utf8').trim();
+ 				}
+@@ -244,7 +262,11 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 				}
+ 			}
+ 
+-			this._doConnection();
++			if (this._steamBeeCurrent(generation)) {
++				await this._doConnection();
++			}
++			};
++			run().catch(() => this._steamBeeAsyncFailure(generation));
+ 		});
+ 	}
+ 
+@@ -252,6 +274,10 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 	 * @private
+ 	 */
+ 	async _doConnection() {
++		let generation = this._steamBeeGeneration;
++		if (!this._steamBeeCurrent(generation)) {
++			return;
++		}
+ 		let thisProtocol = this.options.protocol;
+ 
+ 		if (this.options.webCompatibilityMode) {
+@@ -302,6 +328,9 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 				300
+ 			);
+ 		} catch (ex) {
++			if (!this._steamBeeCurrent(generation)) {
++				return;
++			}
+ 			this.emit('debug', `GetCMListForConnect error: ${ex.message}`);
+ 
+ 			if (this._connectionClosed) {
+@@ -313,13 +342,17 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 				this._cleanupClosedConnection();
+ 				this.emit('error', ex);
+ 			} else {
+-				setTimeout(() => this._doConnection(), 1000);
++				setTimeout(() => {
++					if (this._steamBeeCurrent(generation)) {
++						this._doConnection().catch(() => this._steamBeeAsyncFailure(generation));
++					}
++				}, 1000);
+ 			}
+ 
+ 			return;
+ 		}
+ 
+-		if (this._connectionClosed) {
++		if (!this._steamBeeCurrent(generation) || this._connectionClosed) {
+ 			// logOff() was already called
+ 			return;
+ 		}
+@@ -520,6 +553,7 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 	 * @private
+ 	 */
+ 	_disconnect(suppressLogoff) {
++		this._steamBeeInvalidate();
+ 		this._clearChangelistUpdateTimer();
+ 		this._incomingMessageQueue = []; // clear the incoming message queue. If we're disconnecting, we don't care about anything else in the queue.
+ 
+@@ -629,6 +663,7 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 	 * @private
+ 	 */
+ 	_handleLogOff(result, msg) {
++		this._steamBeeInvalidate();
+ 		let fatal = true;
+ 
+ 		let nonFatalLogOffResults = [
+@@ -710,6 +745,12 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 	}
+ 
+ 	async _handleLogOnResponse(body) {
++		let generation = this._steamBeeGeneration;
++		let logOnDetails = this._logOnDetails;
++		let current = () => this._steamBeeCurrent(generation) && this._logOnDetails === logOnDetails;
++		if (!current()) {
++			return;
++		}
+ 		this.emit('debug', `Handle logon response (${EResult[body.eresult]})`);
+ 
+ 		this._connecting = false;
+@@ -771,12 +812,24 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 				}
+ 
+ 				this.emit('loggedOn', body, parental);
++				if (!current()) {
++					return;
++				}
+ 				this.emit('contentServersReady');
++				if (!current()) {
++					return;
++				}
+ 
+ 				this._getChangelistUpdate();
++				if (!current()) {
++					return;
++				}
+ 
+ 				if (this.steamID.type == SteamID.Type.INDIVIDUAL) {
+ 					this._requestNotifications();
++					if (!current()) {
++						return;
++					}
+ 
+ 					if (this._logOnDetails.access_token) {
+ 						// Even though we might have an access token available from password auth, the official client
+@@ -791,25 +844,43 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ 							// fetches our web session cookie, and our subsequent call to webLogOn() will then return
+ 							// that cookie without making another request.
+ 							let session = this._getLoginSession();
+-							session.refreshToken = this._logOnDetails.access_token;
+-							let renewed = await session.renewRefreshToken();
+-							this.emit('debug', `Attempted to renew refresh token, success = ${renewed}`);
+-							if (renewed) {
+-								this._logOnDetails.access_token = session.refreshToken;
+-								this.emit('refreshToken', session.refreshToken);
++							let outcome;
++							try {
++								outcome = await this._steamBeeRenewRefreshToken(session, logOnDetails.access_token, this.steamID.getSteamID64());
++							} catch (err) {
++								// Renewal is best-effort; only the active session may fall back to cookies.
++								if (!current()) {
++									return;
++								}
++							}
++							if (!current()) {
++								return;
++							}
++							if (outcome) {
++								logOnDetails.access_token = outcome.refreshToken;
++								session.refreshToken = outcome.refreshToken;
++								this.emit('refreshToken', outcome.refreshToken);
+ 							}
+ 						}
+ 
+ 						// The new way of getting web cookies is to use a refresh token to get a fresh access token, which
+ 						// is what's used as the cookie. Confusingly, access_token in CMsgClientLogOn is actually a refresh token.
++						if (!current()) {
++							return;
++						}
+ 						this.webLogOn();
+ 					}
+ 				} else if (this.steamID.type == SteamID.Type.ANON_USER) {
+ 					this._getLicenseInfo();
+ 				}
+ 
++				if (!current()) {
++					return;
++				}
+ 				this._heartbeatInterval = setInterval(() => {
+-					this._send(EMsg.ClientHeartBeat, {});
++					if (current()) {
++						this._send(EMsg.ClientHeartBeat, {});
++					}
+ 				}, body.heartbeat_seconds * 1000);
+ 
+ 				break;
+@@ -855,7 +926,8 @@ class SteamUserLogon extends SteamUserMachineAuth {
+ // Handlers
+ 
+ SteamUserBase.prototype._handlerManager.add(EMsg.ClientLogOnResponse, function(body) {
+-	this._handleLogOnResponse(body);
++	let generation = this._steamBeeGeneration;
++	this._handleLogOnResponse(body).catch(() => this._steamBeeAsyncFailure(generation));
+ });
+ 
+ SteamUserBase.prototype._handlerManager.add(EMsg.ClientLoggedOff, function(body) {
+diff --git a/components/classes/CMAuthTransport.js b/components/classes/CMAuthTransport.js
+index 3baae5f..7b55c89 100644
+--- a/components/classes/CMAuthTransport.js
++++ b/components/classes/CMAuthTransport.js
+@@ -2,6 +2,8 @@
+ const {ApiRequest, ApiResponse} = require('steam-session');
+ 
+ const EMsg = require('../../enums/EMsg.js');
++const {getProtoForMethod} = require('steam-session/dist/protobufs');
++const Helpers = require('../helpers');
+ 
+ class CMAuthTransport {
+ 	/**
+@@ -17,7 +19,60 @@ class CMAuthTransport {
+ 	 * @returns {Promise<ApiResponse>}
+ 	 */
+ 	sendRequest(request) {
+-		return new Promise((resolve) => {
++		return new Promise((resolve, reject) => {
++			let settled = false;
++			let lateRenewal = null;
++			let lateTimeout;
++			if (request.apiInterface === 'Authentication' && request.apiMethod === 'GenerateAccessTokenForApp') {
++				let proto = getProtoForMethod(request.apiInterface, request.apiMethod);
++				let data = proto.request.decode(request.requestData);
++				if (data.renewal_type === 1) {
++					lateRenewal = {proto, previousRefreshToken: data.refresh_token, steamId: Helpers.decodeJwt(data.refresh_token).sub};
++				}
++			}
++			let cleanup = () => {
++				clearTimeout(timeout);
++				clearTimeout(lateTimeout);
++				lateRenewal = null;
++				this._user._steamBeeAuthRequests.delete(cancel);
++			};
++			let finish = (callback) => {
++				if (settled) {
++					return;
++				}
++				settled = true;
++				cleanup();
++				try {
++					callback();
++				} catch (err) {
++					reject(new Error('Steam authentication response invalid'));
++				}
++			};
++			let interrupt = () => {
++				let error = new Error('Steam authentication request interrupted');
++				error.steamBeeAuthInterrupted = true;
++				reject(error);
++			};
++			let cancel = () => {
++				if (!settled) {
++					settled = true;
++					interrupt();
++				}
++				cleanup();
++			};
++			let timeout = setTimeout(() => {
++				settled = true;
++				interrupt();
++				if (lateRenewal) {
++					// The active wait is bounded, but a live CM can still deliver its rotated credential.
++					lateTimeout = setTimeout(cleanup, 120000);
++					lateTimeout.unref();
++				} else {
++					cleanup();
++				}
++			}, 10000);
++			this._user._steamBeeAuthRequests.add(cancel);
++			try {
+ 			this._user._send({
+ 				msg: this._user.steamID ? EMsg.ServiceMethodCallFromClient : EMsg.ServiceMethodCallFromClientNonAuthed,
+ 				proto: {
+@@ -25,12 +80,31 @@ class CMAuthTransport {
+ 					realm: 1
+ 				}
+ 			}, request.requestData, (body, hdr) => {
+-				resolve({
++				if (settled) {
++					let origin = lateRenewal;
++					cleanup();
++					if (origin && hdr?.proto?.eresult === 1) {
++						try {
++							let data = origin.proto.response.decode(body.toBuffer());
++							if (data.refresh_token && Helpers.decodeJwt(data.refresh_token).sub === origin.steamId) {
++								this._user.emit('steamBeeRefreshToken', Object.freeze({refreshToken: data.refresh_token,
++									previousRefreshToken: origin.previousRefreshToken, steamId: origin.steamId}));
++							}
++						} catch (err) {
++							// Invalid late responses cannot resume a completed operation.
++						}
++					}
++					return;
++				}
++				finish(() => resolve({
+ 					result: hdr.proto.eresult,
+ 					errorMessage: hdr.proto.error_message,
+ 					responseData: body.toBuffer()
+-				});
++				}));
+ 			});
++			} catch (err) {
++				cancel();
++			}
+ 		});
+ 	}
+ 

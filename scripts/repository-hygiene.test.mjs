@@ -6,6 +6,8 @@ const runtimeArtifacts = [
   "custom/runtime/instance.secret",
   "custom/runtime/setup.token",
   "custom/runtime/portable-backup.sbb",
+  "custom/runtime/.steam-bee-instance",
+  "custom/runtime/.steam-bee-instance-journal",
   "custom/runtime/.steam-bee-instance/owner.json",
   "custom/runtime/.steam-bee-instance.stale-00000000-0000-0000-0000-000000000000/owner.json",
   "custom/runtime/.steam-bee-restore-staging/steam-bee.sqlite",
@@ -39,7 +41,7 @@ test("fixture-like names remain visible while forbidden runtime artifacts stay u
     .split("\n")
     .filter(Boolean);
   const forbidden = tracked.filter((path) =>
-    /(^|\/)(instance\.secret|setup\.token|\.steam-bee-instance(?:\.stale-[^/]*)?|\.steam-bee-restore-(?:staging|rollback)|\.steam-bee-data-v1)(\/|$)|\.sbb$/u.test(
+    /(^|\/)(instance\.secret|setup\.token|\.steam-bee-instance(?:-journal|\.stale-[^/]*)?|\.steam-bee-restore-(?:staging|rollback)|\.steam-bee-data-v1)(\/|$)|\.sbb$/u.test(
       path,
     ),
   );

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildWithLeaseCleanup,
   closeWithLeaseCleanup,
+  createRuntimeShutdown,
+  ShutdownTimeoutError,
   IncompleteListenCleanupError,
   IncompleteStartupCleanupError,
   listenWithLeaseCleanup,
@@ -11,6 +13,61 @@ import { notificationDispatcher } from "../src/notifications/dispatcher.js";
 import { steamManager } from "../src/steam/manager.js";
 
 describe("server startup", () => {
+  it("uses one bounded close and retains the lease after timeout, including late completion", async () => {
+    vi.useFakeTimers();
+    let finishClose = () => {};
+    const app = {
+      close: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishClose = resolve;
+          }),
+      ),
+    };
+    const lease = { release: vi.fn() };
+    try {
+      const closing = closeWithLeaseCleanup(app, lease);
+      expect(closeWithLeaseCleanup(app, lease)).toBe(closing);
+      const rejection =
+        expect(closing).rejects.toBeInstanceOf(ShutdownTimeoutError);
+      await vi.advanceTimersByTimeAsync(25_000);
+      await rejection;
+      finishClose();
+      await Promise.resolve();
+      expect(lease.release).not.toHaveBeenCalled();
+      expect(app.close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shares repeated signal shutdown and exits unsuccessfully on a deadline", async () => {
+    vi.useFakeTimers();
+    const app = { close: vi.fn(() => new Promise<void>(() => {})) };
+    const lease = { release: vi.fn() };
+    const reportFailure = vi.fn();
+    const exit = vi.fn();
+    const begin = vi.fn();
+    const close = createRuntimeShutdown(app, lease, reportFailure, exit, begin);
+    try {
+      const closing = close();
+      expect(close()).toBe(closing);
+      expect(begin).toHaveBeenCalledTimes(1);
+      expect(begin.mock.invocationCallOrder[0]).toBeLessThan(
+        app.close.mock.invocationCallOrder[0]!,
+      );
+      await vi.advanceTimersByTimeAsync(25_000);
+      await closing;
+      expect(reportFailure).toHaveBeenCalledWith(
+        expect.any(ShutdownTimeoutError),
+      );
+      expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+      expect(lease.release).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shuts down partial Steam initialization before releasing the data lease", async () => {
     const failure = new Error("later account initialization failed");
     const order: string[] = [];

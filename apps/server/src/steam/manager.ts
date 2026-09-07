@@ -31,11 +31,14 @@ import {
   setSafetyHold,
 } from "./operations-repository.js";
 import { SafetyCoordinator } from "./safety-coordinator.js";
+import { closeWithLeaseCleanup } from "../startup.js";
 
 class SteamManager {
   private workers = new Map<string, SteamWorker>();
   private safetyResumeTimers = new Map<string, NodeJS.Timeout>();
   private shutdownPromise: Promise<void> | null = null;
+  private quiescing = false;
+  private terminalShutdown = false;
   private readonly logger = createLogger("steam-manager");
   private readonly accountOperations = new AccountOperationState();
   private readonly statusEventRecorder = new SteamStatusEventRecorder(
@@ -56,7 +59,7 @@ class SteamManager {
   private readonly scheduleCoordinator = new ScheduleCoordinator({
     repository: scheduleRepository,
     runForAccount: (accountId, operation) =>
-      this.accountOperations.run(accountId, operation),
+      this.runAccountOperation(accountId, operation),
     getDesiredState: async (accountId) =>
       (await getAccountOrThrow(accountId)).desiredState,
     applyPreset: (accountId, presetId, context) =>
@@ -80,7 +83,7 @@ class SteamManager {
   });
   private readonly safetyCoordinator = new SafetyCoordinator({
     runForAccount: (accountId, operation) =>
-      this.accountOperations.run(accountId, operation),
+      this.runAccountOperation(accountId, operation),
     pause: (accountId, context) => this.pauseForSafety(accountId, context),
     recordInfo: (accountId, type, message, metadata) =>
       this.recordInfo(accountId, type, message, metadata),
@@ -150,11 +153,16 @@ class SteamManager {
     accountId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    return this.accountOperations.run(accountId, operation);
+    if (this.quiescing)
+      return Promise.reject(new Error("Steam manager is shutting down."));
+    return this.accountOperations.run(accountId, async () => {
+      if (this.quiescing) throw new Error("Steam manager is shutting down.");
+      return operation();
+    });
   }
 
   async start(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.startNow(accountId, context),
     );
   }
@@ -183,7 +191,7 @@ class SteamManager {
   }
 
   async stop(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.stopNow(accountId, context),
     );
   }
@@ -206,13 +214,13 @@ class SteamManager {
   }
 
   async forget(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.forgetNow(accountId, context),
     );
   }
 
   async deleteAccount(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, async () => {
+    return this.runAccountOperation(accountId, async () => {
       await this.forgetNow(accountId, context);
       await db.delete(steamAccount).where(eq(steamAccount.id, accountId));
     });
@@ -222,35 +230,41 @@ class SteamManager {
     this.accountOperations.remember(accountId, "forget", context);
     this.logger.info({ accountId }, "Forgetting Steam account worker");
     const worker = this.workers.get(accountId);
+    let safelyClosed = !worker;
     try {
       if (worker) {
         worker.removeAllListeners("status");
-        try {
-          await worker.stop();
-        } catch (error) {
-          try {
-            await worker.shutdown();
-          } catch (shutdownError) {
-            this.logger.error(
-              errorLogFields(shutdownError, { accountId }),
-              "Fallback Steam worker shutdown failed",
-            );
-          }
-          throw error;
-        }
+        await closeWithLeaseCleanup(
+          {
+            close: async () => {
+              try {
+                await worker.stop();
+              } finally {
+                await worker.shutdown();
+                safelyClosed = true;
+              }
+            },
+          },
+          { release: () => undefined },
+        );
       }
     } finally {
-      await this.closeBoostSession(accountId);
-      if (worker) {
-        worker.removeAllListeners();
-        this.workers.delete(accountId);
+      // A timed-out transport must retain its quiesced worker, never admit a replacement.
+      if (safelyClosed) {
+        await this.closeBoostSession(accountId);
+        if (worker) {
+          worker.removeAllListeners();
+          this.workers.delete(accountId);
+        }
+        this.clearAccountState(accountId);
+      } else {
+        worker?.beginShutdown();
       }
-      this.clearAccountState(accountId);
     }
   }
 
   async pause(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.pauseNow(accountId, context),
     );
   }
@@ -260,7 +274,7 @@ class SteamManager {
     until: number,
     context: OperationContext = {},
   ) {
-    return this.accountOperations.run(accountId, async () => {
+    return this.runAccountOperation(accountId, async () => {
       const account = await getAccountOrThrow(accountId);
       if (account.desiredState !== "running") {
         throw appError(
@@ -347,7 +361,7 @@ class SteamManager {
   }
 
   async resume(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.resumeNow(accountId, context),
     );
   }
@@ -372,7 +386,7 @@ class SteamManager {
   }
 
   async refreshWorker(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.refreshWorkerNow(accountId, context),
     );
   }
@@ -390,7 +404,7 @@ class SteamManager {
     presetId: string,
     context: OperationContext = {},
   ) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.applyPresetNow(accountId, presetId, context),
     );
   }
@@ -444,7 +458,7 @@ class SteamManager {
   }
 
   async importLibrary(accountId: string, context: OperationContext = {}) {
-    return this.accountOperations.run(accountId, () =>
+    return this.runAccountOperation(accountId, () =>
       this.importLibraryNow(accountId, context),
     );
   }
@@ -487,12 +501,20 @@ class SteamManager {
     return this.workers.get(accountId)?.currentStatus ?? "disconnected";
   }
 
+  beginShutdown(terminal = false) {
+    this.terminalShutdown ||= terminal;
+    this.quiescing = true;
+    this.clearAllSafetyResumes();
+    for (const worker of this.workers.values()) worker.beginShutdown();
+  }
+
   shutdown() {
     if (this.shutdownPromise) return this.shutdownPromise;
-
+    this.beginShutdown();
     const shutdownPromise = this.shutdownNow().finally(() => {
       if (this.shutdownPromise === shutdownPromise) {
         this.shutdownPromise = null;
+        this.quiescing = this.terminalShutdown;
       }
     });
     this.shutdownPromise = shutdownPromise;
@@ -501,8 +523,6 @@ class SteamManager {
 
   private async shutdownNow() {
     this.clearAllSafetyResumes();
-    await this.scheduleCoordinator.stop();
-    await this.safetyCoordinator.stop();
     const entries = [...this.workers.entries()];
     this.logger.info(
       { workerCount: entries.length },
@@ -512,6 +532,8 @@ class SteamManager {
       worker.removeAllListeners("status");
       worker.beginShutdown();
     }
+    await this.scheduleCoordinator.stop();
+    await this.safetyCoordinator.stop();
     await this.accountOperations.drain();
     const shutdownErrors: unknown[] = [];
     await Promise.all(
@@ -549,11 +571,12 @@ class SteamManager {
   }
 
   private getOrCreateWorker(account: typeof steamAccount.$inferSelect) {
+    if (this.quiescing) throw new Error("Steam manager is shutting down.");
     let worker = this.workers.get(account.id);
     if (!worker) {
       const createdWorker = new SteamWorker(account, {
         runAccountOperation: (operation) =>
-          this.accountOperations.run(account.id, operation),
+          this.runAccountOperation(account.id, operation),
         recordSessionConflict: ({ source: conflictSource, ...input }) =>
           this.recordInfo(
             account.id,

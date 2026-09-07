@@ -52,7 +52,7 @@ export class IncompleteRestoreRollbackError extends Error {
     rollbackDirectory: string,
   ) {
     super(
-      `Restore installation and rollback both failed. The restore lease and recovery data were retained at ${stagingDirectory} and ${rollbackDirectory}.`,
+      `Restore installation and rollback both failed. The persistent restore fence and recovery data were retained at ${stagingDirectory} and ${rollbackDirectory}.`,
     );
     this.name = "IncompleteRestoreRollbackError";
     this.installError = installError;
@@ -80,13 +80,13 @@ export function restoreBackup(options: RestoreOptions) {
   const restoreLease = new InstanceLease(dataDir, Date.now, {
     ownerKind: "restore",
   });
-  let releaseLease = true;
+  let safeToClearFence = true;
   try {
     restoreLease.acquire();
   } catch (error) {
     if (error instanceof InstanceLeaseError) {
       throw new Error(
-        "SteamBee is still running or another restore owns the data directory. Stop it and resolve the lease before restore.",
+        `SteamBee is still running, another restore owns the data directory, or offline guard recovery is required. ${error.message}`,
       );
     }
     throw error;
@@ -113,6 +113,7 @@ export function restoreBackup(options: RestoreOptions) {
       );
     }
     mkdirSync(staging, { mode: 0o700 });
+    safeToClearFence = false;
     try {
       for (const entry of payload.entries) {
         writeFileSync(join(staging, entry.path), entry.data, {
@@ -131,17 +132,19 @@ export function restoreBackup(options: RestoreOptions) {
         rollback,
         options.fileOperations?.rename ?? renameSync,
       );
+      safeToClearFence = true;
       return { rollbackDirectory: rollback };
     } catch (error) {
       if (error instanceof IncompleteRestoreRollbackError) {
-        releaseLease = false;
         throw error;
       }
       rmSync(staging, { recursive: true, force: true });
+      safeToClearFence = true;
       throw error;
     }
   } finally {
-    if (releaseLease) restoreLease.release();
+    if (safeToClearFence) restoreLease.completeRestore();
+    restoreLease.release();
   }
 }
 
@@ -170,11 +173,18 @@ function installRestore(
   ];
   const moved: string[] = [];
   const installed: string[] = [];
+  const originalIdentities = new Map<string, string>();
+  const replacementIdentities = new Map(
+    ["steam-bee.sqlite", "instance.secret"].map((name) => [
+      name,
+      regularFileIdentity(join(staging, name)),
+    ]),
+  );
   try {
     for (const name of currentFiles) {
       const source = join(dataDir, name);
       if (!existsSync(source)) continue;
-      assertRegularFile(source);
+      originalIdentities.set(name, regularFileIdentity(source));
       renameFile(source, join(rollback, name));
       moved.push(name);
     }
@@ -182,18 +192,28 @@ function installRestore(
       renameFile(join(staging, name), join(dataDir, name));
       installed.push(name);
     }
+    for (const [name, identity] of replacementIdentities) {
+      if (regularFileIdentity(join(dataDir, name)) !== identity) {
+        throw new Error("Installed restore file identity changed.");
+      }
+    }
     rmSync(staging, { recursive: true, force: true });
   } catch (error) {
     try {
       for (const name of installed.reverse()) {
         const installedPath = join(dataDir, name);
-        if (existsSync(installedPath))
-          renameFile(installedPath, join(staging, name));
+        renameFile(installedPath, join(staging, name));
       }
       for (const name of moved.reverse()) {
         const rollbackPath = join(rollback, name);
-        if (existsSync(rollbackPath))
-          renameFile(rollbackPath, join(dataDir, name));
+        renameFile(rollbackPath, join(dataDir, name));
+      }
+      for (const [name, identity] of originalIdentities) {
+        if (regularFileIdentity(join(dataDir, name)) !== identity) {
+          throw new Error(
+            "Rollback did not restore the original file identity.",
+          );
+        }
       }
       rmSync(rollback, { recursive: true, force: true });
     } catch (rollbackError) {
@@ -268,10 +288,15 @@ function validateDatabase(path: string, manifestMigrationId: string | null) {
 }
 
 function assertRegularFile(path: string) {
+  regularFileIdentity(path);
+}
+
+function regularFileIdentity(path: string) {
   const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink()) {
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) {
     throw new Error(`Restore path is not a regular file: ${path}`);
   }
+  return `${stat.dev}:${stat.ino}`;
 }
 
 function argument(name: string) {

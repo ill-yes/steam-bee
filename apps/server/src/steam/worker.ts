@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import SteamUser from "steam-user";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { paths } from "../config.js";
 import { db } from "../db/client.js";
 import {
@@ -39,6 +39,16 @@ import {
 } from "./retry-policy.js";
 
 type SteamAccountRow = typeof steamAccount.$inferSelect;
+type RenewedCredential = {
+  refreshToken: string;
+  previousRefreshToken: string;
+  steamId: string;
+};
+type LifecycleSteamUser = SteamUser & {
+  steamBeeBeginShutdown(): void;
+  steamBeeDrainRefreshTokens(): Promise<void>;
+  steamBeeLogOffAndDrain(): Promise<void>;
+};
 type SteamWorkerOptions = {
   runAccountOperation?: <T>(operation: () => Promise<T>) => Promise<T>;
   recordSessionConflict?: (input: {
@@ -52,7 +62,7 @@ type SteamWorkerOptions = {
 
 export class SteamWorker extends EventEmitter {
   readonly accountId: string;
-  private readonly client: SteamUser;
+  private readonly client: LifecycleSteamUser;
   private account: SteamAccountRow;
   private status: AccountStatus;
   private connected = false;
@@ -69,7 +79,9 @@ export class SteamWorker extends EventEmitter {
   private quiescing = false;
   private intentGeneration = 0;
   private eventQueue: Promise<void> = Promise.resolve();
-  private lastPersistedRefreshToken: string | null = null;
+  private credentialQueue: Promise<void> = Promise.resolve();
+  private credentialError: unknown;
+  private shutdownPromise: Promise<void> | null = null;
   private readonly logger: ReturnType<typeof createLogger>;
   private readonly runAccountOperation: NonNullable<
     SteamWorkerOptions["runAccountOperation"]
@@ -100,7 +112,7 @@ export class SteamWorker extends EventEmitter {
       dataDirectory,
       protocol: SteamUser.EConnectionProtocol.WebSocket,
       renewRefreshTokens: true,
-    });
+    }) as LifecycleSteamUser;
 
     this.attachListeners();
   }
@@ -148,6 +160,7 @@ export class SteamWorker extends EventEmitter {
     await this.setStatus("connecting");
 
     try {
+      if (this.quiescing) return;
       this.loginAttemptId += 1;
       this.handledConflictLoginAttemptId = null;
       this.client.logOn({
@@ -176,9 +189,17 @@ export class SteamWorker extends EventEmitter {
     await this.setStatus("disconnected");
   }
 
-  async shutdown() {
+  shutdown() {
+    if (this.shutdownPromise) return this.shutdownPromise;
     this.beginShutdown();
-    return this.runSerial("command:shutdown", () => this.shutdownNow());
+    this.shutdownPromise = (async () => {
+      await this.client.steamBeeDrainRefreshTokens();
+      await this.credentialQueue;
+      await this.runSerial("command:shutdown", () => this.shutdownNow());
+      this.client.removeAllListeners();
+      if (this.credentialError) throw this.credentialError;
+    })();
+    return this.shutdownPromise;
   }
 
   beginShutdown() {
@@ -186,7 +207,7 @@ export class SteamWorker extends EventEmitter {
     this.quiescing = true;
     this.clearRetryTimers();
     this.resetSessionConflict();
-    this.client.removeAllListeners();
+    this.client.steamBeeBeginShutdown();
   }
 
   private async shutdownNow() {
@@ -194,7 +215,9 @@ export class SteamWorker extends EventEmitter {
     this.clearRetryTimers();
     this.resetSessionConflict();
     this.client.gamesPlayed([]);
-    this.client.logOff();
+    await this.client.steamBeeLogOffAndDrain();
+    // A timed-out renewal can still publish its credential while the transport closes.
+    await this.credentialQueue;
     this.connected = false;
     await this.setStatus("disconnected");
   }
@@ -309,6 +332,7 @@ export class SteamWorker extends EventEmitter {
       }
     }
     this.account = account;
+    if (this.quiescing) return;
     this.client.setPersona(account.personaState);
     await this.applyGames();
   }
@@ -371,16 +395,29 @@ export class SteamWorker extends EventEmitter {
       await touchSteamContact(this.accountId);
       await clearRecoveryHealth(this.accountId);
       await this.persistSteamId();
+      if (this.quiescing) return;
       this.client.setPersona(this.account.personaState);
       await this.setStatus("online");
       await this.applyGames();
     });
 
-    this.onClientEvent("refreshToken", async (token: string) => {
-      this.logger.debug("Steam refresh token renewed");
-      await this.persistRefreshToken(token);
-      await touchSteamContact(this.accountId);
-    });
+    // Credentials belong to the login that renewed them, not the current UI intent.
+    this.client.on(
+      "steamBeeRefreshToken" as never,
+      ((credential: RenewedCredential) => {
+        this.credentialQueue = this.credentialQueue
+          .then(() => {
+            this.persistRefreshToken(credential);
+          })
+          .catch(() => {
+            // Database errors may include SQL parameters containing encrypted credentials.
+            this.credentialError = new Error(
+              "Could not persist a renewed Steam credential.",
+            );
+            this.logger.error("Could not persist a renewed Steam credential");
+          });
+      }) as never,
+    );
 
     this.onClientEvent("playingState", async (blocked: boolean) => {
       await touchSteamContact(this.accountId);
@@ -506,7 +543,15 @@ export class SteamWorker extends EventEmitter {
   }
 
   private runSerial<T>(source: string, handler: () => Promise<T>): Promise<T> {
-    const operation = this.eventQueue.then(handler);
+    if (this.quiescing && source !== "command:shutdown") {
+      return Promise.reject(new Error("Steam worker is shutting down."));
+    }
+    const operation = this.eventQueue.then(() => {
+      if (this.quiescing && source !== "command:shutdown") {
+        throw new Error("Steam worker is shutting down.");
+      }
+      return handler();
+    });
     this.eventQueue = operation.then(
       () => undefined,
       (error) => {
@@ -520,7 +565,7 @@ export class SteamWorker extends EventEmitter {
   }
 
   private async applyGames() {
-    if (!this.connected) {
+    if (this.quiescing || !this.connected) {
       this.logger.debug("Deferring gamesPlayed until Steam is connected");
       return;
     }
@@ -538,6 +583,7 @@ export class SteamWorker extends EventEmitter {
     }
 
     const payload = await this.selectedGamesPayload();
+    if (this.quiescing) return;
 
     this.logger.info(
       {
@@ -734,6 +780,7 @@ export class SteamWorker extends EventEmitter {
       return;
     }
     const payload = await this.selectedGamesPayload();
+    if (this.quiescing) return;
     this.client.gamesPlayed(payload);
     await this.registerSessionConflict("live", null);
   }
@@ -756,38 +803,76 @@ export class SteamWorker extends EventEmitter {
   }
 
   private getRefreshToken() {
+    // Account snapshots can predate a renewal or QR replacement committed meanwhile.
+    const account = db
+      .select()
+      .from(steamAccount)
+      .where(eq(steamAccount.id, this.accountId))
+      .get();
     if (
-      !this.account.tokenCiphertext ||
-      !this.account.tokenIv ||
-      !this.account.tokenAuthTag
+      !account ||
+      account.createdAt !== this.account.createdAt ||
+      !account.tokenCiphertext ||
+      !account.tokenIv ||
+      !account.tokenAuthTag
     ) {
       return null;
     }
 
     return decryptSecret({
-      ciphertext: this.account.tokenCiphertext,
-      iv: this.account.tokenIv,
-      authTag: this.account.tokenAuthTag,
-      keyVersion: this.account.tokenKeyVersion,
+      ciphertext: account.tokenCiphertext,
+      iv: account.tokenIv,
+      authTag: account.tokenAuthTag,
+      keyVersion: account.tokenKeyVersion,
     });
   }
 
-  private async persistRefreshToken(token: string) {
+  private persistRefreshToken(credential: RenewedCredential) {
+    const { refreshToken, previousRefreshToken, steamId } = credential;
+    const stored = db
+      .select()
+      .from(steamAccount)
+      .where(eq(steamAccount.id, this.accountId))
+      .get();
     if (
-      token === this.lastPersistedRefreshToken ||
-      (this.lastPersistedRefreshToken === null &&
-        token === this.getRefreshToken())
-    ) {
-      this.lastPersistedRefreshToken = token;
-      this.logger.debug("Skipping unchanged Steam refresh token");
+      !stored ||
+      !stored.tokenCiphertext ||
+      !stored.tokenIv ||
+      !stored.tokenAuthTag
+    )
       return;
+    if (
+      stored.accountName !== this.account.accountName ||
+      stored.createdAt !== this.account.createdAt
+    )
+      return;
+    if (!/^765\d{14}$/.test(steamId)) return;
+    if (stored.steamId !== steamId) {
+      if (stored.steamId !== null) return;
+      try {
+        const payload = JSON.parse(
+          Buffer.from(
+            previousRefreshToken.split(".")[1] ?? "",
+            "base64url",
+          ).toString("utf8"),
+        );
+        if (payload.sub !== steamId) return;
+      } catch {
+        return;
+      }
     }
-
-    const encrypted = encryptSecret(token);
-    const tokenExpiresAt = decodeJwtExpiry(token);
+    const storedToken = decryptSecret({
+      ciphertext: stored.tokenCiphertext,
+      iv: stored.tokenIv,
+      authTag: stored.tokenAuthTag,
+      keyVersion: stored.tokenKeyVersion,
+    });
+    if (storedToken !== previousRefreshToken || refreshToken === storedToken)
+      return;
+    const encrypted = encryptSecret(refreshToken);
+    const tokenExpiresAt = decodeJwtExpiry(refreshToken);
     const now = Date.now();
-    this.account = {
-      ...this.account,
+    const update = {
       tokenCiphertext: encrypted.ciphertext,
       tokenIv: encrypted.iv,
       tokenAuthTag: encrypted.authTag,
@@ -795,18 +880,26 @@ export class SteamWorker extends EventEmitter {
       tokenExpiresAt,
       updatedAt: now,
     };
-    await db
+    const result = db
       .update(steamAccount)
-      .set({
-        tokenCiphertext: encrypted.ciphertext,
-        tokenIv: encrypted.iv,
-        tokenAuthTag: encrypted.authTag,
-        tokenKeyVersion: encrypted.keyVersion,
-        tokenExpiresAt,
-        updatedAt: now,
-      })
-      .where(eq(steamAccount.id, this.accountId));
-    this.lastPersistedRefreshToken = token;
+      .set(update)
+      .where(
+        and(
+          eq(steamAccount.id, this.accountId),
+          eq(steamAccount.accountName, stored.accountName),
+          eq(steamAccount.createdAt, stored.createdAt),
+          stored.steamId === null
+            ? isNull(steamAccount.steamId)
+            : eq(steamAccount.steamId, steamId),
+          eq(steamAccount.tokenCiphertext, stored.tokenCiphertext),
+          eq(steamAccount.tokenIv, stored.tokenIv),
+          eq(steamAccount.tokenAuthTag, stored.tokenAuthTag),
+          eq(steamAccount.tokenKeyVersion, stored.tokenKeyVersion),
+        ),
+      )
+      .run();
+    if (result.changes !== 1) return;
+    this.account = { ...this.account, ...update };
     this.logger.info({ tokenExpiresAt }, "Persisted renewed refresh token");
   }
 
