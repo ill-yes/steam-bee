@@ -829,6 +829,32 @@ describe("api auth flow", () => {
       endTime: "23:00",
     });
 
+    const renameDisabledSchedule = await app.inject({
+      method: "PUT",
+      url: `/api/accounts/${accountA.id}/schedules/${scheduleId}`,
+      cookies: { session: cookie! },
+      headers: { "x-csrf-token": csrfToken },
+      payload: { name: "Still disabled" },
+    });
+    expect(renameDisabledSchedule.statusCode).toBe(200);
+    expect(renameDisabledSchedule.json()).toMatchObject({
+      id: scheduleId,
+      name: "Still disabled",
+      enabled: false,
+    });
+    const schedulesAfterRename = await app.inject({
+      method: "GET",
+      url: `/api/accounts/${accountA.id}/schedules`,
+      cookies: { session: cookie! },
+    });
+    expect(schedulesAfterRename.json()).toEqual([
+      expect.objectContaining({
+        id: scheduleId,
+        name: "Still disabled",
+        enabled: false,
+      }),
+    ]);
+
     const deleteSchedule = await app.inject({
       method: "DELETE",
       url: `/api/accounts/${accountA.id}/schedules/${scheduleId}`,

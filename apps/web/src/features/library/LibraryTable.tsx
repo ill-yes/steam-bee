@@ -1,9 +1,7 @@
 import { ChevronDown, ChevronUp, Library, Search } from "lucide-react";
 import {
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
   type OnChangeFn,
   type SortingState,
 } from "@tanstack/react-table";
@@ -12,7 +10,10 @@ import { Button } from "../../components/ui/button";
 import { libraryEmptyState, maxVisibleLibraryRows } from "../../lib/status";
 import { cn } from "../../lib/utils";
 import { interpolate, useI18n } from "../../i18n";
-import { useLibraryTableColumns } from "./LibraryTableColumns";
+import {
+  libraryTableFeatures,
+  useLibraryTableColumns,
+} from "./LibraryTableColumns";
 import type { LibraryRow, LibraryUpdatePatch } from "./types";
 
 export function LibraryTable({
@@ -40,13 +41,12 @@ export function LibraryTable({
 }) {
   const { messages: t } = useI18n();
   const columns = useLibraryTableColumns({ onToggleApp, onUpdateMeta });
-  const table = useReactTable({
+  const table = useTable({
+    features: libraryTableFeatures,
     data: rows,
     columns,
     state: { sorting },
     onSortingChange,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   });
   const sortedRows = table.getRowModel().rows;
   const visibleRows = sortedRows.slice(0, maxVisibleLibraryRows);

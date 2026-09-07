@@ -21,9 +21,15 @@ describe("runtime configuration", () => {
   it("rejects a configured setup token with seven characters", async () => {
     vi.stubEnv("SETUP_TOKEN", "1234567");
 
-    await expect(import("../src/config.js")).rejects.toThrow(
-      /at least 8 character/,
-    );
+    await expect(import("../src/config.js")).rejects.toMatchObject({
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          code: "too_small",
+          minimum: 8,
+          path: ["SETUP_TOKEN"],
+        }),
+      ]),
+    });
   });
 
   it("keeps an empty setup token optional", async () => {

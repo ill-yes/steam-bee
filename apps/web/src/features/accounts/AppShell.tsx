@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import {
   CheckCircle2,
   CircleAlert,
-  Github,
+  CodeXml,
   Loader2,
   LogOut,
   Settings2,
@@ -140,7 +140,7 @@ export function AppShell({
                 rel="noreferrer"
                 className="flex min-h-11 items-center gap-2 rounded-md px-2.5 text-xs font-semibold text-[var(--muted-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
               >
-                <Github size={16} />
+                <CodeXml size={16} />
                 <span>{t.common.sourceCode}</span>
               </a>
             </div>
@@ -153,7 +153,7 @@ export function AppShell({
             aria-label={t.common.sourceCode}
             title={t.common.sourceCode}
           >
-            <Github size={18} />
+            <CodeXml size={18} />
           </a>
           {onLogout ? (
             <Button

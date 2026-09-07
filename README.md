@@ -150,11 +150,12 @@ your backup plan, and never bind `/data` to the checked-out repository. See
 
 Requirements:
 
-- Node.js 22.
+- Node.js 26.8.1 (matching CI and the container image).
 - Corepack with the repository-pinned pnpm version.
 - Docker Engine with Docker Compose v2 for container-related changes.
 
 ```bash
+npm install --global corepack@0.36.0
 corepack enable
 pnpm install
 pnpm dev
