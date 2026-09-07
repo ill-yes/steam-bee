@@ -66,3 +66,6 @@ jobs:
 
       - name: Smoke-test image
         run: sh scripts/smoke-test-image.sh steam-bee:ci steam-bee-ci
+
+      - name: Verify crash and OOM recovery
+        run: node scripts/test-crash-recovery.mjs steam-bee:ci

@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+patchedDependencies:
+  steam-user@5.3.0: patches/steam-user@5.3.0.patch
 minimumReleaseAge: 1440
 minimumReleaseAgeIgnoreMissingTime: false
 trustPolicy: no-downgrade

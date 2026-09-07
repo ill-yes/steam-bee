@@ -15,7 +15,10 @@ import { steamManager } from "./steam/manager.js";
 import { errorLogFields, fastifyLoggerOptions } from "./util/logger.js";
 import { safeErrorMessage } from "./util/redact.js";
 import { notificationDispatcher } from "./notifications/dispatcher.js";
-import { IncompleteStartupCleanupError } from "./startup.js";
+import {
+  closeWithLeaseCleanup,
+  IncompleteStartupCleanupError,
+} from "./startup.js";
 
 const maxCorrelationIdLength = 128;
 const correlationIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
@@ -80,7 +83,7 @@ export async function buildApp(options: { initSteam?: boolean } = {}) {
     return app;
   } catch (initializationError) {
     try {
-      await app.close();
+      await closeWithLeaseCleanup(app, { release: () => undefined });
     } catch (cleanupError) {
       throw new IncompleteStartupCleanupError(
         initializationError,

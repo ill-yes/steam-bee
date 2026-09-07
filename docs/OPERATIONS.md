@@ -27,13 +27,52 @@ state, the instance encryption secret, encrypted Steam refresh tokens, and
 Steam client data. Do not bind this to the repository unless you know exactly
 what you are doing.
 
-SteamBee acquires `/data/.steam-bee-instance` before opening the application
-database. A second process using the same data directory exits instead of
-starting duplicate Steam workers. SteamBee deliberately does not auto-take-over
-an expired heartbeat because a suspended old process could resume and create
-split brain. After an unclean stop, confirm no server or restore process still
-uses the directory before removing the exact `.steam-bee-instance` lease and
-restarting.
+SteamBee acquires an exclusive SQLite lock on `/data/.steam-bee-instance`
+before opening the application database. This is a permanent file, not the
+temporary lease directory used by older versions. A second process using the
+same data directory exits instead of starting duplicate Steam workers. The
+operating system releases the lock when the owner exits, including after a
+crash, SIGKILL, or OOM; a configured Docker restart policy can then restart
+SteamBee on the same data. A paused process retains its lock. Heartbeat age and
+PID numbers never authorize a takeover.
+
+Do not delete, rename, replace, or open the guard file with another connection
+inside the running application. Its optional `.steam-bee-instance-journal`
+belongs to SQLite recovery and must also be preserved. The runtime guard is
+not part of portable `.sbb` backups. Diagnostics distinguish a busy
+owner, a legacy lease, and a retained restore fence; repeated restart attempts
+do not resolve a restore fence or an old lease directory.
+
+This requires reliable local SQLite file locking. Docker named volumes and
+local appdata mounts are the intended deployment targets. NFS/SMB storage and
+mount aliases or mover setups that replace active files are not supported
+without an explicit locking validation. On Unraid, validate the actual appdata
+mount before relying on automatic crash recovery; a Docker Desktop or CI test
+does not establish the host filesystem's guarantees.
+
+### Recovering a legacy lease after an unclean stop
+
+A remaining `.steam-bee-instance` **directory** is deliberately not converted
+or removed automatically. Use this one-time operator procedure before the
+first upgraded start:
+
+1. Identify the exact container, image, `/data` mount source, and every other
+   container or host process that can access it. Stop all runtime and restore
+   processes, including automatic restart sources, and verify they are stopped.
+2. Make a cold backup of the complete dedicated data directory to a separate
+   location. Inspect the old lease's owner kind and any restore staging or
+   rollback material without exposing tokens or the instance secret.
+3. If the owner is a restore, its identity is unknown, or recovery material
+   suggests an incomplete restore, stop and inspect the matching database and
+   secret before making any change. Never treat lease age as proof of safety.
+4. Only after confirming no owner remains, verifying the backup, and obtaining
+   explicit approval for the exact path may an operator archive the old lease
+   directory outside `/data`. Do not remove the new regular guard file.
+5. Start the upgraded container and verify `/readyz`, the web interface, and
+   account state. Restore the intended Docker restart policy if it was paused.
+
+The upgraded format intentionally blocks older images. Rollback requires the
+matching pre-upgrade backup and application version, not removal of the guard.
 
 The container root filesystem is read-only. Only `/data` and the bounded
 `/tmp` tmpfs are writable, and Docker's `json-file` logs rotate by default.
@@ -80,8 +119,23 @@ The official Unraid template uses Unraid's conventional `PUID=99` and
 `/data`, clears every inherited, permitted, effective, bounding, and ambient
 capability, and then replaces itself with the Node process as that unprivileged
 user. New Unraid installations therefore require no host-side `chown` command.
-Changing PUID or PGID in the template automatically migrates existing appdata
-ownership on the next start.
+Once the permanent instance guard exists, the helper verifies that the complete
+data tree already belongs to the configured PUID/PGID and performs no ownership
+or marker writes. A mismatch fails startup without changing data, protecting a
+running instance from a second container with different IDs. Changing PUID/PGID
+then requires a separately authorized offline ownership migration: identify the
+exact appdata mount, stop every application and restore using it, verify a
+backup, and preserve the permanent guard file and its inode. Never remove the
+guard to permit automatic ownership changes. Legacy lease directories also
+fail closed and require the recovery procedure above.
+
+Serialize first-time root initialization and upgrades from a clean legacy
+shutdown before a guard file has been established. Never run two
+`STEAM_BEE_DATA_INIT=true` initializers against the same unguarded `/data` at
+once, especially with different PUID/PGID values. The shell helper checks for
+an appearing guard before ownership changes, but these first-provisioning
+checks and changes are not atomic. Established guard files use the read-only
+ownership-check path described above.
 
 Keep the template's Appdata mapping pointed at one dedicated SteamBee directory
 (the default is `/mnt/user/appdata/steambee`). Before changing any ownership,
@@ -182,23 +236,52 @@ sudo rmdir -- backups/restore-stage
 ```
 
 The restore command prompts for the passphrase without placing it in command
-history or the process list. It atomically holds the same `/data` lease as the
-server for the complete decrypt, validation, install, or rollback sequence. An
-unexpectedly killed restore intentionally leaves `.steam-bee-instance` in
-place so a server cannot start over a possibly incomplete restore. After
-confirming that neither a server nor restore process is running, inspect and
-remove that exact lease directory before retrying. Keep
+history or the process list. It holds the same exclusive guard as the server
+and durably records a restore fence before changing recovery data. A killed
+restore releases its process lock but retains this fence, so neither a server
+nor another restore can start over a possibly incomplete installation. Only a
+successful restore or fully verified rollback and cleanup clears the fence.
+Never delete the guard to bypass it: confirm all owners have stopped, retain a
+complete cold backup, and have an operator verify recovery before proceeding. Keep
 `.steam-bee-restore-rollback` until login, account state, and diagnostics have
 been verified. A later restore refuses to overwrite that rollback directory;
 archive or remove it only after verification.
 
 If both snapshot installation and its automatic rollback fail, the command
-reports the staging and rollback paths and deliberately retains all three of
-`.steam-bee-instance`, `.steam-bee-restore-staging`, and
+reports the staging and rollback paths and deliberately retains
+the permanent guard and its restore fence, `.steam-bee-restore-staging`, and
 `.steam-bee-restore-rollback`. Do not start SteamBee or remove any of them.
 Copy the complete data directory first, then repair the reported files or
 recover from the original `.sbb` with an operator who can verify the SQLite
 snapshot and matching instance secret.
+
+### Process crashes and Steam credentials
+
+The Steam lifecycle patch ignores connection work that finishes after a
+disconnect and safely retains an admitted successful token renewal where its
+predecessor is still current. Graceful shutdown admits no new Steam work and
+allows at most 25 seconds for cleanup, within Docker's 30-second stop window.
+An unrecoverable cleanup failure exits with a nonzero status rather than
+continuing with uncertain ownership.
+
+Automatic service recovery does not guarantee uninterrupted Steam credentials:
+Steam may invalidate the previous token just before an abrupt process death
+prevents storing its replacement. In that narrow window, the service restarts
+but the account can require a new login. Terminal authentication errors become
+`login_required`; they are not retried indefinitely. Account pause/stop intent
+and the existing session-conflict retry timing remain unchanged.
+
+Container validation uses synthetic accounts only. The crash recovery test
+performs three unexpected application-process crashes and a cgroup OOM in both
+Compose-init and Unraid-style modes, checking automatic restart, readiness,
+the web interface, and an unchanged guard inode on the same volume. It does
+not use a manual `docker restart` as proof of automatic recovery. Compose-init
+uses SIGKILL against the actual Node process. For the Unraid-style namespace
+PID 1, which Linux protects from an external same-namespace SIGKILL, a test-only
+preload triggers an uncaught error inside that Node process. The isolated OOM
+test additionally requires a Docker OOM event, not just an increased restart
+counter. Test preloads are bind-mounted only into the disposable test containers
+and are not part of the production image.
 
 ### Cold full-volume snapshot
 

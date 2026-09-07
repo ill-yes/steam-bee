@@ -115,7 +115,10 @@ describe("encrypted backup format", () => {
       expect(existsSync(join(dataDir, ".steam-bee-restore-staging"))).toBe(
         false,
       );
-      expect(existsSync(join(dataDir, ".steam-bee-instance"))).toBe(false);
+      expect(existsSync(join(dataDir, ".steam-bee-instance"))).toBe(true);
+      const runtimeLease = new InstanceLease(dataDir);
+      expect(runtimeLease.acquire().state).toBe("held");
+      runtimeLease.release();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -139,6 +142,89 @@ describe("encrypted backup format", () => {
       expect(runtimeLease.status().state).toBe("held");
     } finally {
       runtimeLease.release();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("clears its fence after a harmless input failure", () => {
+    const dataDir = mkdtempSync(
+      join(tmpdir(), "steam-bee-restore-harmless-test-"),
+    );
+    try {
+      expect(() =>
+        restoreBackup({
+          inputPath: join(dataDir, "missing.sbb"),
+          dataDir,
+          passphrase: "correct horse battery staple",
+        }),
+      ).toThrow(/ENOENT/);
+      const runtime = new InstanceLease(dataDir);
+      expect(runtime.acquire().state).toBe("held");
+      runtime.release();
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("clears its fence only after a complete verified install rollback", () => {
+    const root = mkdtempSync(
+      join(tmpdir(), "steam-bee-restore-complete-rollback-test-"),
+    );
+    const dataDir = join(root, "data");
+    mkdirSync(dataDir, { mode: 0o700 });
+    try {
+      const originalDatabasePath = join(dataDir, "steam-bee.sqlite");
+      const originalSecret = Buffer.alloc(32, 3).toString("base64");
+      createDatabase(originalDatabasePath, "001_initial_schema", "before");
+      writeFileSync(join(dataDir, "instance.secret"), originalSecret);
+      const snapshotPath = join(root, "snapshot.sqlite");
+      createDatabase(snapshotPath, "001_initial_schema", "after");
+      const inputPath = join(root, "backup.sbb");
+      writeFileSync(
+        inputPath,
+        encryptBackup(
+          [
+            { path: "steam-bee.sqlite", data: readFileSync(snapshotPath) },
+            {
+              path: "instance.secret",
+              data: Buffer.from(Buffer.alloc(32, 9).toString("base64")),
+            },
+          ],
+          "correct horse battery staple",
+          "001_initial_schema",
+        ),
+      );
+      expect(() =>
+        restoreBackup({
+          inputPath,
+          dataDir,
+          passphrase: "correct horse battery staple",
+          fileOperations: {
+            rename: ((source: string, destination: string) => {
+              if (
+                source ===
+                join(dataDir, ".steam-bee-restore-staging", "instance.secret")
+              )
+                throw new Error("injected install failure");
+              renameSync(source, destination);
+            }) as typeof renameSync,
+          },
+        }),
+      ).toThrow("injected install failure");
+      expect(readProbe(originalDatabasePath)).toBe("before");
+      expect(readFileSync(join(dataDir, "instance.secret"), "utf8")).toBe(
+        originalSecret,
+      );
+      expect(existsSync(join(dataDir, ".steam-bee-restore-staging"))).toBe(
+        false,
+      );
+      expect(existsSync(join(dataDir, ".steam-bee-restore-rollback"))).toBe(
+        false,
+      );
+      const runtime = new InstanceLease(dataDir);
+      expect(runtime.acquire().state).toBe("held");
+      runtime.release();
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
@@ -211,6 +297,16 @@ describe("encrypted backup format", () => {
       expect(existsSync(join(dataDir, ".steam-bee-instance"))).toBe(true);
       expect(existsSync(staging)).toBe(true);
       expect(existsSync(rollback)).toBe(true);
+      expect(() => new InstanceLease(dataDir).acquire()).toThrow(
+        /restore_required/,
+      );
+      expect(() =>
+        restoreBackup({
+          inputPath,
+          dataDir,
+          passphrase: "correct horse battery staple",
+        }),
+      ).toThrow(/restore_required/);
       expect(readProbe(join(rollback, "steam-bee.sqlite"))).toBe("before");
       expect(readFileSync(join(rollback, "instance.secret"), "utf8")).toBe(
         currentSecret,

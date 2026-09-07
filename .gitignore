@@ -30,7 +30,8 @@ sqlite.db
 instance.secret
 setup.token
 *.sbb
-.steam-bee-instance/
+.steam-bee-instance
+.steam-bee-instance-journal
 .steam-bee-instance.stale-*/
 .steam-bee-restore-staging/
 .steam-bee-restore-rollback/

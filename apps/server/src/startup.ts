@@ -6,6 +6,18 @@ type ServerLike = {
 };
 
 type LeaseLike = { release(): void };
+export const shutdownBudgetMs = 25_000;
+
+export class ShutdownTimeoutError extends Error {
+  constructor() {
+    super(
+      "Runtime shutdown exceeded its deadline; retaining the data lease until process exit.",
+    );
+    this.name = "ShutdownTimeoutError";
+  }
+}
+
+const closeOperations = new WeakMap<object, Promise<unknown>>();
 
 export class IncompleteStartupCleanupError extends Error {
   readonly initializationError: unknown;
@@ -43,13 +55,62 @@ export async function buildWithLeaseCleanup<T>(
   }
 }
 
-export async function closeWithLeaseCleanup(
+export function closeWithLeaseCleanup(
   app: Pick<ServerLike, "close">,
   lease: LeaseLike,
+  timeoutMs = shutdownBudgetMs,
 ) {
-  const result = await app.close();
-  lease.release();
-  return result;
+  const existing = closeOperations.get(app);
+  if (existing) return existing;
+  let timer: NodeJS.Timeout;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ShutdownTimeoutError()), timeoutMs);
+  });
+  let runtimeClose: Promise<unknown>;
+  try {
+    runtimeClose = app.close();
+  } catch (error) {
+    runtimeClose = Promise.reject(error);
+  }
+  const closing = Promise.race([runtimeClose, deadline])
+    .then((result) => {
+      lease.release();
+      return result;
+    })
+    .finally(() => clearTimeout(timer));
+  closeOperations.set(app, closing);
+  return closing;
+}
+
+export function createRuntimeShutdown(
+  app: Pick<ServerLike, "close">,
+  lease: LeaseLike,
+  onFailure: (error: unknown) => void,
+  exit: (code: number) => void,
+  beginShutdown: () => void = () => undefined,
+) {
+  let closing: Promise<void> | undefined;
+  return () => {
+    if (closing) return closing;
+    let cleanup: Promise<unknown>;
+    try {
+      beginShutdown();
+      cleanup = closeWithLeaseCleanup(app, lease);
+    } catch (error) {
+      cleanup = Promise.reject(error);
+    }
+    closing = cleanup.then(
+      () => exit(0),
+      (error) => {
+        try {
+          onFailure(error);
+        } finally {
+          exit(1);
+        }
+      },
+    );
+    return closing;
+  };
 }
 
 export async function listenWithLeaseCleanup(

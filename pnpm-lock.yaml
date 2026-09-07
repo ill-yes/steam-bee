@@ -9,6 +9,9 @@ overrides:
   protobufjs: 7.6.5
   steam-user@5.3.0>adm-zip: 0.6.0
 
+patchedDependencies:
+  steam-user@5.3.0: af41553f2d92a7272ede78bef92cf00558aa5c2afd0f4cb58cdfddd476717e60
+
 importers:
 
   .:
@@ -62,8 +65,8 @@ importers:
         specifier: ^1.9.4
         version: 1.9.4
       steam-user:
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: 5.3.0
+        version: 5.3.0(patch_hash=af41553f2d92a7272ede78bef92cf00558aa5c2afd0f4cb58cdfddd476717e60)
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -4275,7 +4278,7 @@ snapshots:
 
   steam-totp@2.1.2: {}
 
-  steam-user@5.3.0:
+  steam-user@5.3.0(patch_hash=af41553f2d92a7272ede78bef92cf00558aa5c2afd0f4cb58cdfddd476717e60):
     dependencies:
       '@bbob/parser': 2.9.0
       '@doctormckay/stdlib': 2.10.0
