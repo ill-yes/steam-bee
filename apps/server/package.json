@@ -35,6 +35,6 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/steam-user": "^5.1.0",
     "tsx": "^4.23.12",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }
