@@ -23,10 +23,18 @@ jobs:
     uses: ./.github/workflows/quality.yml
 
   image:
-    name: PR image validation
+    name: PR image validation (${{ matrix.arch }})
     needs: quality
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -43,7 +51,7 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           load: true
           push: false
           tags: steam-bee:ci
@@ -68,4 +76,21 @@ jobs:
         run: sh scripts/smoke-test-image.sh steam-bee:ci steam-bee-ci
 
       - name: Verify crash and OOM recovery
+        if: matrix.arch == 'amd64'
         run: node scripts/test-crash-recovery.mjs steam-bee:ci
+
+  image-gate:
+    name: PR image validation
+    needs: image
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require successful image validation on every architecture
+        env:
+          IMAGE_RESULT: ${{ needs.image.result }}
+        run: |
+          if [ "$IMAGE_RESULT" != "success" ]; then
+            echo "Image validation did not succeed on every architecture: $IMAGE_RESULT" >&2
+            exit 1
+          fi
