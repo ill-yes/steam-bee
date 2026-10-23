@@ -292,6 +292,7 @@ jobs:
             org.opencontainers.image.title=SteamBee
             org.opencontainers.image.description=Self-hosted operations console for managing your own Steam accounts.
             org.opencontainers.image.licenses=AGPL-3.0-or-later
+            org.opencontainers.image.version=${{ needs.plan.outputs.version }}
           tags: |
             type=raw,value=${{ needs.plan.outputs.version }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.plan.outputs.version }}
