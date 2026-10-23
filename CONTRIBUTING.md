@@ -62,8 +62,9 @@ image. A stable release is one explicit GitHub Actions operation:
 2. Choose `patch`, `minor`, or `major` and start the workflow.
 
 The workflow derives the next version from the latest stable GitHub Release. It
-runs the quality gate, builds and scans an amd64 smoke image, and only then
-creates an annotated tag on the exact validated `main` commit. It publishes the
+runs the quality gate, then builds, scans, and smoke-tests images on native
+AMD64 and ARM64 runners. Both architectures must pass before it creates an
+annotated tag on the exact validated `main` commit. It publishes the
 exact version, its `major.minor` channel, and `latest` for `linux/amd64` and
 `linux/arm64`, adds provenance, SBOM, and an artifact attestation, and creates
 the GitHub Release with generated notes.

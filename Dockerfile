@@ -34,7 +34,10 @@ RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
 FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS runtime
-RUN rm -rf \
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base \
+  && rm -rf \
+  /var/lib/apt/lists/* \
   /usr/local/lib/node_modules/npm \
   /usr/local/lib/node_modules/corepack \
   /opt/yarn-v1.22.22 \
