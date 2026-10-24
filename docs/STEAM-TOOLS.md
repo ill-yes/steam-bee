@@ -1,9 +1,13 @@
 # Steam Tools
 
-Open an account and use its workspace tabs: **Games & playtime**, **Inventory &
-market**, **Card farming**, **Free game offers**, and **Account & safety**.
-The compact account bar keeps the current connection and activity visible.
-Changing tabs only changes the view. Each tool loads when opened. A Steam account
+Open an account and use the section list beside the workspace: **Games &
+playtime** and **Card farming** (Activity), **Inventory**, **Market listings**
+and **Pricing rules** (Items), **Free game offers** (Discover), and **Presets &
+schedules** and **Account & safety** (Account). The account bar keeps the
+connection visible and holds one activity switch: **Nothing**, **Boost
+playtime** or **Farm cards**. Steam has a single games-played list per account,
+so playtime boosting and card farming are exclusive; switching asks before it
+stops the other activity. Changing sections only changes the view. Each tool loads when opened. A Steam account
 must already be connected for authenticated Community requests. Web cookies are
 obtained from that existing Steam connection, kept in memory, and never sent
 to the browser or saved in a configuration file.
@@ -38,38 +42,28 @@ opt-in and deduplicate new offers.
 
 ## Inventory and Community Market
 
-The tool opens on **Inventory**. Use **Market listings** to review existing
-listings or **Pricing rules** to edit quote settings. Search stays visible;
-**Filters & sort** reveals the additional controls. Active filters remain visible
-as named, removable chips when collapsed, with a reset action inside the full-width form. Selection, filters and unfinished price
-rules survive changes between these views. Running batch progress and its stop
-action remain visible in every view.
+**Inventory**, **Market listings** and **Pricing rules** share one tool, so the
+basket, filters and unfinished price rules survive switching between them.
+Running batch progress and its stop action remain visible in every view.
 
 The inventory covers Steam Community items (AppID 753, context 6), including
 cards and backgrounds held as inventory items. It does not expose every game's
-separate inventory. Each game has one framed section: on wide content areas its
-artwork, name, totals and group selection sit to the left of the cards; on narrow
-areas the game header sits above them. Cards have four aligned areas: identity
-and market/trading availability, inventory and extra copies, market estimates,
-then sale quantity and the visible **Preview sale** action. The remaining stock
-is shown before a sale. A protected last copy or an unavailable item explains
-its restriction in words. Each game retains a full-width row with the same
-game column and card widths, including games with only one card. Normal page
-scrolling keeps the game context and batch selection reachable; short viewports
-use normal-flow headers so they cannot cover the controls.
-Search by item or game, filter by game, item type,
-normal/foil cards, marketability, tradability or duplicates, and choose a sort
-order. Broken or unavailable artwork has a local fallback. Large inventories
-are paginated.
+separate inventory. Each game is shown like a Steam badge page: a header with
+artwork, copies and extras, set progress (owned of total cards), badge level
+and remaining card drops, followed by horizontally scrollable rows for the card
+set, foil cards and other items. Missing cards of the set appear as dashed
+slots. Set data comes from the account's game card page
+(`GET /api/accounts/:id/inventory/card-sets/:appId`, cached for ten minutes) and
+is loaded only for games on the current page, two at a time; if it fails, the
+inventory still shows owned items with a retry. Search, item-type chips,
+**Only extras** and sorting by name or most extras apply to the whole
+inventory; ten games are shown per page. Missing slots are hidden while a
+search or extras filter is active.
 
-A game can continue onto another page. Its header then shows the current page's
-variant count alongside the total matching group. Group selection applies to all
-filtered eligible variants for that game, including other pages. Separate assets
-with the same Steam class/instance identity appear as one variant. Names and
-market hashes are not used to merge inventory ownership. Variants are formed
-from the full snapshot before filtering, so filtering duplicates never lowers
-the actual stock shown for that variant. Normal and foil cards remain distinct.
-The game summary retains its full stock and separately names filtered matches.
+Separate assets with the same Steam class/instance identity appear as one
+variant. Names and market hashes are not used to merge inventory ownership; the
+set view matches badge cards to inventory cards by name only for display.
+Normal and foil cards remain distinct.
 
 ### Automatic price estimates
 
@@ -105,22 +99,25 @@ SteamBee does not silently round or clamp them. Buyer prices include Steam and
 publisher fees, which are shown separately in the preview. Saving rules never
 starts a sale.
 
-### Single and bulk actions
+### Sell basket
 
-Sales keep at least one copy of each item. Request a preview, review quantity,
-buyer price, Steam/publisher fees and your proceeds, and confirm before a listing
-is submitted. Prices are obtained from Steam's order book and displayed in the
-wallet currency. Single-item previews expire after one minute. The server checks current
-ownership, quantity, currency, fees and pricing again on confirmation; a changed
-quote requires a new preview. An offered price does not guarantee a buyer or an
-immediate sale.
+Click a card with extra copies to put all of its extras in the **Sell basket**
+beside the inventory, or use **Add extras to basket** for a whole game. One copy
+of each item always stays; protected and unmarketable items explain why they
+cannot be added. The basket adjusts quantities per item, shows estimated buyer
+totals, fees and proceeds, the number of Steam actions and their delay, and
+links to the pricing rules. **Review sale** opens the existing confirmation:
+a single listing uses the one-item preview, anything larger uses the batch
+preview. Prices are obtained from Steam's order book and displayed in the wallet
+currency. Single-item previews expire after one minute. The server checks
+current ownership, quantity, currency, fees and pricing again on confirmation;
+a changed quote requires a new preview. An offered price does not guarantee a
+buyer or an immediate sale.
 
-Active market listings can also be reviewed and cancelled through a separate
-preview and confirmation. Select individual items, a game's eligible duplicates,
-or filtered duplicates for a batch of up to 50 actual market actions. A grouped
-variant quantity can require several separate Steam asset listings. The UI
-shows selected variants, copies and action count separately, maps quantities
-back to their real eligible asset IDs and never silently truncates a batch.
+A batch holds at most 50 actual market actions. A grouped variant quantity can
+require several separate Steam asset listings, so adding stops at that limit and
+says so instead of silently truncating. Active market listings can also be reviewed and cancelled through a separate
+preview and confirmation.
 Each asset action remains limited to 100 units. Grouped sale previews and
 progress retain inspectable per-asset outcomes, including partial failures.
 Listing cancellations also

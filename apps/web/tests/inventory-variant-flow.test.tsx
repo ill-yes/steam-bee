@@ -119,6 +119,18 @@ function setupApi(initial: InventorySnapshot) {
       return { fetchedAt: current.fetchedAt, currency, listings: [] };
     if (path === `${base}/market/settings`) return structuredClone(rules);
     if (path === `${base}/market/batches/active`) return null;
+    if (path === `${base}/inventory/card-sets/42`)
+      return {
+        appId: 42,
+        badgeLevel: 0,
+        remainingDrops: 0,
+        fetchedAt: Date.now(),
+        cards: [
+          { name: "The Bee", imageUrl: null, owned: 3 },
+          { name: "Beekeeper", imageUrl: null, owned: 0 },
+          { name: "Queen Bee", imageUrl: null, owned: 0 },
+        ],
+      };
     if (path === `${base}/inventory/price-overview`) {
       const request = JSON.parse(String(init?.body)) as {
         variantIds: string[];
@@ -207,31 +219,19 @@ function saleRequests() {
     );
 }
 
+const tileName = (name: string) => new RegExp(`^${name}, \\d+ in inventory`);
+const tile = (name = "The Bee") =>
+  screen.getByRole("button", { name: tileName(name) });
+const basket = () =>
+  within(screen.getByRole("complementary", { name: "Sell basket" }));
+const basketQuantity = (name = "The Bee") =>
+  basket().getByRole("status", { name: `Quantity for ${name}` });
+
 async function renderPanel(name = "The Bee") {
   render(<InventoryPanel accountId={accountId} />, { wrapper: I18nProvider });
-  const card = await screen.findByRole("article", { name });
   await waitFor(() =>
-    expect(
-      within(card).getByRole("button", { name: `Preview sale: ${name}` }),
-    ).toBeEnabled(),
+    expect(screen.getByRole("button", { name: tileName(name) })).toBeEnabled(),
   );
-  return card;
-}
-
-function quantity(card: HTMLElement, name = "The Bee") {
-  return within(card).getByRole("spinbutton", { name: `Quantity: ${name}` });
-}
-
-function setQuantity(card: HTMLElement, value: string, name = "The Bee") {
-  fireEvent.change(quantity(card, name), { target: { value } });
-}
-
-function previewCard(card: HTMLElement, name = "The Bee") {
-  return within(card).getByRole("button", { name: `Preview sale: ${name}` });
-}
-
-function metric(card: HTMLElement, label: string) {
-  return within(card).getByText(label, { selector: "dt" }).nextElementSibling;
 }
 
 describe("inventory variant sale flows with real asset allocations", () => {
@@ -254,13 +254,13 @@ describe("inventory variant sale flows with real asset allocations", () => {
   });
   afterEach(cleanup);
 
-  it("shows three single-copy assets as one card and reviews exactly the two eligible assets as a batch", async () => {
+  it("shows three single-copy assets as one tile and reviews exactly the two eligible assets as a batch", async () => {
     const harness = setupApi(threeAssets());
-    const card = await renderPanel();
-    expect(screen.getAllByRole("article")).toHaveLength(1);
-    expect(metric(card, "In inventory")).toHaveTextContent(/^3$/);
-    expect(metric(card, "Additional copies")).toHaveTextContent(/^2$/);
-    expect(quantity(card)).toHaveAttribute("max", "2");
+    await renderPanel();
+    expect(
+      screen.getAllByRole("button", { name: tileName("The Bee") }),
+    ).toHaveLength(1);
+    expect(tile()).toHaveTextContent("×3");
     await waitFor(() =>
       expect(api).toHaveBeenCalledWith(
         `${base}/inventory/price-overview`,
@@ -269,16 +269,20 @@ describe("inventory variant sale flows with real asset allocations", () => {
         }),
       ),
     );
-    await waitFor(() =>
-      expect(within(card).getAllByText("$1.15")).toHaveLength(2),
-    );
+    await waitFor(() => expect(tile()).toHaveTextContent("$1.15"));
+    expect(
+      screen.getByRole("listitem", { name: "Queen Bee, missing from the set" }),
+    ).toBeVisible();
     expect(saleRequests()).toHaveLength(0);
 
-    setQuantity(card, "2");
-    expect(
-      within(card).getByText("After the sale: 1 copy remains."),
-    ).toBeVisible();
-    fireEvent.click(previewCard(card));
+    fireEvent.click(tile());
+    expect(basketQuantity()).toHaveTextContent("2");
+    expect(basket().getByText("1 stays")).toBeVisible();
+    expect(basket().getByText("$2.30")).toBeVisible();
+    expect(basket().getByText("$0.30")).toBeVisible();
+    expect(basket().getAllByText("$2.00")).toHaveLength(2);
+    expect(basket().getByText("2 Steam actions · 10 s apart")).toBeVisible();
+    fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
     const dialog = await screen.findByRole("alertdialog", {
       name: "Review duplicate sales",
     });
@@ -304,12 +308,15 @@ describe("inventory variant sale flows with real asset allocations", () => {
     expect(harness.unknown).toEqual([]);
   });
 
-  it("uses the latest one-copy quantity and real eligible asset for an individual preview", async () => {
+  it("uses the latest basket quantity and real eligible asset for an individual preview", async () => {
     setupApi(threeAssets());
-    const card = await renderPanel();
-    setQuantity(card, "2");
-    setQuantity(card, "1");
-    fireEvent.click(previewCard(card));
+    await renderPanel();
+    fireEvent.click(tile());
+    fireEvent.click(
+      basket().getByRole("button", { name: "Sell one fewer The Bee" }),
+    );
+    expect(basketQuantity()).toHaveTextContent("1");
+    fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
     await screen.findByRole("alertdialog", { name: "Review market sale" });
     expect(api).toHaveBeenCalledWith(
       `${base}/market/preview`,
@@ -323,36 +330,12 @@ describe("inventory variant sale flows with real asset allocations", () => {
     ]);
   });
 
-  it.each(["", "3"])(
-    "does not replay a previous valid quantity after changing the draft to %j",
-    async (invalid) => {
-      setupApi(threeAssets());
-      const card = await renderPanel();
-      setQuantity(card, "2");
-      fireEvent.click(
-        within(card).getByRole("checkbox", { name: "Select The Bee" }),
-      );
-      setQuantity(card, invalid);
-      expect(quantity(card)).toHaveAttribute("aria-invalid", "true");
-      expect(previewCard(card)).toBeDisabled();
-      const bulk = screen.getByRole("button", {
-        name: "Preview selected sales",
-      });
-      expect(bulk).toBeDisabled();
-      fireEvent.click(previewCard(card));
-      fireEvent.click(bulk);
-      expect(saleRequests()).toHaveLength(0);
-    },
-  );
-
-  it("revalidates a saved quantity after refresh reduces stock and only previews the remaining eligible asset after correction", async () => {
+  it("clamps the basket after a refresh reduces stock and only previews the remaining eligible asset", async () => {
     const initial = threeAssets();
     const harness = setupApi(initial);
-    const card = await renderPanel();
-    setQuantity(card, "2");
-    fireEvent.click(
-      within(card).getByRole("checkbox", { name: "Select The Bee" }),
-    );
+    await renderPanel();
+    fireEvent.click(tile());
+    expect(basketQuantity()).toHaveTextContent("2");
     harness.replaceInventory(
       inventory(
         [asset("11", { duplicateQuantity: 0 }), asset("13")],
@@ -362,21 +345,13 @@ describe("inventory variant sale flows with real asset allocations", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Refresh inventory & listings" }),
     );
-    await waitFor(() =>
-      expect(metric(card, "In inventory")).toHaveTextContent(/^2$/),
-    );
-    expect(quantity(card)).toHaveValue(2);
-    expect(quantity(card)).toHaveAttribute("max", "1");
-    expect(quantity(card)).toHaveAttribute("aria-invalid", "true");
-    expect(previewCard(card)).toBeDisabled();
+    await waitFor(() => expect(tile()).toHaveTextContent("×2"));
+    await waitFor(() => expect(basketQuantity()).toHaveTextContent("1"));
     expect(
-      screen.getByRole("button", { name: "Preview selected sales" }),
+      basket().getByRole("button", { name: "Sell one more The Bee" }),
     ).toBeDisabled();
     expect(saleRequests()).toHaveLength(0);
-
-    setQuantity(card, "1");
-    expect(previewCard(card)).toBeEnabled();
-    fireEvent.click(previewCard(card));
+    fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
     await screen.findByRole("alertdialog", { name: "Review market sale" });
     expect(api).toHaveBeenCalledWith(
       `${base}/market/preview`,
@@ -387,7 +362,7 @@ describe("inventory variant sale flows with real asset allocations", () => {
     expect(saleRequests()).toHaveLength(1);
   });
 
-  it("counts two selected variants as three copies and three real market actions", async () => {
+  it("adds a game's extras as three copies and three real market actions", async () => {
     setupApi(
       inventory([
         ...threeAssets().items,
@@ -399,17 +374,19 @@ describe("inventory variant sale flows with real asset allocations", () => {
         asset("22", { variantId: variantB, name: "Beekeeper" }),
       ]),
     );
-    const card = await renderPanel();
-    setQuantity(card, "2");
+    await renderPanel();
+    expect(
+      screen.queryByRole("listitem", { name: /^Beekeeper, missing/ }),
+    ).toBeNull();
     fireEvent.click(
-      screen.getByRole("button", { name: "Select filtered duplicates" }),
+      within(screen.getByRole("article", { name: "Bee Game" })).getByRole(
+        "button",
+        { name: "Add extras to basket" },
+      ),
     );
-    expect(screen.getByText("Selected variants: 2")).toBeVisible();
-    expect(screen.getByText("Selected copies: 3")).toBeVisible();
-    expect(screen.getByText("3 of 50 market actions")).toBeVisible();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    );
+    expect(basket().getByText("2 items · 3 copies")).toBeVisible();
+    expect(basket().getByText("3 Steam actions · 10 s apart")).toBeVisible();
+    fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
     await screen.findByRole("alertdialog", { name: "Review duplicate sales" });
     expect(api).toHaveBeenCalledWith(
       `${base}/market/batch-preview`,
@@ -417,17 +394,25 @@ describe("inventory variant sale flows with real asset allocations", () => {
         body: JSON.stringify({
           kind: "sale",
           items: [
+            { assetId: "22", quantity: 1 },
             { assetId: "12", quantity: 1 },
             { assetId: "13", quantity: 1 },
-            { assetId: "22", quantity: 1 },
           ],
         }),
       }),
     );
     expect(saleRequests()).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    fireEvent.click(
+      within(screen.getByRole("article", { name: "Bee Game" })).getByRole(
+        "button",
+        { name: "Remove from basket" },
+      ),
+    );
+    expect(basket().getByText("0 items · 0 copies")).toBeVisible();
   });
 
-  it("blocks a single variant requiring 51 actual allocations before either preview endpoint is called", async () => {
+  it("caps a single variant needing 51 allocations at 50 actions and says so", async () => {
     setupApi(
       inventory([
         asset("1000", { duplicateQuantity: 0 }),
@@ -436,26 +421,24 @@ describe("inventory variant sale flows with real asset allocations", () => {
         ),
       ]),
     );
-    const card = await renderPanel();
-    fireEvent.click(
-      within(card).getByRole("checkbox", { name: "Select The Bee" }),
+    await renderPanel();
+    fireEvent.click(tile());
+    expect(basketQuantity()).toHaveTextContent("50");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "At most 50 Steam actions fit in one batch.",
     );
-    setQuantity(card, "51");
-    expect(quantity(card)).toHaveValue(51);
     expect(
-      within(card).getByText(
-        "This quantity would exceed 50 market actions. Reduce the quantity before reviewing the sale.",
-      ),
-    ).toBeVisible();
-    expect(previewCard(card)).toBeDisabled();
-    const bulk = screen.getByRole("button", { name: "Preview selected sales" });
-    expect(bulk).toBeDisabled();
-    fireEvent.click(previewCard(card));
-    fireEvent.click(bulk);
+      basket().getByRole("button", { name: "Sell one more The Bee" }),
+    ).toBeDisabled();
+    expect(basket().getByText("50 Steam actions · 10 s apart")).toBeVisible();
     expect(saleRequests()).toHaveLength(0);
+    fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
+    await screen.findByRole("alertdialog", { name: "Review duplicate sales" });
+    const request = saleRequests()[0]!;
+    expect(JSON.parse(String(request[1]?.body)).items).toHaveLength(50);
   });
 
-  it("rejects a filtered selection needing 52 allocations rather than silently selecting a 50-action subset", async () => {
+  it("fills a game needing 52 allocations only up to the 50-action limit", async () => {
     const rows = [
       asset("1000", { duplicateQuantity: 0 }),
       ...Array.from({ length: 26 }, (_, index) => asset(String(index + 1001))),
@@ -472,28 +455,19 @@ describe("inventory variant sale flows with real asset allocations", () => {
       ),
     ];
     setupApi(inventory(rows));
-    const card = await renderPanel();
-    const other = screen.getByRole("article", { name: "Beekeeper" });
-    setQuantity(card, "26");
-    setQuantity(other, "26", "Beekeeper");
+    await renderPanel();
     fireEvent.click(
-      screen.getByRole("button", { name: "Select filtered duplicates" }),
-    );
-    expect(screen.getByText("Selected variants: 0")).toBeVisible();
-    expect(
-      screen.getByText(
-        "This selection needs 52 market actions. A batch supports up to 50. Reduce the quantity or selection; nothing was added.",
+      within(screen.getByRole("article", { name: "Bee Game" })).getByRole(
+        "button",
+        { name: "Add extras to basket" },
       ),
-    ).toBeVisible();
-    expect(
-      within(card).getByRole("checkbox", { name: "Select The Bee" }),
-    ).not.toBeChecked();
-    expect(
-      within(other).getByRole("checkbox", { name: "Select Beekeeper" }),
-    ).not.toBeChecked();
-    expect(
-      screen.queryByRole("button", { name: "Preview selected sales" }),
-    ).not.toBeInTheDocument();
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "At most 50 Steam actions fit in one batch.",
+    );
+    expect(basketQuantity("Beekeeper")).toHaveTextContent("26");
+    expect(basketQuantity("The Bee")).toHaveTextContent("24");
+    expect(basket().getByText("50 Steam actions · 10 s apart")).toBeVisible();
     expect(saleRequests()).toHaveLength(0);
   });
 });

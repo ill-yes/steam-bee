@@ -6,7 +6,7 @@ import { Input, Label, Select } from "../../components/ui/form";
 import { interpolate, useI18n } from "../../i18n";
 import { advancedInventoryCopy } from "./advanced-copy";
 import { inventoryCopy } from "./copy";
-import { SelectionCheckbox } from "./InventoryBrowser";
+import { SelectionCheckbox } from "./inventory-ui";
 
 export function MarketListingsPanel({
   market,

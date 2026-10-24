@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { marketRulesFingerprint } from "@steam-bee/contracts";
 import { Package } from "lucide-react";
 import type {
@@ -21,17 +28,28 @@ import type { ComponentProps } from "react";
 import { interpolate, useI18n } from "../../i18n";
 import { inventoryCopy } from "./copy";
 import { advancedInventoryCopy } from "./advanced-copy";
-import { InventoryBrowser } from "./InventoryBrowser";
+import { InventorySetBrowser } from "./InventorySetBrowser";
+import { SellBasketPanel } from "./SellBasket";
+import { formatMoney } from "./inventory-ui";
 import { MarketListingsPanel } from "./MarketListingsPanel";
 import { PriceRulesPanel } from "./PriceRulesPanel";
 import { BatchPreviewDialog, BatchProgressPanel } from "./BatchMarketPanel";
 import { useBatchMarket } from "./useBatchMarket";
 import { readPriceRulesDraft } from "./price-rule-draft";
 import {
-  allocateVariantSale,
   buildInventoryVariants,
   type InventoryVariant,
 } from "./inventory-model";
+import {
+  addToBasket,
+  basketAllocations,
+  basketEntries,
+  basketTotals,
+  MAX_SALE_ACTIONS,
+  pruneBasket,
+  type SellBasket,
+} from "./sell-basket";
+import { setInventoryCopy } from "./set-copy";
 import { useInventoryPrices } from "./useInventoryPrices";
 
 type CancelPreview = {
@@ -70,6 +88,8 @@ function AccountInventoryPanel({
   const { locale, localeInfo, messages } = useI18n();
   const t = locale === "de" ? inventoryCopy.de : inventoryCopy.en;
   const a = advancedInventoryCopy(locale);
+  const s = setInventoryCopy(locale);
+  const basketId = useId();
   const [localView, setLocalView] = useState<InventoryView>("inventory");
   const view = providedView ?? localView;
   const setView = (next: InventoryView) => {
@@ -89,9 +109,11 @@ function AccountInventoryPanel({
   const [marketLoading, setMarketLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [actionProgress, setActionProgress] = useState("");
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [selectionValid, setSelectionValid] = useState(true);
+  const [basket, setBasket] = useState<SellBasket>({});
+  const [basketNotice, setBasketNotice] = useState("");
+  const [settings, setSettings] = useState<MarketPriceSettings | null>(null);
+  const [visibleVariants, setVisibleVariants] = useState<string[]>([]);
+  const [clock, setClock] = useState(Date.now);
   const [savedRulesFingerprint, setSavedRulesFingerprint] = useState<
     string | null
   >(null);
@@ -99,8 +121,13 @@ function AccountInventoryPanel({
     () => buildInventoryVariants(inventory?.items ?? []),
     [inventory],
   );
-  const onSettingsChange = useCallback((settings: MarketPriceSettings) => {
-    setSavedRulesFingerprint(marketRulesFingerprint(settings));
+  const entries = useMemo(
+    () => basketEntries(basket, variants),
+    [basket, variants],
+  );
+  const onSettingsChange = useCallback((value: MarketPriceSettings) => {
+    setSettings(value);
+    setSavedRulesFingerprint(marketRulesFingerprint(value));
   }, []);
   const [rulesEditing, setRulesEditing] = useState(
     () => readPriceRulesDraft(accountId) !== null,
@@ -125,7 +152,7 @@ function AccountInventoryPanel({
   }
 
   const batch = useBatchMarket(accountId, errorMessage, () => {
-    setSelected(new Set());
+    setBasket({});
     if (controller.current) void refresh(controller.current.signal);
   });
   const locked = busy || batch.busy || batch.running || batch.recoveryRequired;
@@ -154,6 +181,21 @@ function AccountInventoryPanel({
       if (active.current) onSettingsChange(settings);
     },
   });
+  // Basket rows keep their estimates while their cards scroll out of view.
+  const priceIds = [...new Set([...visibleVariants, ...Object.keys(basket)])]
+    .sort()
+    .join("\n");
+  const onVisiblePrices = prices.onVisibleVariantsChange;
+  useEffect(() => {
+    onVisiblePrices(priceIds ? priceIds.split("\n") : []);
+  }, [priceIds, onVisiblePrices]);
+  useEffect(() => {
+    setBasket((current) => pruneBasket(current, variants));
+  }, [variants]);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const previousBatchPreview = useRef(false);
   useEffect(() => {
     if (previousBatchPreview.current && !batch.preview) restorePreviewFocus();
@@ -298,35 +340,46 @@ function AccountInventoryPanel({
     }
   }
 
-  function saleItems(selection: InventoryVariant[]) {
-    const items = selection.flatMap((variant) =>
-      allocateVariantSale(variant, quantities[variant.variantId] ?? 1),
-    );
-    if (items.length > 50)
-      throw new RangeError(
-        locale === "de"
-          ? `Diese Auswahl benötigt ${items.length} Marktangebote. Pro Durchlauf sind höchstens 50 möglich. Reduziere die Menge oder Auswahl.`
-          : `This selection needs ${items.length} market listings. At most 50 are supported per batch. Reduce the quantity or selection.`,
-      );
-    return items;
+  function toggleBasket(variant: InventoryVariant) {
+    setBasketNotice("");
+    if (basket[variant.variantId]) {
+      const { [variant.variantId]: _removed, ...rest } = basket;
+      setBasket(rest);
+      return;
+    }
+    addVariants([variant]);
   }
 
-  function previewSale(item: InventoryVariant, trigger: HTMLElement) {
-    if (rulesEditing) return;
-    let allocations: ReturnType<typeof saleItems>;
+  function addVariants(chosen: InventoryVariant[]) {
+    const result = addToBasket(basket, chosen, variants);
+    setBasket(result.basket);
+    setBasketNotice(result.skipped ? s.actionLimit : "");
+  }
+
+  function removeVariants(chosen: InventoryVariant[]) {
+    const ids = new Set(chosen.map((variant) => variant.variantId));
+    setBasketNotice("");
+    setBasket((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id]) => !ids.has(id)),
+      ),
+    );
+  }
+
+  function reviewBasket(trigger: HTMLElement) {
+    if (rulesEditing || !entries.length) return;
+    let allocations: ReturnType<typeof basketAllocations>;
     try {
-      const latest = variants.find(
-        (variant) => variant.variantId === item.variantId,
-      );
-      if (!latest) throw new RangeError();
-      allocations = saleItems([latest]);
+      allocations = basketAllocations(entries);
+      if (!allocations.length || allocations.length > MAX_SALE_ACTIONS)
+        throw new RangeError(s.actionLimit);
     } catch (cause) {
       setActionError(
-        cause instanceof RangeError && cause.message
-          ? cause.message
+        cause instanceof RangeError && cause.message === s.actionLimit
+          ? s.actionLimit
           : locale === "de"
-            ? "Prüfe die Verkaufsmenge anhand des aktuellen Inventars."
-            : "Review the sale quantity against the current inventory.",
+            ? "Prüfe den Korb anhand des aktuellen Inventars."
+            : "Review the basket against the current inventory.",
       );
       return;
     }
@@ -335,15 +388,16 @@ function AccountInventoryPanel({
       batch.createPreview({ kind: "sale", items: allocations });
       return;
     }
+    const [only] = allocations;
     void perform(
-      interpolate(t.preparingSale, { name: item.name }),
+      interpolate(t.preparingSale, { name: entries[0]!.variant.name }),
       async () => {
         const result = await api<MarketSalePreview>(`${base}/market/preview`, {
           method: "POST",
           signal: controller.current?.signal ?? null,
           body: JSON.stringify({
-            assetId: allocations[0]!.assetId,
-            quantity: allocations[0]!.quantity,
+            assetId: only!.assetId,
+            quantity: only!.quantity,
           }),
         });
         if (active.current) setPreview({ kind: "sale", value: result });
@@ -398,6 +452,7 @@ function AccountInventoryPanel({
               : t.cancelSuccess,
         );
         setNoticeView(selected.kind === "sale" ? "listings" : "inventory");
+        if (selected.kind === "sale") setBasket({});
         if (controller.current) void refresh(controller.current.signal);
       },
       true,
@@ -541,50 +596,87 @@ function AccountInventoryPanel({
             ) : null}
 
             {inventory ? (
-              <InventoryBrowser
-                inventory={inventory}
-                loading={inventoryLoading}
-                busy={locked}
-                stale={!!inventoryError}
-                salesBlocked={rulesEditing}
-                prices={prices.prices}
-                onRetryPrice={prices.retry}
-                onVisibleVariantsChange={prices.onVisibleVariantsChange}
-                onValidityChange={setSelectionValid}
-                quantities={quantities}
-                onQuantity={(variantId, value) =>
-                  setQuantities((current) => ({
-                    ...current,
-                    [variantId]: value,
-                  }))
-                }
-                selected={selected}
-                onSelection={setSelected}
-                onPreview={previewSale}
-                onBatchPreview={(trigger) => {
-                  if (rulesEditing || !selectionValid) return;
-                  previewTrigger.current = trigger;
-                  try {
-                    const chosen = variants.filter((variant) =>
-                      selected.has(variant.variantId),
-                    );
-                    if (chosen.length !== selected.size || !chosen.length)
-                      throw new RangeError();
-                    batch.createPreview({
-                      kind: "sale",
-                      items: saleItems(chosen),
-                    });
-                  } catch (cause) {
-                    setActionError(
-                      cause instanceof RangeError && cause.message
-                        ? cause.message
-                        : locale === "de"
-                          ? "Prüfe die Auswahl und Verkaufsmenge anhand des aktuellen Inventars."
-                          : "Review the selection and quantities against the current inventory.",
-                    );
-                  }
-                }}
-              />
+              <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+                <InventorySetBrowser
+                  accountId={accountId}
+                  variants={variants}
+                  basket={basket}
+                  prices={prices.prices}
+                  disabled={locked || inventoryLoading || !!inventoryError}
+                  now={clock}
+                  onToggle={toggleBasket}
+                  onAddGame={addVariants}
+                  onRemoveGame={removeVariants}
+                  onVisibleVariantsChange={setVisibleVariants}
+                />
+                <div className="grid min-w-0 gap-2 xl:sticky xl:top-20">
+                  {basketNotice && (
+                    <p role="alert" className="text-xs text-[var(--warn)]">
+                      {basketNotice}
+                    </p>
+                  )}
+                  <SellBasketPanel
+                    id={basketId}
+                    entries={entries}
+                    prices={prices.prices}
+                    settings={settings}
+                    currency={market?.currency ?? null}
+                    now={clock}
+                    disabled={locked || inventoryLoading || !!inventoryError}
+                    blockedReason={rulesEditing ? s.rulesPending : undefined}
+                    onQuantity={(variantId, quantity) =>
+                      setBasket((current) =>
+                        pruneBasket(
+                          { ...current, [variantId]: quantity },
+                          variants,
+                        ),
+                      )
+                    }
+                    onRemove={(variantId) =>
+                      setBasket(({ [variantId]: _removed, ...rest }) => rest)
+                    }
+                    onClear={() => {
+                      setBasket({});
+                      setBasketNotice("");
+                    }}
+                    onReview={reviewBasket}
+                    onEditRules={openRules}
+                  />
+                </div>
+                {entries.length > 0 && (
+                  <a
+                    href={`#${basketId}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      const target = document.getElementById(basketId);
+                      target?.scrollIntoView?.({ block: "start" });
+                      target?.focus({ preventScroll: true });
+                    }}
+                    className="sticky bottom-3 z-10 flex min-h-11 items-center justify-between gap-3 rounded-full bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-fg)] shadow-lg xl:hidden"
+                  >
+                    <span>
+                      {interpolate(s.jump, {
+                        count: entries.length,
+                        amount: (() => {
+                          const totals = basketTotals(
+                            entries,
+                            prices.prices,
+                            clock,
+                          );
+                          return totals.priced
+                            ? formatMoney(
+                                totals.receive,
+                                totals.currency,
+                                localeInfo.dateLocale,
+                              )
+                            : "—";
+                        })(),
+                      })}
+                    </span>
+                    <span>{s.openBasket}</span>
+                  </a>
+                )}
+              </div>
             ) : null}
           </div>
         </div>
