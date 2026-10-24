@@ -1,12 +1,13 @@
-import { CirclePlay, ListChecks, Pause, Repeat2, Square } from "lucide-react";
+import { CirclePlay, ListChecks, Square } from "lucide-react";
 import type { Account, SteamApp } from "../../../api";
-import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { getPrimaryCommand } from "../../../lib/status";
 import { interpolate, useI18n } from "../../../i18n";
+import type { FarmingSummary } from "../../farming/useFarmingSummary";
 import { SteamAppArtwork } from "../../library/SteamAppArtwork";
 import { AccountAvatar } from "../AccountAvatar";
 import { StatusBadge } from "../StatusIndicators";
+import { ActivityModeSwitch, type ActivityMode } from "./ActivityModeSwitch";
 import { hubCopy } from "./hubCopy";
 
 export function AccountHubBar({
@@ -14,31 +15,35 @@ export function AccountHubBar({
   library,
   busyAction,
   primaryCommand,
-  canPause,
+  connected,
   canStop,
   eventCount,
+  appliedCount,
+  gameLimit,
+  farming,
   onPrimaryAction,
-  onPause,
+  onSelectMode,
   onStop,
   onLogs,
-  onSwitchManual,
 }: {
   account: Account;
   library: SteamApp[];
   busyAction: string | null;
   primaryCommand: ReturnType<typeof getPrimaryCommand>;
-  canPause: boolean;
+  connected: boolean;
   canStop: boolean;
   eventCount: number;
+  appliedCount: number;
+  gameLimit: number;
+  farming: FarmingSummary | null;
   onPrimaryAction: () => void;
-  onPause: () => void;
+  onSelectMode: (mode: ActivityMode) => void;
   onStop: () => void;
   onLogs: () => void;
-  onSwitchManual: () => void;
 }) {
   const { locale, messages: t } = useI18n();
   const copy = hubCopy(locale);
-  const mode =
+  const mode: ActivityMode =
     account.activityMode ??
     (account.runtimeStatus === "boosting" ? "manual" : "idle");
   const ids =
@@ -47,11 +52,16 @@ export function AccountHubBar({
       ? account.games.filter((game) => game.enabled).map((game) => game.appId)
       : []);
   const health = account.health;
+  // Connecting needs no mode choice; a disconnected account first needs a session.
+  const showPrimary =
+    primaryCommand !== null &&
+    primaryCommand.kind === "action" &&
+    (!connected || primaryCommand.disabled);
 
   return (
-    <header className="grid min-w-0 gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-[var(--panel-shadow)] lg:gap-3">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:flex lg:flex-wrap lg:justify-between lg:gap-3">
-        <div className="hidden min-w-0 items-center gap-2 lg:flex">
+    <header className="grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-[var(--panel-shadow)]">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 lg:gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <AccountAvatar account={account} size="md" />
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold">
@@ -62,74 +72,26 @@ export function AccountHubBar({
             </div>
           </div>
         </div>
-        <Badge
-          className="max-w-full justify-self-start"
-          tone={
-            mode === "farming" ? "info" : mode === "manual" ? "good" : "neutral"
-          }
-        >
-          {mode === "farming"
-            ? copy.farm
-            : mode === "manual"
-              ? copy.manual
-              : copy.idle}
-        </Badge>
-        {(mode === "farming" || primaryCommand) && (
-          <div className="min-w-0 max-w-full justify-self-end lg:ms-auto">
-            {mode === "farming" ? (
-              <Button
-                size="sm"
-                variant="primary"
-                className="min-h-11 max-w-full whitespace-normal lg:min-h-8"
-                aria-label={copy.switchManual}
-                disabled={Boolean(busyAction)}
-                onClick={onSwitchManual}
-              >
-                <Repeat2 size={15} aria-hidden="true" className="shrink-0" />
-                <span className="min-w-0 break-words lg:hidden [overflow-wrap:anywhere]">
-                  {copy.switchManualShort}
-                </span>
-                <span className="hidden min-w-0 break-words lg:inline [overflow-wrap:anywhere]">
-                  {copy.switchManual}
-                </span>
-              </Button>
-            ) : (
-              primaryCommand && (
-                <Button
-                  size="sm"
-                  variant="primary"
-                  className="min-h-11 max-w-full whitespace-normal lg:min-h-8"
-                  disabled={primaryCommand.disabled || Boolean(busyAction)}
-                  onClick={onPrimaryAction}
-                >
-                  <CirclePlay size={15} aria-hidden="true" />
-                  {busyAction === primaryCommand.action
-                    ? t.common.pleaseWait
-                    : primaryCommand.label}
-                </Button>
-              )
-            )}
-          </div>
-        )}
-        <div className="col-span-2 flex min-w-0 max-w-full flex-wrap items-center gap-2 lg:col-span-1">
-          {canPause && (
+        <div className="ms-auto flex min-w-0 max-w-full flex-wrap items-center gap-2">
+          {showPrimary && primaryCommand && (
             <Button
               size="sm"
-              className="min-h-11 flex-1 gap-1.5 px-2 lg:min-h-8 lg:flex-none lg:gap-2 lg:px-2.5"
-              disabled={Boolean(busyAction)}
-              onClick={onPause}
-              aria-label={t.common.pause}
+              variant="primary"
+              className="min-h-11 max-w-full whitespace-normal lg:min-h-8"
+              disabled={primaryCommand.disabled || Boolean(busyAction)}
+              onClick={onPrimaryAction}
             >
-              <Pause size={15} aria-hidden="true" />
-              <span className="lg:hidden">{copy.pauseShort}</span>
-              <span className="hidden lg:inline">{t.common.pause}</span>
+              <CirclePlay size={15} aria-hidden="true" />
+              {busyAction === primaryCommand.action
+                ? t.common.pleaseWait
+                : primaryCommand.label}
             </Button>
           )}
           {canStop && (
             <Button
               size="sm"
               variant="danger"
-              className="min-h-11 flex-1 gap-1.5 px-2 lg:min-h-8 lg:flex-none lg:gap-2 lg:px-2.5"
+              className="min-h-11 gap-1.5 px-2 lg:min-h-8 lg:gap-2 lg:px-2.5"
               disabled={Boolean(busyAction)}
               onClick={onStop}
               aria-label={t.common.stop}
@@ -142,7 +104,7 @@ export function AccountHubBar({
           <Button
             size="sm"
             variant="ghost"
-            className="min-h-11 flex-1 gap-1.5 px-2 lg:min-h-8 lg:flex-none lg:gap-2 lg:px-2.5"
+            className="min-h-11 gap-1.5 px-2 lg:min-h-8 lg:gap-2 lg:px-2.5"
             onClick={onLogs}
             aria-label={`${t.accountDetail.viewLogs} (${eventCount})`}
           >
@@ -153,6 +115,15 @@ export function AccountHubBar({
           </Button>
         </div>
       </div>
+      <ActivityModeSwitch
+        mode={mode}
+        connected={connected}
+        appliedCount={appliedCount}
+        gameLimit={gameLimit}
+        farming={farming}
+        disabled={Boolean(busyAction) || primaryCommand?.disabled === true}
+        onSelect={onSelectMode}
+      />
       <div
         className="flex min-w-0 items-center gap-2 border-t border-[var(--line)] pt-2"
         aria-label={copy.activeGames}

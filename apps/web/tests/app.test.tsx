@@ -39,6 +39,12 @@ vi.mock("../src/api", async () => {
   };
 });
 
+function section(name: string) {
+  return within(
+    screen.getByRole("navigation", { name: "Account sections" }),
+  ).getByRole("button", { name: new RegExp(`^${name}`) });
+}
+
 describe("web smoke", () => {
   afterEach(() => {
     cleanup();
@@ -177,7 +183,12 @@ describe("web smoke", () => {
       />,
     );
 
-    expect(screen.getAllByRole("button", { name: "Resume" })).toHaveLength(1);
+    // The mode switch replaces the separate resume button for connected accounts.
+    expect(screen.queryByRole("button", { name: "Resume" })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: /^Boost playtime/ }));
+    expect(apiMock).toHaveBeenCalledWith("/api/accounts/account-1/resume", {
+      method: "POST",
+    });
   });
 
   it("shows the session-conflict attempt and cooldown state", async () => {
@@ -210,8 +221,9 @@ describe("web smoke", () => {
   it("places presets, schedules and analytics inside the boost tools panel without export actions", async () => {
     renderAccountDetail();
 
+    expect(await screen.findByText("Boost selection")).toBeInTheDocument();
+    fireEvent.click(section("Presets & schedules"));
     expect(await screen.findByText("Automation & history")).toBeInTheDocument();
-    expect(screen.getByText("Boost selection")).toBeInTheDocument();
     expect(screen.getByText("Boost presets")).toBeInTheDocument();
     expect(screen.queryByText("CSV")).not.toBeInTheDocument();
     expect(
@@ -311,6 +323,7 @@ describe("web smoke", () => {
       return [];
     });
     renderAccountDetail();
+    fireEvent.click(section("Presets & schedules"));
     await screen.findByText("Boost presets");
 
     fireEvent.click(screen.getByRole("button", { name: /Schedule/ }));
@@ -551,6 +564,7 @@ describe("web smoke", () => {
 
   it("creates a preset from the current draft selection", async () => {
     renderAccountDetail();
+    fireEvent.click(section("Presets & schedules"));
 
     fireEvent.change(await screen.findByLabelText("Preset name"), {
       target: { value: "Idle Evening" },
@@ -576,7 +590,7 @@ describe("web smoke", () => {
   it("keeps the account confirmation open when removal fails", async () => {
     renderAccountDetail();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
+    fireEvent.click(section("Account & safety"));
     fireEvent.click(screen.getByRole("button", { name: "Remove account" }));
     apiMock.mockRejectedValueOnce(new Error("Account removal failed"));
     fireEvent.click(
@@ -610,16 +624,16 @@ describe("web smoke", () => {
       within(active).queryByText("Counter-Strike 2"),
     ).not.toBeInTheDocument();
     await screen.findByLabelText("Search library");
-    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Games & playtime" }));
+    fireEvent.click(section("Account & safety"));
+    fireEvent.click(section("Games & playtime"));
     expect(
       apiMock.mock.calls.some(
         ([, options]) =>
           options?.method === "POST" || options?.method === "PUT",
       ),
     ).toBe(false);
-    const switchButton = screen.getByRole("button", {
-      name: "Switch to manual game selection",
+    const switchButton = screen.getByRole("radio", {
+      name: /^Boost playtime/,
     });
     fireEvent.click(switchButton);
     expect(screen.getByRole("alertdialog")).toHaveTextContent(
@@ -645,6 +659,96 @@ describe("web smoke", () => {
 
     await waitFor(() =>
       expect(apiMock).toHaveBeenCalledWith("/api/accounts/account-1/resume", {
+        method: "POST",
+      }),
+    );
+  });
+
+  it("switches from manual playtime to card farming only after confirming the consequences", async () => {
+    const base = apiMock.getMockImplementation()!;
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) =>
+      path.endsWith("/farming")
+        ? farmingSnapshot({ canStart: true })
+        : base(path, init),
+    );
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "manual",
+    });
+    const farm = await screen.findByRole("radio", {
+      name: /^Farm cards\s*37 drops in 2 games/,
+    });
+    expect(
+      screen.getByRole("radio", { name: /^Boost playtime/ }),
+    ).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(farm);
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "Playtime for your 1 selected games stops",
+    );
+    expect(
+      apiMock.mock.calls.some(([path]) => path.endsWith("/farming/start")),
+    ).toBe(false);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Start farming",
+      }),
+    );
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith(
+        "/api/accounts/account-1/farming/start",
+        { method: "POST" },
+      ),
+    );
+  });
+
+  it("opens card farming instead of starting when drops are not ready", async () => {
+    const base = apiMock.getMockImplementation()!;
+    apiMock.mockImplementation(async (path: string, init?: RequestInit) =>
+      path.endsWith("/farming")
+        ? farmingSnapshot({ canStart: false, scannedAt: null })
+        : base(path, init),
+    );
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "manual",
+    });
+    fireEvent.click(
+      await screen.findByRole("radio", {
+        name: /^Farm cards\s*Card drops not checked yet/,
+      }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(section("Card farming")).toHaveAttribute("aria-current", "page");
+    expect(
+      apiMock.mock.calls.some(([path]) => path.endsWith("/farming/start")),
+    ).toBe(false);
+  });
+
+  it("pauses the account through the mode switch after confirmation", async () => {
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "manual",
+    });
+    fireEvent.click(screen.getByRole("radio", { name: /^Nothing/ }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "your selections stay saved",
+    );
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Pause",
+      }),
+    );
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith("/api/accounts/account-1/pause", {
         method: "POST",
       }),
     );
@@ -699,7 +803,7 @@ describe("web smoke", () => {
       games: [],
     });
     await screen.findByLabelText("Search library");
-    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
+    fireEvent.click(section("Account & safety"));
 
     expect(
       screen.getByText(/Card farming controls the active games shown above/),
@@ -720,6 +824,7 @@ describe("web smoke", () => {
       activityMode: "farming",
       activeAppIds: [570],
     });
+    fireEvent.click(section("Presets & schedules"));
     await screen.findByText("Boost presets");
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     expect(screen.getByRole("alertdialog")).toHaveTextContent(
@@ -730,7 +835,7 @@ describe("web smoke", () => {
         name: "Cancel",
       }),
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
+    fireEvent.click(section("Account & safety"));
     fireEvent.click(screen.getByRole("button", { name: "Save display" }));
     expect(screen.getByRole("alertdialog")).toHaveTextContent(
       "Changing these account settings stops farming",
@@ -767,7 +872,7 @@ describe("web smoke", () => {
     ).not.toBeInTheDocument();
     strip.focus();
     expect(strip).toHaveFocus();
-    await screen.findByText("Boost presets");
+    await screen.findByLabelText("Search library");
   });
 
   it("shows the admin action in the account rail", () => {
@@ -1182,6 +1287,42 @@ function mockAccountData() {
     if (path.endsWith("/goals")) return [];
     return [];
   });
+}
+
+function farmingSnapshot({
+  canStart,
+  scannedAt = Date.now(),
+}: {
+  canStart: boolean;
+  scannedAt?: number | null;
+}) {
+  const game = (appId: number, remainingDrops: number) => ({
+    appId,
+    name: `App ${appId}`,
+    remainingDrops,
+    playtimeMinutes: 0,
+    acquiredAt: null,
+    skipReason: null,
+  });
+  return {
+    accountId: "account-1",
+    phase: "stopped",
+    config: {
+      maxConcurrentGames: 32,
+      skipRefundable: true,
+      whitelist: [],
+      blacklist: [],
+    },
+    games: [game(570, 30), game(440, 7), game(10, 0)],
+    activeAppIds: [],
+    remainingDrops: 37,
+    scannedAt,
+    startedAt: null,
+    truncated: false,
+    reason: null,
+    canStart,
+    gameLimit: 32,
+  };
 }
 
 const pausedAccount: Account = {

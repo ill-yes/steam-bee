@@ -17,6 +17,7 @@ import {
   ToolRefreshButton,
 } from "../../components/ui/tool-page-header";
 import { ToolTabs } from "../../components/ui/tool-tabs";
+import type { ComponentProps } from "react";
 import { interpolate, useI18n } from "../../i18n";
 import { inventoryCopy } from "./copy";
 import { advancedInventoryCopy } from "./advanced-copy";
@@ -48,18 +49,33 @@ type Preview =
   | { kind: "sale"; value: MarketSalePreview }
   | { kind: "cancel"; value: CancelPreview };
 
+export type InventoryView = "inventory" | "listings" | "rules";
+type InventoryPanelProps = {
+  accountId: string;
+  /** The account navigation owns the view; standalone use keeps it locally. */
+  view?: InventoryView;
+  onViewChange?: (view: InventoryView) => void;
+};
+
 // Remount all local state on account changes, including outstanding confirmations.
-export function InventoryPanel({ accountId }: { accountId: string }) {
-  return <AccountInventoryPanel key={accountId} accountId={accountId} />;
+export function InventoryPanel(props: InventoryPanelProps) {
+  return <AccountInventoryPanel key={props.accountId} {...props} />;
 }
 
-function AccountInventoryPanel({ accountId }: { accountId: string }) {
+function AccountInventoryPanel({
+  accountId,
+  view: providedView,
+  onViewChange,
+}: InventoryPanelProps) {
   const { locale, localeInfo, messages } = useI18n();
   const t = locale === "de" ? inventoryCopy.de : inventoryCopy.en;
   const a = advancedInventoryCopy(locale);
-  const [view, setView] = useState<"inventory" | "listings" | "rules">(
-    "inventory",
-  );
+  const [localView, setLocalView] = useState<InventoryView>("inventory");
+  const view = providedView ?? localView;
+  const setView = (next: InventoryView) => {
+    if (providedView === undefined) setLocalView(next);
+    onViewChange?.(next);
+  };
   const [inventory, setInventory] = useState<InventorySnapshot | null>(null);
   const [market, setMarket] = useState<MarketListings | null>(null);
   const [inventoryError, setInventoryError] = useState("");
@@ -489,7 +505,8 @@ function AccountInventoryPanel({ accountId }: { accountId: string }) {
           {actionProgress}
         </p>
       ) : null}
-      <ToolTabs
+      <ViewFrame
+        standalone={providedView === undefined}
         label={a.views}
         value={view}
         onChange={setView}
@@ -622,7 +639,7 @@ function AccountInventoryPanel({ accountId }: { accountId: string }) {
             active={view === "rules"}
           />
         </div>
-      </ToolTabs>
+      </ViewFrame>
       {batch.preview ? (
         <BatchPreviewDialog
           preview={batch.preview}
@@ -757,4 +774,14 @@ function AccountInventoryPanel({ accountId }: { accountId: string }) {
       ) : null}
     </section>
   );
+}
+
+/** Views are tabs on their own; inside the account navigation the sidebar selects them. */
+function ViewFrame({
+  standalone,
+  children,
+  ...tabs
+}: ComponentProps<typeof ToolTabs<InventoryView>> & { standalone: boolean }) {
+  if (standalone) return <ToolTabs {...tabs}>{children}</ToolTabs>;
+  return <div className="min-w-0">{children}</div>;
 }

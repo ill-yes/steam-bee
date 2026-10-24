@@ -1,28 +1,15 @@
-import {
-  CirclePlay,
-  ListChecks,
-  Pause,
-  Save,
-  Square,
-  Trash2,
-} from "lucide-react";
+import { ListChecks, Save, Trash2 } from "lucide-react";
 import type { PersonaState } from "@steam-bee/contracts";
 import { Button } from "../../../components/ui/button";
 import { Input, Label, Select } from "../../../components/ui/form";
-import { getPrimaryCommand, personaOptions } from "../../../lib/status";
+import { personaOptions } from "../../../lib/status";
 import { useI18n } from "../../../i18n";
 
 export function AccountControlPanel({
   busyAction,
-  canPause,
-  canStop,
   eventCount,
-  primaryCommand,
   personaState,
   customTitle,
-  onPrimaryAction,
-  onPause,
-  onStop,
   onOpenLogs,
   onDelete,
   onPersonaChange,
@@ -30,15 +17,9 @@ export function AccountControlPanel({
   onSaveSettings,
 }: {
   busyAction: string | null;
-  canPause: boolean;
-  canStop: boolean;
   eventCount: number;
-  primaryCommand: ReturnType<typeof getPrimaryCommand>;
   personaState: PersonaState;
   customTitle: string;
-  onPrimaryAction: () => void;
-  onPause: () => void;
-  onStop: () => void;
   onOpenLogs: () => void;
   onDelete: () => void;
   onPersonaChange: (value: PersonaState) => void;
@@ -53,49 +34,6 @@ export function AccountControlPanel({
       <div>
         <h3 className="text-sm font-semibold">{t.accountDetail.control}</h3>
       </div>
-
-      <ControlGroup title={t.accountDetail.boosting}>
-        <div className="grid grid-cols-2 gap-2">
-          {primaryCommand && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={onPrimaryAction}
-              disabled={primaryCommand.disabled || Boolean(busyAction)}
-              className="w-full"
-            >
-              <CirclePlay size={16} />
-              {busyAction === primaryCommand.action
-                ? t.common.pleaseWait
-                : primaryCommand.label}
-            </Button>
-          )}
-          {canPause && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onPause}
-              disabled={Boolean(busyAction)}
-              className="w-full"
-            >
-              <Pause size={16} />
-              {t.common.pause}
-            </Button>
-          )}
-          {canStop && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={onStop}
-              disabled={Boolean(busyAction)}
-              className="w-full"
-            >
-              <Square size={16} />
-              {t.common.stop}
-            </Button>
-          )}
-        </div>
-      </ControlGroup>
 
       <ControlGroup title={t.accountDetail.diagnosisAccount}>
         <div className="grid grid-cols-2 gap-2">

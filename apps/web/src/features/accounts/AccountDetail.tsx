@@ -36,6 +36,8 @@ import { SafetyPanel } from "./detail/SafetyPanel";
 import { useAccountResources } from "./useAccountController";
 import { SteamToolsPanel, type AccountWorkspaceTab } from "./SteamToolsPanel";
 import { AccountHubBar } from "./detail/AccountHubBar";
+import type { ActivityMode } from "./detail/ActivityModeSwitch";
+import { useFarmingSummary } from "../farming/useFarmingSummary";
 import { hubCopy } from "./detail/hubCopy";
 
 type PendingConfirmation = {
@@ -130,6 +132,8 @@ function AccountWorkspace({
   const statusCapability = ACCOUNT_STATUS_CAPABILITIES[account.runtimeStatus];
   const canImportLibrary = statusCapability.importable;
   const canPause = statusCapability.canPause;
+  const connected = statusCapability.active || statusCapability.paused;
+  const farming = useFarmingSummary(account.id, account.activityMode);
   const canStop = statusCapability.canStop;
   const primaryCommand = getPrimaryCommand(
     account.runtimeStatus,
@@ -737,21 +741,62 @@ function AccountWorkspace({
     });
   }
 
+  async function startFarming() {
+    const started = await runBusyAction("farming-start", async () => {
+      await api(`/api/accounts/${account.id}/farming/start`, {
+        method: "POST",
+      });
+      await reloadAll();
+    });
+    await farming.reload();
+    return started;
+  }
+
+  function selectMode(mode: ActivityMode) {
+    const current: ActivityMode =
+      account.activityMode ??
+      (account.runtimeStatus === "boosting" ? "manual" : "idle");
+    if (mode === current) return;
+    if (mode === "idle") {
+      if (!canPause) return;
+      requestConfirmation({
+        description: hub.confirmIdle,
+        confirmLabel: hub.idleConfirm,
+        destructive: false,
+        action: () => accountAction("pause"),
+      });
+      return;
+    }
+    if (mode === "manual") {
+      if (current === "farming") switchToManual();
+      else onPrimaryAction();
+      return;
+    }
+    // Farming needs a fresh badge scan and a ready session; its own view explains why not.
+    if (!farming.summary?.canStart) {
+      setWorkspaceTab("farming");
+      return;
+    }
+    requestConfirmation({
+      description:
+        current === "manual"
+          ? interpolate(hub.confirmFarming, { count: appliedAppIds.length })
+          : hub.confirmFarmingIdle,
+      confirmLabel: hub.farmingConfirm,
+      destructive: false,
+      action: startFarming,
+    });
+  }
+
   const accountPanel = (
     <div className="grid min-w-0 gap-4">
       <AccountHeader
         controls={
           <AccountControlPanel
             busyAction={busyAction}
-            canPause={canPause}
-            canStop={canStop}
             eventCount={events.length}
-            primaryCommand={primaryCommand}
             personaState={personaState}
             customTitle={customTitle}
-            onPrimaryAction={onPrimaryAction}
-            onPause={() => void accountAction("pause")}
-            onStop={() => void accountAction("stop")}
             onOpenLogs={() => setLogOpen(true)}
             onDelete={() => void deleteAccount()}
             onPersonaChange={setPersonaState}
@@ -772,22 +817,29 @@ function AccountWorkspace({
         }
         profile={<AccountProfilePanel account={account} />}
       />
-      <BoostToolsPanel
-        activeTab={planningTab}
-        onTabChange={setPlanningTab}
-        presetCount={presets.length}
-        activeScheduleCount={
-          schedules.filter((schedule) => schedule.enabled).length
-        }
-        analyticsLast7DaysMs={analytics?.last7DaysMs ?? 0}
-      >
-        {planningPanel}
-      </BoostToolsPanel>
     </div>
+  );
+  const planningSection = (
+    <BoostToolsPanel
+      activeTab={planningTab}
+      onTabChange={setPlanningTab}
+      presetCount={presets.length}
+      activeScheduleCount={
+        schedules.filter((schedule) => schedule.enabled).length
+      }
+      analyticsLast7DaysMs={analytics?.last7DaysMs ?? 0}
+    >
+      {planningPanel}
+    </BoostToolsPanel>
   );
   const libraryPanel = (
     <div className="grid min-w-0 gap-3">
       {farmingActive && <Alert tone="info">{hub.farmingSelectionHint}</Alert>}
+      {loadState === "loading" && (
+        <p role="status" className="text-sm text-[var(--muted)]">
+          {t.common.loading}
+        </p>
+      )}
       <div className="grid gap-4">
         <GameLibraryPanel
           account={{ id: account.id, runtimeStatus: account.runtimeStatus }}
@@ -819,19 +871,6 @@ function AccountWorkspace({
             },
             onRevert: () => setDraftAppIds(appliedAppIds),
           }}
-          rightRailExtra={
-            <BoostToolsPanel
-              activeTab={planningTab}
-              onTabChange={setPlanningTab}
-              presetCount={presets.length}
-              activeScheduleCount={
-                schedules.filter((schedule) => schedule.enabled).length
-              }
-              analyticsLast7DaysMs={analytics?.last7DaysMs ?? 0}
-            >
-              {planningPanel}
-            </BoostToolsPanel>
-          }
         />
       </div>
     </div>
@@ -844,14 +883,16 @@ function AccountWorkspace({
         library={library}
         busyAction={busyAction}
         primaryCommand={primaryCommand}
-        canPause={canPause}
+        connected={connected}
         canStop={canStop}
         eventCount={events.length}
+        appliedCount={appliedAppIds.length}
+        gameLimit={gameLimit}
+        farming={farming.summary}
         onPrimaryAction={onPrimaryAction}
-        onPause={() => void accountAction("pause")}
+        onSelectMode={selectMode}
         onStop={() => void accountAction("stop")}
         onLogs={() => setLogOpen(true)}
-        onSwitchManual={switchToManual}
       />
       {account.lastError && <Alert tone="danger">{account.lastError}</Alert>}
       {actionError && !confirmation ? (
@@ -864,7 +905,9 @@ function AccountWorkspace({
         accountStatus={account.runtimeStatus}
         activeTab={workspaceTab}
         onTabChange={setWorkspaceTab}
+        remainingDrops={farming.summary?.remainingDrops}
         libraryPanel={libraryPanel}
+        planningPanel={planningSection}
         accountPanel={accountPanel}
       />
 
