@@ -15,7 +15,10 @@ COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY patches ./patches
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
+COPY scripts/check-package-manager.mjs scripts/check-package-manager.mjs
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+  node scripts/check-package-manager.mjs "$(pnpm --version)" \
+  && pnpm install --frozen-lockfile
 
 FROM deps AS build
 ARG SOURCE_URL=https://github.com/ill-yes/steam-bee

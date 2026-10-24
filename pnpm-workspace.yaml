@@ -1,6 +1,9 @@
 packages:
   - apps/*
   - packages/*
+# Corepack verifies the integrity-pinned pnpm version. CI, Docker and preinstall
+# enforce it explicitly while keeping a GitHub-readable project lockfile.
+pmOnFail: ignore
 patchedDependencies:
   steam-user@5.3.0: patches/steam-user@5.3.0.patch
 minimumReleaseAge: 1440

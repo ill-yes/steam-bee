@@ -20,8 +20,11 @@
   "type": "module",
   "packageManager": "pnpm@12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61",
   "scripts": {
+    "preinstall": "node scripts/check-package-manager.mjs",
+    "package-manager:check": "node scripts/check-package-manager.mjs",
+    "package-manager:test": "node --test scripts/check-package-manager.test.mjs",
     "build": "pnpm -r build",
-    "check": "pnpm release:source:check && pnpm contracts:build && pnpm -r check",
+    "check": "pnpm package-manager:check && pnpm release:source:check && pnpm contracts:build && pnpm -r check",
     "compose:check": "node scripts/check-compose-parity.mjs",
     "compose:test": "node --test scripts/compose-*.test.mjs",
     "crash-recovery:test": "node --test scripts/docker-oom-events.test.mjs",
@@ -34,7 +37,7 @@
     "release:plan": "node scripts/plan-release.mjs",
     "release:source:check": "node scripts/check-release-source.mjs",
     "release:test": "node --test scripts/release-metadata.test.mjs",
-    "test": "pnpm release:test && pnpm compose:test && pnpm hygiene:test && pnpm crash-recovery:test && pnpm contracts:build && pnpm -r test"
+    "test": "pnpm release:test && pnpm compose:test && pnpm hygiene:test && pnpm package-manager:test && pnpm crash-recovery:test && pnpm contracts:build && pnpm -r test"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

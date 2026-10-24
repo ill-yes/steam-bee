@@ -161,6 +161,12 @@ pnpm install
 pnpm dev
 ```
 
+Corepack selects the integrity-pinned pnpm version from `package.json`.
+Installation, CI, and Docker builds also verify the exact version. The workspace
+keeps a single-document project lockfile for GitHub's dependency scanning;
+pnpm's automatic version switching is disabled while Corepack verification and
+the dependency security policies remain enabled.
+
 The server listens on `http://localhost:3000` and serves the built web app in
 production. In development, run the web app separately if you want Vite HMR:
 
