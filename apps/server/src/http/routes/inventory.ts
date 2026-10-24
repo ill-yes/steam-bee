@@ -1,14 +1,15 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { MAX_STEAM_APP_ID } from "@steam-bee/contracts";
 import { getAccountOrThrow } from "../../steam/account-repository.js";
 import { accountIdParams } from "../../steam/validation.js";
-import { inventoryMarket } from "../../inventory/runtime.js";
+import { cardSets, inventoryMarket } from "../../inventory/runtime.js";
 import {
   readMarketPriceSettings,
   writeMarketPriceSettings,
   settingsSchema,
 } from "../../inventory/settings.js";
-export { inventoryMarket } from "../../inventory/runtime.js";
+export { cardSets, inventoryMarket } from "../../inventory/runtime.js";
 import { requireAuth } from "../plugins.js";
 import { recordInfoEventSafely } from "../events.js";
 import { operationContext } from "../operation-context.js";
@@ -20,6 +21,11 @@ const marketRateLimit = {
   max: 12,
   timeWindow: "1 minute",
   groupId: "market-actions",
+};
+const cardSetRateLimit = {
+  max: 60,
+  timeWindow: "1 minute",
+  groupId: "inventory-card-sets",
 };
 const priceOverviewRateLimit = {
   max: 30,
@@ -35,6 +41,24 @@ export async function registerInventoryRoutes(app: FastifyInstance) {
       const { id } = accountIdParams.parse(request.params);
       await getAccountOrThrow(id);
       return inventoryMarket.inventory(id);
+    },
+  );
+  app.get(
+    "/api/accounts/:id/inventory/card-sets/:appId",
+    { preHandler: requireAuth, config: { rateLimit: cardSetRateLimit } },
+    async (request) => {
+      const { id } = accountIdParams.parse(request.params);
+      const { appId } = z
+        .object({
+          appId: z
+            .string()
+            .regex(/^[1-9]\d{0,9}$/)
+            .transform(Number)
+            .refine((value) => value <= MAX_STEAM_APP_ID),
+        })
+        .parse({ appId: (request.params as { appId?: unknown }).appId });
+      await getAccountOrThrow(id);
+      return cardSets.get(id, appId);
     },
   );
   app.post(

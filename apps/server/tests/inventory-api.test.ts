@@ -18,6 +18,7 @@ describe("inventory and financial route access", () => {
     try {
       for (const path of [
         "inventory",
+        "inventory/card-sets/10",
         "market/listings",
         "market/settings",
         "market/batches/active",
