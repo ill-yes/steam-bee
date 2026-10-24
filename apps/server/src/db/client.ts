@@ -529,6 +529,44 @@ const migrations: Migration[] = [
           END;
     `,
   },
+  {
+    id: "012_card_farming_settings",
+    description:
+      "Keep per-account farming preferences in recoverable database state",
+    sql: `
+      CREATE TABLE IF NOT EXISTS account_farming_config (
+        account_id TEXT PRIMARY KEY REFERENCES steam_account(id) ON DELETE CASCADE,
+        config_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
+  {
+    id: "013_market_price_settings",
+    description:
+      "Keep per-account market price rules in recoverable database state",
+    sql: `
+      CREATE TABLE IF NOT EXISTS account_market_price_settings (
+        account_id TEXT PRIMARY KEY REFERENCES steam_account(id) ON DELETE CASCADE,
+        settings_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
+  {
+    id: "014_library_import_marker",
+    description:
+      "Preserve successful library imports even when no games are owned",
+    sql: `
+      ALTER TABLE steam_account ADD COLUMN library_imported_at INTEGER;
+      UPDATE steam_account
+      SET library_imported_at = (
+        SELECT MAX(imported_at)
+        FROM steam_account_library
+        WHERE account_id = steam_account.id
+      );
+    `,
+  },
 ];
 
 export function migrate() {

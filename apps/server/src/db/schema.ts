@@ -56,6 +56,7 @@ export const steamAccount = sqliteTable(
     tokenKeyVersion: integer("token_key_version").notNull().default(1),
     lastError: text("last_error"),
     latestBoostStartedAt: integer("latest_boost_started_at"),
+    libraryImportedAt: integer("library_imported_at"),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
@@ -64,6 +65,25 @@ export const steamAccount = sqliteTable(
       table.accountName,
     ),
   }),
+);
+
+export const accountFarmingConfig = sqliteTable("account_farming_config", {
+  accountId: text("account_id")
+    .primaryKey()
+    .references(() => steamAccount.id, { onDelete: "cascade" }),
+  configJson: text("config_json").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+export const accountMarketPriceSettings = sqliteTable(
+  "account_market_price_settings",
+  {
+    accountId: text("account_id")
+      .primaryKey()
+      .references(() => steamAccount.id, { onDelete: "cascade" }),
+    settingsJson: text("settings_json").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
 );
 
 export const steamAccountGame = sqliteTable(

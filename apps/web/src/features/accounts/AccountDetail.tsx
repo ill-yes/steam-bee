@@ -34,6 +34,9 @@ import { PresetPanel } from "./detail/PresetPanel";
 import { SchedulePanel } from "./detail/SchedulePanel";
 import { SafetyPanel } from "./detail/SafetyPanel";
 import { useAccountResources } from "./useAccountController";
+import { SteamToolsPanel, type AccountWorkspaceTab } from "./SteamToolsPanel";
+import { AccountHubBar } from "./detail/AccountHubBar";
+import { hubCopy } from "./detail/hubCopy";
 
 type PendingConfirmation = {
   description: string;
@@ -42,18 +45,25 @@ type PendingConfirmation = {
   action: () => Promise<boolean>;
 };
 
-export function AccountDetail({
-  account,
-  events,
-  diagnostics,
-  onReload,
-}: {
+type AccountDetailProps = {
   account: Account;
   events: SteamEvent[];
   diagnostics: Diagnostics | null;
   onReload: () => Promise<void>;
-}) {
-  const { messages: t } = useI18n();
+};
+
+export function AccountDetail(props: AccountDetailProps) {
+  return <AccountWorkspace key={props.account.id} {...props} />;
+}
+
+function AccountWorkspace({
+  account,
+  events,
+  diagnostics,
+  onReload,
+}: AccountDetailProps) {
+  const { locale, messages: t } = useI18n();
+  const hub = hubCopy(locale);
   const o = t.operations;
   const {
     library,
@@ -87,6 +97,9 @@ export function AccountDetail({
     1, 2, 3, 4, 5,
   ]);
   const [planningTab, setPlanningTab] = useState<PlanningTab>("presets");
+  const [workspaceTab, setWorkspaceTab] =
+    useState<AccountWorkspaceTab>("library");
+  const farmingActive = account.activityMode === "farming";
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [draftAppIds, setDraftAppIds] = useState<number[]>(
@@ -139,14 +152,24 @@ export function AccountDetail({
     [draftAppIds, library],
   );
 
-  const selectionApplyState = selectionApplyCopy(
-    account.runtimeStatus,
-    appliedAppIds.length,
-    draftAppIds.length,
-    selectionDirty,
-    gamesApplying,
-    t,
-  );
+  const selectionApplyState = farmingActive
+    ? {
+        label: hub.savedSelection,
+        body: hub.savedSelectionHint,
+        tone: gamesApplying
+          ? ("busy" as const)
+          : selectionDirty
+            ? ("dirty" as const)
+            : ("queued" as const),
+      }
+    : selectionApplyCopy(
+        account.runtimeStatus,
+        appliedAppIds.length,
+        draftAppIds.length,
+        selectionDirty,
+        gamesApplying,
+        t,
+      );
 
   useEffect(() => {
     setDraftAppIds(account.games.map((game) => game.appId));
@@ -215,7 +238,16 @@ export function AccountDetail({
     setDraftAppIds([...new Set(appIds)]);
   }
 
-  async function applyGameSelection() {
+  async function applyGameSelection(confirmed = false): Promise<boolean> {
+    if (farmingActive && !confirmed) {
+      requestConfirmation({
+        description: hub.switchApply,
+        confirmLabel: t.common.apply,
+        destructive: false,
+        action: () => applyGameSelection(true),
+      });
+      return false;
+    }
     setActionError(null);
     if (draftOverLimit) {
       setActionError(
@@ -223,7 +255,7 @@ export function AccountDetail({
           limit: gameLimit,
         }),
       );
-      return;
+      return false;
     }
 
     setGamesApplying(true);
@@ -236,10 +268,12 @@ export function AccountDetail({
       setDraftAppIds(draftAppIds);
       setGamesAppliedAt(Date.now());
       toast.success(t.accountDetail.selectionApplied);
+      return true;
     } catch (requestError) {
       const message = apiErrorMessage(requestError, t);
       setActionError(message);
       toast.error(message);
+      return false;
     } finally {
       setGamesApplying(false);
     }
@@ -274,7 +308,16 @@ export function AccountDetail({
     }
   }
 
-  async function saveSettings() {
+  async function saveSettings(confirmed = false): Promise<boolean> {
+    if (farmingActive && !confirmed) {
+      requestConfirmation({
+        description: hub.switchSettings,
+        confirmLabel: t.common.apply,
+        destructive: false,
+        action: () => saveSettings(true),
+      });
+      return false;
+    }
     return runBusyAction(
       "settings",
       async () => {
@@ -344,9 +387,11 @@ export function AccountDetail({
   async function applyPreset(preset: BoostPreset, confirmed = false) {
     if (!confirmed) {
       requestConfirmation({
-        description: interpolate(t.accountDetail.confirmApplyPreset, {
-          name: preset.name,
-        }),
+        description:
+          (farmingActive ? `${hub.switchPreset} ` : "") +
+          interpolate(t.accountDetail.confirmApplyPreset, {
+            name: preset.name,
+          }),
         confirmLabel: t.common.apply,
         destructive: false,
         action: () => applyPreset(preset, true),
@@ -673,8 +718,27 @@ export function AccountDetail({
     }
   }
 
-  return (
-    <div className="grid gap-4">
+  function onPrimaryAction() {
+    if (!primaryCommand) return;
+    if (primaryCommand.kind === "focus-games") {
+      setWorkspaceTab("library");
+      setTimeout(() => manualAppInputRef.current?.focus(), 0);
+      return;
+    }
+    void accountAction(primaryCommand.action);
+  }
+
+  function switchToManual() {
+    requestConfirmation({
+      description: hub.confirmSwitch,
+      confirmLabel: hub.switchConfirm,
+      destructive: false,
+      action: () => accountAction("resume"),
+    });
+  }
+
+  const accountPanel = (
+    <div className="grid min-w-0 gap-4">
       <AccountHeader
         controls={
           <AccountControlPanel
@@ -685,14 +749,7 @@ export function AccountDetail({
             primaryCommand={primaryCommand}
             personaState={personaState}
             customTitle={customTitle}
-            onPrimaryAction={() => {
-              if (!primaryCommand) return;
-              if (primaryCommand.kind === "focus-games") {
-                manualAppInputRef.current?.focus();
-                return;
-              }
-              void accountAction(primaryCommand.action);
-            }}
+            onPrimaryAction={onPrimaryAction}
             onPause={() => void accountAction("pause")}
             onStop={() => void accountAction("stop")}
             onOpenLogs={() => setLogOpen(true)}
@@ -715,12 +772,22 @@ export function AccountDetail({
         }
         profile={<AccountProfilePanel account={account} />}
       />
-
-      {account.lastError && <Alert tone="danger">{account.lastError}</Alert>}
-      {actionError && !confirmation ? (
-        <Alert tone="danger">{actionError}</Alert>
-      ) : null}
-
+      <BoostToolsPanel
+        activeTab={planningTab}
+        onTabChange={setPlanningTab}
+        presetCount={presets.length}
+        activeScheduleCount={
+          schedules.filter((schedule) => schedule.enabled).length
+        }
+        analyticsLast7DaysMs={analytics?.last7DaysMs ?? 0}
+      >
+        {planningPanel}
+      </BoostToolsPanel>
+    </div>
+  );
+  const libraryPanel = (
+    <div className="grid min-w-0 gap-3">
+      {farmingActive && <Alert tone="info">{hub.farmingSelectionHint}</Alert>}
       <div className="grid gap-4">
         <GameLibraryPanel
           account={{ id: account.id, runtimeStatus: account.runtimeStatus }}
@@ -733,6 +800,9 @@ export function AccountDetail({
             onUpdateMeta: updateLibraryMeta,
           }}
           selection={{
+            ...(account.activityMode
+              ? { activityMode: account.activityMode }
+              : {}),
             draftAppIds,
             appliedAppIds,
             selectedGames,
@@ -744,7 +814,9 @@ export function AccountDetail({
             state: selectionApplyState,
             manualAppInputRef,
             onChange: updateDraftGames,
-            onApply: applyGameSelection,
+            onApply: async () => {
+              await applyGameSelection();
+            },
             onRevert: () => setDraftAppIds(appliedAppIds),
           }}
           rightRailExtra={
@@ -762,6 +834,39 @@ export function AccountDetail({
           }
         />
       </div>
+    </div>
+  );
+
+  return (
+    <div className="grid min-w-0 gap-4">
+      <AccountHubBar
+        account={account}
+        library={library}
+        busyAction={busyAction}
+        primaryCommand={primaryCommand}
+        canPause={canPause}
+        canStop={canStop}
+        eventCount={events.length}
+        onPrimaryAction={onPrimaryAction}
+        onPause={() => void accountAction("pause")}
+        onStop={() => void accountAction("stop")}
+        onLogs={() => setLogOpen(true)}
+        onSwitchManual={switchToManual}
+      />
+      {account.lastError && <Alert tone="danger">{account.lastError}</Alert>}
+      {actionError && !confirmation ? (
+        <Alert tone="danger">{actionError}</Alert>
+      ) : null}
+      <SteamToolsPanel
+        accountId={account.id}
+        library={loadState === "ready" ? library : undefined}
+        activityMode={account.activityMode}
+        accountStatus={account.runtimeStatus}
+        activeTab={workspaceTab}
+        onTabChange={setWorkspaceTab}
+        libraryPanel={libraryPanel}
+        accountPanel={accountPanel}
+      />
 
       <LogDrawer
         open={logOpen}

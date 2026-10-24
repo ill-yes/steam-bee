@@ -35,22 +35,22 @@ export function BoostToolsPanel({
       label: t.tools.analytics,
       meta: formatDurationMs(analyticsLast7DaysMs, t, localeInfo.dateLocale),
     },
-    { id: "safety" as const, label: o.safety, meta: "•" },
+    { id: "safety" as const, label: o.safety, meta: o.safetyTitle },
   ];
 
   return (
-    <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+    <section className="@container overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)]">
       <div className="border-b border-[var(--line)] px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h3 className="truncate text-sm font-semibold">{t.tools.title}</h3>
-            <p className="truncate text-xs text-[var(--muted)]">
+            <p className="text-xs leading-5 text-[var(--muted)]">
               {t.tools.description}
             </p>
           </div>
         </div>
         <div
-          className="mt-2 grid grid-cols-4 gap-1 rounded-md bg-[var(--surface-2)] p-1"
+          className="mt-2 grid grid-cols-2 gap-1 rounded-md bg-[var(--surface-2)] p-1 @min-[28rem]:grid-cols-4"
           role="group"
           aria-label={t.tools.title}
         >
@@ -62,14 +62,16 @@ export function BoostToolsPanel({
               aria-pressed={activeTab === tab.id}
               aria-controls={panelId}
               className={cn(
-                "min-w-0 rounded px-2 py-1.5 text-left text-xs transition",
+                "min-h-11 min-w-0 rounded px-2 py-1.5 text-left text-xs transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]",
                 activeTab === tab.id
                   ? "bg-[var(--surface)] text-[var(--ink)] shadow-sm"
                   : "text-[var(--muted-strong)] hover:bg-[var(--surface-3)]",
               )}
             >
-              <span className="block truncate font-semibold">{tab.label}</span>
-              <span className="block truncate text-[10px] text-[var(--muted)]">
+              <span className="block break-words font-semibold">
+                {tab.label}
+              </span>
+              <span className="block break-words text-[10px] text-[var(--muted)]">
                 {tab.meta}
               </span>
             </button>

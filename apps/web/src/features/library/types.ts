@@ -34,6 +34,7 @@ export type LibraryModel = {
 };
 
 export type SelectionModel = {
+  activityMode?: "idle" | "manual" | "farming";
   draftAppIds: number[];
   appliedAppIds: number[];
   selectedGames: SelectedGame[];

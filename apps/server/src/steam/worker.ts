@@ -26,6 +26,7 @@ import type {
 import { replaceAccountLibrary } from "./repository.js";
 import { enforceGameLimit } from "./validation.js";
 import { steamIdToString } from "./steam-id.js";
+import { CommunitySessionBroker } from "./community-session.js";
 import {
   clearRecoveryHealth,
   clearSafetyHold,
@@ -63,6 +64,12 @@ type SteamWorkerOptions = {
 export class SteamWorker extends EventEmitter {
   readonly accountId: string;
   private readonly client: LifecycleSteamUser;
+  private readonly communitySession: CommunitySessionBroker;
+  private farmingAppIds: number[] | null = null;
+  private farmingInterruptedByShutdown = false;
+  private reportedAppIds: number[] = [];
+  private reportedActivityMode: "idle" | "manual" | "farming" = "idle";
+  private lastActivityKey = "";
   private account: SteamAccountRow;
   private status: AccountStatus;
   private connected = false;
@@ -114,6 +121,13 @@ export class SteamWorker extends EventEmitter {
       renewRefreshTokens: true,
     }) as LifecycleSteamUser;
 
+    this.communitySession = new CommunitySessionBroker({
+      steamId: () =>
+        this.client.steamID ? steamIdToString(this.client.steamID) : null,
+      connected: () => this.connected && !this.quiescing,
+      webLogOn: () => this.client.webLogOn(),
+    });
+
     this.attachListeners();
   }
 
@@ -123,6 +137,74 @@ export class SteamWorker extends EventEmitter {
 
   get isConnected() {
     return this.connected;
+  }
+
+  get isFarming() {
+    return this.farmingAppIds !== null;
+  }
+
+  getActivity() {
+    if (
+      !this.connected ||
+      this.quiescing ||
+      this.manuallyPaused ||
+      this.blockedByOtherSession
+    ) {
+      return { activityMode: "idle" as const, activeAppIds: [] as number[] };
+    }
+    return {
+      activityMode: this.isFarming
+        ? ("farming" as const)
+        : this.reportedActivityMode,
+      activeAppIds:
+        this.isFarming && this.reportedActivityMode !== "farming"
+          ? []
+          : [...this.reportedAppIds],
+    };
+  }
+
+  private reportGames(payload: Array<number | string>) {
+    this.client.gamesPlayed(payload);
+    this.reportedAppIds = payload.filter(
+      (entry): entry is number => typeof entry === "number",
+    );
+    this.reportedActivityMode = this.isFarming
+      ? "farming"
+      : payload.length
+        ? "manual"
+        : "idle";
+  }
+
+  getCommunitySession() {
+    return this.communitySession.get();
+  }
+
+  clearFarmingSelection() {
+    this.farmingAppIds = null;
+  }
+
+  async applyFarmingSelection(
+    appIds: number[],
+    shouldApply: () => boolean = () => true,
+  ) {
+    return this.runSerial("command:farming-games", async () => {
+      if (
+        !shouldApply() ||
+        !this.connected ||
+        this.quiescing ||
+        this.manuallyPaused ||
+        this.blockedByOtherSession
+      ) {
+        throw new Error("The Steam account is unavailable for card farming.");
+      }
+      enforceGameLimit(appIds, this.account.customTitle);
+      this.farmingAppIds = [...appIds];
+      if (!shouldApply()) {
+        this.clearFarmingSelection();
+        return;
+      }
+      await this.applyGames(shouldApply);
+    });
   }
 
   async start() {
@@ -177,13 +259,15 @@ export class SteamWorker extends EventEmitter {
   }
 
   private async stopNow() {
+    this.clearFarmingSelection();
+    this.communitySession.invalidate();
     this.logger.info("Stopping Steam worker");
     this.clearRetryTimers();
     this.resetSessionConflict();
     await clearRecoveryHealth(this.accountId);
     await clearSafetyHold(this.accountId);
     await this.setDesiredState("stopped");
-    this.client.gamesPlayed([]);
+    this.reportGames([]);
     this.client.logOff();
     this.connected = false;
     await this.setStatus("disconnected");
@@ -205,6 +289,9 @@ export class SteamWorker extends EventEmitter {
   beginShutdown() {
     if (this.quiescing) return;
     this.quiescing = true;
+    this.farmingInterruptedByShutdown = this.farmingAppIds !== null;
+    this.clearFarmingSelection();
+    this.communitySession.invalidate();
     this.clearRetryTimers();
     this.resetSessionConflict();
     this.client.steamBeeBeginShutdown();
@@ -212,33 +299,52 @@ export class SteamWorker extends EventEmitter {
 
   private async shutdownNow() {
     this.logger.info("Gracefully shutting down Steam worker");
+    let farmingPauseError: unknown;
+    if (this.farmingInterruptedByShutdown) {
+      try {
+        await this.setDesiredState("paused");
+      } catch (error) {
+        farmingPauseError = error;
+      }
+    }
     this.clearRetryTimers();
     this.resetSessionConflict();
-    this.client.gamesPlayed([]);
+    this.reportGames([]);
     await this.client.steamBeeLogOffAndDrain();
     // A timed-out renewal can still publish its credential while the transport closes.
     await this.credentialQueue;
     this.connected = false;
     await this.setStatus("disconnected");
+    if (farmingPauseError) throw farmingPauseError;
   }
 
-  async pause() {
-    return this.runSerial("command:pause", () => this.pauseNow());
+  async pause(shouldPause: () => boolean = () => true) {
+    return this.runSerial("command:pause", () => this.pauseNow(shouldPause));
   }
 
-  private async pauseNow() {
+  private async pauseNow(shouldPause: () => boolean) {
+    if (!shouldPause()) return;
+    this.clearFarmingSelection();
     this.logger.info("Pausing Steam worker");
     this.clearRetryTimers();
     this.resetSessionConflict();
     await clearRecoveryHealth(this.accountId);
+    if (!shouldPause()) return;
     this.manuallyPaused = true;
     await this.setDesiredState("paused");
-    this.client.gamesPlayed([]);
+    if (!shouldPause()) return;
+    this.reportGames([]);
     await this.setStatus("paused_manual");
   }
 
-  async forceDisconnectForSafety(message: string) {
+  async forceDisconnectForSafety(
+    message: string,
+    shouldPause: () => boolean = () => true,
+  ) {
     return this.runSerial("safety:force-disconnect", async () => {
+      if (!shouldPause()) return;
+      this.clearFarmingSelection();
+      this.communitySession.invalidate();
       this.logger.warn("Force-disconnecting Steam worker for safety");
       this.clearRetryTimers();
       this.resetSessionConflict();
@@ -254,8 +360,9 @@ export class SteamWorker extends EventEmitter {
       } catch (error) {
         failures.push(error);
       }
+      if (!shouldPause()) return;
       try {
-        this.client.gamesPlayed([]);
+        this.reportGames([]);
       } catch (error) {
         failures.push(error);
       }
@@ -385,6 +492,9 @@ export class SteamWorker extends EventEmitter {
   }
 
   private attachListeners() {
+    this.client.on("webSession", (sessionId: string, cookies: string[]) => {
+      this.communitySession.accept(sessionId, cookies);
+    });
     this.onClientEvent("loggedOn", async () => {
       this.logger.info("Steam client logged on");
       this.connected = true;
@@ -424,12 +534,18 @@ export class SteamWorker extends EventEmitter {
       const wasBlocked = this.blockedByOtherSession;
       this.blockedByOtherSession = blocked;
       if (blocked) {
+        const wasFarming = this.farmingAppIds !== null;
+        this.clearFarmingSelection();
+        if (wasFarming) {
+          this.manuallyPaused = true;
+          await this.setDesiredState("paused");
+        }
         if (!wasBlocked) {
           this.logger.warn(
             "Steam account is active elsewhere; pausing reported games",
           );
         }
-        this.client.gamesPlayed([]);
+        this.reportGames([]);
         await this.setStatus("paused_other_session");
         if (!wasBlocked && this.account.desiredState === "running") {
           await this.registerSessionConflict("live", null);
@@ -454,6 +570,13 @@ export class SteamWorker extends EventEmitter {
     this.onClientEvent(
       "disconnected",
       async (eresult?: number, message?: string) => {
+        const wasFarming = this.farmingAppIds !== null;
+        this.clearFarmingSelection();
+        this.communitySession.invalidate();
+        if (wasFarming) {
+          this.manuallyPaused = true;
+          await this.setDesiredState("paused");
+        }
         this.connected = false;
         if (eresult !== undefined) await touchSteamContact(this.accountId);
         if (this.handledConflictLoginAttemptId === this.loginAttemptId) return;
@@ -481,6 +604,16 @@ export class SteamWorker extends EventEmitter {
     );
 
     this.onClientEvent("error", async (error: unknown) => {
+      const wasFarming = this.farmingAppIds !== null;
+      this.clearFarmingSelection();
+      // steam-user may disconnect silently and emit only error. Do not keep
+      // reporting the old games or admit Community requests until loggedOn.
+      this.connected = false;
+      this.communitySession.invalidate();
+      if (wasFarming) {
+        this.manuallyPaused = true;
+        await this.setDesiredState("paused");
+      }
       this.logger.error(
         errorLogFields(error, { desiredState: this.account.desiredState }),
         "Steam client error",
@@ -564,26 +697,26 @@ export class SteamWorker extends EventEmitter {
     return operation;
   }
 
-  private async applyGames() {
+  private async applyGames(shouldApply: () => boolean = () => true) {
     if (this.quiescing || !this.connected) {
       this.logger.debug("Deferring gamesPlayed until Steam is connected");
       return;
     }
 
     if (this.manuallyPaused) {
-      this.client.gamesPlayed([]);
+      this.reportGames([]);
       await this.setStatus("paused_manual");
       return;
     }
 
     if (this.blockedByOtherSession) {
-      this.client.gamesPlayed([]);
+      this.reportGames([]);
       await this.setStatus("paused_other_session");
       return;
     }
 
     const payload = await this.selectedGamesPayload();
-    if (this.quiescing) return;
+    if (this.quiescing || !shouldApply()) return;
 
     this.logger.info(
       {
@@ -592,11 +725,15 @@ export class SteamWorker extends EventEmitter {
       },
       "Applying gamesPlayed payload",
     );
-    this.client.gamesPlayed(payload);
+    this.reportGames(payload);
     await this.setStatus(payload.length > 0 ? "boosting" : "online");
   }
 
   private async selectedGamesPayload() {
+    if (this.farmingAppIds !== null) {
+      enforceGameLimit(this.farmingAppIds, this.account.customTitle);
+      return [...this.farmingAppIds];
+    }
     const games = await db
       .select()
       .from(steamAccountGame)
@@ -781,7 +918,7 @@ export class SteamWorker extends EventEmitter {
     }
     const payload = await this.selectedGamesPayload();
     if (this.quiescing) return;
-    this.client.gamesPlayed(payload);
+    this.reportGames(payload);
     await this.registerSessionConflict("live", null);
   }
 
@@ -930,14 +1067,18 @@ export class SteamWorker extends EventEmitter {
   private async setStatus(status: AccountStatus, error?: string) {
     const previousStatus = this.status;
     const nextError = error ?? null;
+    const activity = this.getActivity();
+    const activityKey = JSON.stringify(activity);
     if (
       this.status === status &&
-      (this.account.lastError ?? null) === nextError
+      (this.account.lastError ?? null) === nextError &&
+      this.lastActivityKey === activityKey
     ) {
       return;
     }
 
     this.status = status;
+    this.lastActivityKey = activityKey;
     const now = Date.now();
     const latestBoostStartedAt =
       status === "boosting" ? (this.account.latestBoostStartedAt ?? now) : null;
@@ -978,6 +1119,7 @@ export class SteamWorker extends EventEmitter {
     this.emit("status", {
       accountId: this.accountId,
       status,
+      ...activity,
       ...(nextError === null ? {} : { error: nextError }),
     } satisfies WorkerStatusPayload);
   }

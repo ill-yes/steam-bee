@@ -89,8 +89,8 @@ export const en = {
     INVALID_RESPONSE: "The server returned an invalid response.",
   },
   appShell: {
-    title: "Hour booster",
-    subtitle: "Local tool for managing your Steam boosts.",
+    title: "Your Steam hub",
+    subtitle: "Games, trading cards and market in one place.",
     systemLoading: "System loading",
     systemLoadingDetail: "Status is loading.",
     systemReady: "System ready",

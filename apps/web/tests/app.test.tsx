@@ -141,9 +141,12 @@ describe("web smoke", () => {
         0,
       );
 
-      fireEvent.change(screen.getByLabelText(/Account|Konto/), {
-        target: { value: "account-2" },
-      });
+      fireEvent.change(
+        screen.getByRole("combobox", { name: /^(Account|Konto)$/ }),
+        {
+          target: { value: "account-2" },
+        },
+      );
 
       expect(screen.queryByText("Counter-Strike 2")).not.toBeInTheDocument();
       expect(screen.getByRole("status")).toHaveTextContent(/Loading|Lädt/);
@@ -233,7 +236,9 @@ describe("web smoke", () => {
     expect(screen.queryByText("CSV")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Safety/ }));
-    expect(await screen.findByText("Session safety")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Session safety" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/caps never start a stopped account/i),
     ).toBeInTheDocument();
@@ -571,6 +576,7 @@ describe("web smoke", () => {
   it("keeps the account confirmation open when removal fails", async () => {
     renderAccountDetail();
 
+    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
     fireEvent.click(screen.getByRole("button", { name: "Remove account" }));
     apiMock.mockRejectedValueOnce(new Error("Account removal failed"));
     fireEvent.click(
@@ -587,6 +593,181 @@ describe("web smoke", () => {
         "Account removal failed",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("shows the actual farming games globally and requires confirmation before switching to manual playtime", async () => {
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "farming",
+      activeAppIds: [570],
+    });
+    const active = screen.getByLabelText("Currently reported to Steam");
+    expect(within(active).getByText("App 570")).toBeInTheDocument();
+    expect(
+      within(active).queryByText("Counter-Strike 2"),
+    ).not.toBeInTheDocument();
+    await screen.findByLabelText("Search library");
+    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Games & playtime" }));
+    expect(
+      apiMock.mock.calls.some(
+        ([, options]) =>
+          options?.method === "POST" || options?.method === "PUT",
+      ),
+    ).toBe(false);
+    const switchButton = screen.getByRole("button", {
+      name: "Switch to manual game selection",
+    });
+    fireEvent.click(switchButton);
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "Farming will not restart automatically",
+    );
+    expect(apiMock.mock.calls.some(([path]) => path.endsWith("/resume"))).toBe(
+      false,
+    );
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+    expect(apiMock.mock.calls.some(([path]) => path.endsWith("/resume"))).toBe(
+      false,
+    );
+    fireEvent.click(switchButton);
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Switch mode",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith("/api/accounts/account-1/resume", {
+        method: "POST",
+      }),
+    );
+  });
+
+  it("confirms the farming mode change before applying a manual game selection", async () => {
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "farming",
+      activeAppIds: [570],
+    });
+    const input = await screen.findByLabelText("Add AppID");
+    fireEvent.change(input, { target: { value: "440" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByText("1 saved · 2 draft")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Apply selection" }));
+
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "Applying this manual selection stops farming",
+    );
+    expect(apiMock.mock.calls.some(([path]) => path.endsWith("/games"))).toBe(
+      false,
+    );
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Apply",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith(
+        "/api/accounts/account-1/games",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ appIds: [730, 440] }),
+        }),
+      ),
+    );
+  });
+
+  it("explains active farming in account status even without saved manual games", async () => {
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "farming",
+      activeAppIds: [570],
+      games: [],
+    });
+    await screen.findByLabelText("Search library");
+    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
+
+    expect(
+      screen.getByText(/Card farming controls the active games shown above/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Choose games from the library or add AppIDs manually.",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("warns before settings or presets stop active card farming", async () => {
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "farming",
+      activeAppIds: [570],
+    });
+    await screen.findByText("Boost presets");
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "Applying this preset stops farming",
+    );
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Account & safety" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save display" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "Changing these account settings stops farming",
+    );
+    expect(
+      apiMock.mock.calls.some(
+        ([path, options]) =>
+          path.endsWith("/settings") && options?.method === "PUT",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps all 32 reported farming games accessible in a keyboard-focusable strip", async () => {
+    const activeAppIds = Array.from(
+      { length: 32 },
+      (_, index) => 20_000 + index,
+    );
+    renderAccountDetail({
+      ...pausedAccount,
+      runtimeStatus: "boosting",
+      status: "boosting",
+      desiredState: "running",
+      activityMode: "farming",
+      activeAppIds,
+    });
+    const strip = screen.getByRole("region", {
+      name: "Active games; scroll horizontally for more",
+    });
+    expect(strip).toHaveAttribute("tabindex", "0");
+    expect(within(strip).getAllByRole("listitem")).toHaveLength(32);
+    expect(within(strip).getByText("App 20031")).toBeInTheDocument();
+    expect(
+      within(strip).queryByText("Counter-Strike 2"),
+    ).not.toBeInTheDocument();
+    strip.focus();
+    expect(strip).toHaveFocus();
+    await screen.findByText("Boost presets");
   });
 
   it("shows the admin action in the account rail", () => {

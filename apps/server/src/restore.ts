@@ -27,6 +27,9 @@ const supportedMigrationIds = [
   "009_timed_hold_schedule_ownership",
   "010_timed_hold_ownership_provenance",
   "011_automatic_session_recovery",
+  "012_card_farming_settings",
+  "013_market_price_settings",
+  "014_library_import_marker",
 ] as const;
 const supportedMigrations = new Set<string>(supportedMigrationIds);
 

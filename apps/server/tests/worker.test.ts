@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
 const steamMock = vi.hoisted(() => ({
@@ -75,6 +75,8 @@ import { SteamWorker } from "../src/steam/worker.js";
 import { AccountOperationState } from "../src/steam/account-operation-state.js";
 import { decryptSecret, encryptSecret } from "../src/util/crypto.js";
 import { closeWithLeaseCleanup, ShutdownTimeoutError } from "../src/startup.js";
+import { farmingController } from "../src/farming/service.js";
+import { inventoryMarket } from "../src/inventory/runtime.js";
 
 describe("SteamWorker", () => {
   beforeEach(async () => {
@@ -2066,6 +2068,688 @@ describe("SteamWorker", () => {
       vi.useRealTimers();
     }
   });
+  describe("card farming integration", () => {
+    afterEach(async () => {
+      vi.restoreAllMocks();
+      await steamManager.shutdown();
+      vi.useRealTimers();
+    });
+
+    it("clears reported activity and Community access after a transient Steam error until login succeeds", async () => {
+      const account = await farmingAccount();
+      const worker = new SteamWorker(account);
+      const client = steamMock.instances.at(-1)!;
+      try {
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "manual",
+          activeAppIds: [440, 730],
+        });
+
+        // steam-user can close its transport with _disconnect(true) and emit
+        // only error; a later disconnected event is not guaranteed.
+        client.emit(
+          "error",
+          Object.assign(new Error("Connection lost"), { eresult: 2 }),
+        );
+        await flushWorkerEvents(worker);
+
+        expect(worker.isConnected).toBe(false);
+        expect(worker.currentStatus).toBe("error");
+        expect(worker.getActivity()).toEqual({
+          activityMode: "idle",
+          activeAppIds: [],
+        });
+        await expect(worker.getCommunitySession()).rejects.toThrow(
+          "Connect the Steam account",
+        );
+
+        await worker.start();
+        expect(worker.currentStatus).toBe("connecting");
+        expect(worker.getActivity()).toEqual({
+          activityMode: "idle",
+          activeAppIds: [],
+        });
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        expect(worker.isConnected).toBe(true);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "manual",
+          activeAppIds: [440, 730],
+        });
+      } finally {
+        await worker.shutdown();
+      }
+    });
+
+    it("reports effective games and emits farming target changes while the status stays boosting", async () => {
+      const account = await farmingAccount();
+      const worker = new SteamWorker(account);
+      const client = steamMock.instances.at(-1)!;
+      const statuses = vi.fn();
+      worker.on("status", statuses);
+      try {
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "manual",
+          activeAppIds: [440, 730],
+        });
+        await worker.applyFarmingSelection([570]);
+        await worker.applyFarmingSelection([10]);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "farming",
+          activeAppIds: [10],
+        });
+        expect(statuses).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            status: "boosting",
+            activityMode: "farming",
+            activeAppIds: [10],
+          }),
+        );
+        expect(
+          statuses.mock.calls.some(
+            ([payload]) =>
+              payload.activityMode === "farming" &&
+              payload.activeAppIds[0] === 570,
+          ),
+        ).toBe(true);
+        expect(
+          selectedGames(account.id)
+            .filter((game) => game.enabled)
+            .map((game) => game.appId),
+        ).toEqual([440, 730]);
+        await worker.pause();
+        expect(worker.getActivity()).toEqual({
+          activityMode: "idle",
+          activeAppIds: [],
+        });
+      } finally {
+        await worker.shutdown();
+      }
+    });
+
+    it("reserves farming mode and clears manual games before badge discovery", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+      await steamManager.beginFarming(account.id);
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect(steamManager.getActivity(account.id)).toEqual({
+        activityMode: "farming",
+        activeAppIds: [],
+      });
+      expect(
+        selectedGames(account.id)
+          .filter((game) => game.enabled)
+          .map((game) => game.appId),
+      ).toEqual([440, 730]);
+      await steamManager.endFarming(account.id);
+      expect(steamManager.getActivity(account.id)).toEqual({
+        activityMode: "idle",
+        activeAppIds: [],
+      });
+    });
+
+    it("does not pause manual idling when a read-only farming preview is stopped", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      client.gamesPlayed.mockClear();
+      await steamManager.endFarming(account.id);
+      expect(client.gamesPlayed).not.toHaveBeenCalled();
+      expect(steamManager.getActivity(account.id)).toEqual({
+        activityMode: "manual",
+        activeAppIds: [440, 730],
+      });
+    });
+
+    it("discards an obsolete queued farming cleanup after a newer manual resume", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      let release!: () => void;
+      const barrier = steamManager.runAccountOperation(
+        account.id,
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+      let current = true;
+      const ending = steamManager.endFarming(account.id, () => current);
+      current = false;
+      const resuming = steamManager.resume(account.id);
+      client.gamesPlayed.mockClear();
+      release();
+      await Promise.all([barrier, ending, resuming]);
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+      expect(client.gamesPlayed).not.toHaveBeenCalledWith([]);
+      expect(steamManager.getActivity(account.id)).toEqual({
+        activityMode: "manual",
+        activeAppIds: [440, 730],
+      });
+    });
+
+    it.each(["pause", "stop", "deleteAccount"] as const)(
+      "stops market batches immediately before queued %s",
+      async (command) => {
+        const account = await farmingAccount();
+        await connectManagedFarmingAccount(account.id);
+        let release!: () => void;
+        const barrier = steamManager.runAccountOperation(
+          account.id,
+          () =>
+            new Promise<void>((resolve) => {
+              release = resolve;
+            }),
+        );
+        await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+        const stopBatches = vi.spyOn(inventoryMarket, "stopAccountBatches");
+        const operation = steamManager[command](account.id);
+        expect(stopBatches).toHaveBeenCalledWith(account.id);
+        release();
+        await Promise.all([barrier, operation]);
+      },
+    );
+
+    it("uses an ephemeral farming selection and preserves the manual game configuration", async () => {
+      const account = await farmingAccount();
+      const worker = new SteamWorker(account);
+      const client = steamMock.instances.at(-1)!;
+      try {
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        const manualSelection = selectedGames(account.id);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+
+        await worker.applyFarmingSelection([570, 10]);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([570, 10]);
+        expect(selectedGames(account.id)).toEqual(manualSelection);
+
+        worker.clearFarmingSelection();
+        await worker.updateAccount(account);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+        expect(selectedGames(account.id)).toEqual(manualSelection);
+      } finally {
+        await worker.shutdown();
+      }
+    });
+
+    it("enforces the reduced custom-title game limit before changing the farming payload", async () => {
+      const account = await farmingAccount("My title");
+      const worker = new SteamWorker(account);
+      const client = steamMock.instances.at(-1)!;
+      try {
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        const callsBefore = client.gamesPlayed.mock.calls.length;
+        await expect(
+          worker.applyFarmingSelection(
+            Array.from({ length: 32 }, (_, index) => index + 1),
+          ),
+        ).rejects.toThrow("at most 31 entries");
+        expect(client.gamesPlayed).toHaveBeenCalledTimes(callsBefore);
+
+        const valid = Array.from({ length: 31 }, (_, index) => index + 1);
+        await worker.applyFarmingSelection(valid);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith(valid);
+        expect(selectedGames(account.id).map((game) => game.appId)).toEqual([
+          440, 570, 730,
+        ]);
+      } finally {
+        await worker.shutdown();
+      }
+    });
+
+    it("discards a farming application whose generation expires at the payload await boundary", async () => {
+      const account = await farmingAccount();
+      const worker = new SteamWorker(account);
+      const client = steamMock.instances.at(-1)!;
+      try {
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        client.gamesPlayed.mockClear();
+        let current = true;
+        const guard = vi.fn(() => current);
+
+        const applying = worker.applyFarmingSelection([570], guard);
+        // Let the serialized command enter its asynchronous payload selection,
+        // then invalidate it as a concurrent manager stop would do.
+        await Promise.resolve();
+        expect(guard).toHaveBeenCalledTimes(2);
+        current = false;
+        worker.clearFarmingSelection();
+        await applying;
+
+        expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+        await worker.updateAccount(account);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+      } finally {
+        await worker.shutdown();
+      }
+    });
+
+    it.each(["pause", "stop", "resume", "refreshWorker"] as const)(
+      "does not leave an unmonitored farm when %s fails before reaching the worker",
+      async (action) => {
+        const account = await farmingAccount();
+        const client = await connectManagedFarmingAccount(account.id);
+        await steamManager.applyFarmingGames(account.id, [570]);
+        client.gamesPlayed.mockClear();
+        const internals = steamManager as unknown as {
+          getWorkerForAccount(id: string): Promise<SteamWorker>;
+          getOrCreateWorker(account: unknown): SteamWorker;
+        };
+        if (action === "refreshWorker") {
+          vi.spyOn(internals, "getOrCreateWorker").mockImplementationOnce(
+            () => {
+              throw new Error("Synthetic lookup failure");
+            },
+          );
+        } else {
+          vi.spyOn(internals, "getWorkerForAccount").mockRejectedValueOnce(
+            new Error("Synthetic lookup failure"),
+          );
+        }
+        await expect(steamManager[action](account.id)).rejects.toThrow(
+          "Synthetic lookup failure",
+        );
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+        expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
+          "manual",
+        );
+      },
+    );
+
+    it("stops an interrupted farm when a preset no longer exists", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      client.gamesPlayed.mockClear();
+      await expect(
+        steamManager.applyPreset(
+          account.id,
+          "11111111-1111-4111-8111-111111111111",
+        ),
+      ).rejects.toThrow("Preset was not found");
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
+        "manual",
+      );
+    });
+
+    it("reports connection, safety hold, desired-state and custom-title availability", async () => {
+      const account = await farmingAccount("My title");
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({
+        allowed: false,
+        reason: "not_connected",
+        gameLimit: 31,
+      });
+      await connectManagedFarmingAccount(account.id);
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({
+        allowed: true,
+        reason: null,
+        gameLimit: 31,
+      });
+
+      await setSafetyHold(account.id, "manual");
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({
+        allowed: false,
+        reason: "manual",
+      });
+      await expect(
+        steamManager.applyFarmingGames(account.id, [570]),
+      ).rejects.toThrow("unavailable");
+
+      await steamManager.stop(account.id);
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({
+        allowed: false,
+        reason: "not_running",
+      });
+    });
+
+    it.each(["pause", "stop"] as const)(
+      "invalidates a queued farming application synchronously on manual %s",
+      async (action) => {
+        const account = await farmingAccount();
+        const client = await connectManagedFarmingAccount(account.id);
+        const originalHalt = farmingController.halt.bind(farmingController);
+        const haltSpy = vi.spyOn(farmingController, "halt");
+        let current = true;
+        haltSpy.mockImplementation((accountId, reason) => {
+          if (accountId === account.id) current = false;
+          originalHalt(accountId, reason);
+        });
+        let release = () => {};
+        let entered = () => {};
+        const ready = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const block = steamManager.runAccountOperation(account.id, async () => {
+          entered();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        });
+        await ready;
+        client.gamesPlayed.mockClear();
+        const applying = steamManager.applyFarmingGames(
+          account.id,
+          [570],
+          () => current,
+        );
+        const rejected = expect(applying).rejects.toThrow("unavailable");
+        const intent = steamManager[action](account.id);
+        try {
+          expect(current).toBe(false);
+          expect(haltSpy).toHaveBeenCalledWith(
+            account.id,
+            action === "pause" ? "paused" : "stopped",
+          );
+        } finally {
+          release();
+          await Promise.all([block, rejected, intent]);
+        }
+
+        expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+        expect(selectedGames(account.id).map((game) => game.appId)).toEqual([
+          440, 570, 730,
+        ]);
+      },
+    );
+
+    it.each(["pause", "stop"] as const)(
+      "preserves farming supervision on redundant start and still permits explicit %s",
+      async (action) => {
+        const account = await farmingAccount();
+        const client = await connectManagedFarmingAccount(account.id);
+        await steamManager.applyFarmingGames(account.id, [570]);
+        await steamManager.runAccountOperation(
+          account.id,
+          async () => undefined,
+        );
+        const haltSpy = vi.spyOn(farmingController, "halt");
+        const loginCalls = client.logOn.mock.calls.length;
+        client.gamesPlayed.mockClear();
+
+        await steamManager.start(account.id);
+
+        expect(haltSpy).not.toHaveBeenCalled();
+        expect(client.gamesPlayed).not.toHaveBeenCalled();
+        expect(client.logOn).toHaveBeenCalledTimes(loginCalls);
+        expect(
+          await steamManager.getFarmingAvailability(account.id),
+        ).toMatchObject({ allowed: true });
+        await steamManager.applyFarmingGames(account.id, [10]);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([10]);
+
+        await steamManager[action](account.id);
+        expect(haltSpy).toHaveBeenCalledWith(
+          account.id,
+          action === "pause" ? "paused" : "stopped",
+        );
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+        expect(selectedGames(account.id).map((game) => game.appId)).toEqual([
+          440, 570, 730,
+        ]);
+      },
+    );
+
+    it.each(["pause", "stop"] as const)(
+      "clears active farming on manual %s and restores only the manual selection on explicit resume",
+      async (action) => {
+        const account = await farmingAccount();
+        const client = await connectManagedFarmingAccount(account.id);
+        await steamManager.applyFarmingGames(account.id, [570]);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([570]);
+
+        const haltSpy = vi.spyOn(farmingController, "halt");
+        await steamManager[action](account.id);
+        expect(haltSpy).toHaveBeenCalledWith(
+          account.id,
+          action === "pause" ? "paused" : "stopped",
+        );
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+        client.gamesPlayed.mockClear();
+        client.emit("loggedOn");
+        client.emit("playingState", false);
+        await steamManager.runAccountOperation(
+          account.id,
+          async () => undefined,
+        );
+        expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+
+        await steamManager.resume(account.id);
+        if (action === "stop") {
+          client.emit("loggedOn");
+          await steamManager.runAccountOperation(
+            account.id,
+            async () => undefined,
+          );
+        }
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+      },
+    );
+
+    it("ends farming into a manual safety hold without restoring games automatically", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      const manualSelection = selectedGames(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+
+      await steamManager.endFarming(account.id);
+
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBe(
+        "manual",
+      );
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({ allowed: false, reason: "manual" });
+      expect(selectedGames(account.id)).toEqual(manualSelection);
+      await steamManager.resume(account.id);
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+    });
+
+    it.each(["hold-write", "recovery-write", "pause-command"] as const)(
+      "force-disconnects active farming when stopping fails at %s",
+      async (failure) => {
+        const account = await farmingAccount();
+        const client = await connectManagedFarmingAccount(account.id);
+        const manualSelection = selectedGames(account.id);
+        await steamManager.applyFarmingGames(account.id, [570]);
+        await steamManager.runAccountOperation(
+          account.id,
+          async () => undefined,
+        );
+        const pauseSpy = vi.spyOn(SteamWorker.prototype, "pause");
+        let failedRecoveryWrite = false;
+        if (failure === "pause-command") {
+          pauseSpy.mockRejectedValueOnce(new Error("Synthetic pause failure"));
+        } else if (failure === "hold-write") {
+          vi.spyOn(db, "update").mockImplementationOnce(() => {
+            throw new Error("Synthetic safety hold write failure");
+          });
+        } else {
+          const update = db.update.bind(db);
+          vi.spyOn(db, "update").mockImplementation((table) => {
+            if (table === accountHealthState && !failedRecoveryWrite) {
+              failedRecoveryWrite = true;
+              throw new Error("Synthetic recovery health write failure");
+            }
+            return update(table);
+          });
+        }
+        client.gamesPlayed.mockClear();
+        client.logOff.mockClear();
+
+        await expect(
+          steamManager.endFarming(account.id),
+        ).resolves.toBeUndefined();
+
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+        expect(client.logOff).toHaveBeenCalledTimes(1);
+        expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+        expect(selectedGames(account.id)).toEqual(manualSelection);
+        expect(
+          db
+            .select()
+            .from(steamAccount)
+            .where(eq(steamAccount.id, account.id))
+            .get(),
+        ).toMatchObject({ desiredState: "paused", status: "paused_manual" });
+        if (failure === "hold-write") expect(pauseSpy).not.toHaveBeenCalled();
+        else expect(pauseSpy).toHaveBeenCalledTimes(1);
+        if (failure === "recovery-write")
+          expect(failedRecoveryWrite).toBe(true);
+      },
+    );
+
+    it("still clears Steam games and logs off when every database write fails while ending farming", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      await steamManager.runAccountOperation(account.id, async () => undefined);
+      vi.spyOn(db, "update").mockImplementation(() => {
+        throw new Error("Synthetic database write outage");
+      });
+      client.gamesPlayed.mockClear();
+      client.logOff.mockClear();
+
+      await expect(steamManager.endFarming(account.id)).rejects.toThrow(
+        "Synthetic database write outage",
+      );
+
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect(client.logOff).toHaveBeenCalledTimes(1);
+      expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+    });
+
+    it("clears farming during a timed safety pause and resumes only the manual selection", async () => {
+      vi.useFakeTimers();
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      const haltSpy = vi.spyOn(farmingController, "halt");
+
+      await steamManager.pauseUntil(account.id, Date.now() + 60_000);
+      expect(haltSpy).toHaveBeenCalledWith(account.id, "paused");
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({ allowed: false, reason: "pause_until" });
+      client.gamesPlayed.mockClear();
+
+      await vi.advanceTimersByTimeAsync(60_001);
+      await steamManager.runAccountOperation(account.id, async () => undefined);
+
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
+      expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+    });
+
+    it.each(["playingState", "disconnected", "error"] as const)(
+      "halts farming after Steam %s and never automatically retries the farming payload",
+      async (event) => {
+        vi.useFakeTimers();
+        const account = await farmingAccount();
+        const client = await connectManagedFarmingAccount(account.id);
+        await steamManager.applyFarmingGames(account.id, [570]);
+        const haltSpy = vi.spyOn(farmingController, "halt");
+        client.gamesPlayed.mockClear();
+        const logOnCalls = client.logOn.mock.calls.length;
+        if (event === "playingState") client.emit(event, true);
+        else if (event === "error")
+          client.emit(
+            event,
+            Object.assign(new Error("Session replaced"), { eresult: 6 }),
+          );
+        else client.emit(event, 2, "Connection lost");
+        await steamManager.runAccountOperation(
+          account.id,
+          async () => undefined,
+        );
+
+        expect(haltSpy).toHaveBeenCalledWith(account.id, expect.any(String));
+        expect(
+          db
+            .select()
+            .from(steamAccount)
+            .where(eq(steamAccount.id, account.id))
+            .get()?.desiredState,
+        ).toBe("paused");
+        expect(
+          await steamManager.getFarmingAvailability(account.id),
+        ).toMatchObject({ allowed: false, reason: "not_running" });
+        client.emit("playingState", false);
+        client.emit("loggedOn");
+        await steamManager.runAccountOperation(
+          account.id,
+          async () => undefined,
+        );
+        await vi.advanceTimersByTimeAsync(65 * 60_000);
+        expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+        expect(
+          client.gamesPlayed.mock.calls.every(([games]) => games.length === 0),
+        ).toBe(true);
+        expect(client.logOn).toHaveBeenCalledTimes(logOnCalls);
+      },
+    );
+
+    it("invalidates active farming immediately during shutdown and rejects later farming work", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      const shutdownSpy = vi.spyOn(farmingController, "beginShutdown");
+      let release = () => {};
+      client.steamBeeDrainRefreshTokens.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+      );
+      client.gamesPlayed.mockClear();
+
+      const shutdown = steamManager.shutdown();
+      try {
+        expect(shutdownSpy).toHaveBeenCalledTimes(1);
+        expect(
+          await steamManager.getFarmingAvailability(account.id),
+        ).toMatchObject({ allowed: false, reason: "shutting_down" });
+        await expect(
+          steamManager.applyFarmingGames(account.id, [570]),
+        ).rejects.toThrow("shutting down");
+        client.emit("loggedOn");
+      } finally {
+        release();
+        await shutdown;
+      }
+
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect(client.gamesPlayed).not.toHaveBeenCalledWith([570]);
+      expect(
+        (
+          await db
+            .select()
+            .from(steamAccount)
+            .where(eq(steamAccount.id, account.id))
+        )[0]?.desiredState,
+      ).toBe("paused");
+      expect(selectedGames(account.id).map((game) => game.appId)).toEqual([
+        440, 570, 730,
+      ]);
+    });
+  });
 });
 
 function boostCallCount(
@@ -2103,6 +2787,62 @@ async function credentialAccount() {
     })
     .returning();
   return account!;
+}
+
+async function farmingAccount(customTitle: string | null = null) {
+  const account = await credentialAccount();
+  const [updated] = await db
+    .update(steamAccount)
+    .set({ customTitle })
+    .where(eq(steamAccount.id, account.id))
+    .returning();
+  await db.insert(steamAccountGame).values([
+    {
+      accountId: account.id,
+      appId: 730,
+      enabled: true,
+      source: "manual",
+      createdAt: Date.now(),
+    },
+    {
+      accountId: account.id,
+      appId: 440,
+      enabled: true,
+      source: "manual",
+      createdAt: Date.now(),
+    },
+    {
+      accountId: account.id,
+      appId: 570,
+      enabled: false,
+      source: "manual",
+      createdAt: Date.now(),
+    },
+  ]);
+  return updated!;
+}
+
+function selectedGames(accountId: string) {
+  return db
+    .select()
+    .from(steamAccountGame)
+    .where(eq(steamAccountGame.accountId, accountId))
+    .all();
+}
+
+async function connectManagedFarmingAccount(accountId: string) {
+  await steamManager.start(accountId);
+  const client = steamMock.instances.at(-1)!;
+  client.emit("loggedOn");
+  await steamManager.runAccountOperation(accountId, async () => undefined);
+  expect(await steamManager.getFarmingAvailability(accountId)).toMatchObject({
+    allowed: true,
+  });
+  return client;
+}
+
+async function flushWorkerEvents(worker: SteamWorker) {
+  await (worker as unknown as { eventQueue: Promise<void> }).eventQueue;
 }
 
 function storedCredential(accountId: string) {

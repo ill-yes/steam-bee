@@ -22,6 +22,7 @@ export function BoostSelectionPanel({
     appliedAt: gamesAppliedAt,
     dirty: selectionDirty,
     state: selectionState,
+    activityMode,
     onChange: onDraftChange,
     onApply,
     onRevert,
@@ -31,7 +32,7 @@ export function BoostSelectionPanel({
   onToggleCollapsed: () => void;
   selection: BoostSelectionModel;
 }) {
-  const { messages: t, localeInfo } = useI18n();
+  const { locale, messages: t, localeInfo } = useI18n();
 
   return (
     <aside className="min-w-0 rounded-lg border border-[var(--line)] bg-[var(--surface)]">
@@ -40,7 +41,11 @@ export function BoostSelectionPanel({
           <Gamepad2 size={16} className="shrink-0 text-[var(--accent)]" />
           <div className="min-w-0">
             <strong className="block truncate text-sm">
-              {t.library.selectionTitle}
+              {activityMode === "farming"
+                ? locale === "de"
+                  ? "Manuelle Spielauswahl"
+                  : "Manual game selection"
+                : t.library.selectionTitle}
             </strong>
             <span className="block truncate text-xs text-[var(--muted)]">
               {selectionState.body}
@@ -124,10 +129,20 @@ export function BoostSelectionPanel({
             </div>
             {appliedAppIds.length !== draftAppIds.length || selectionDirty ? (
               <p className="text-xs leading-5 text-[var(--muted)]">
-                {interpolate(t.library.activeDraft, {
-                  active: appliedAppIds.length,
-                  draft: draftAppIds.length,
-                })}
+                {activityMode === "farming"
+                  ? interpolate(
+                      locale === "de"
+                        ? "{active} gespeichert · {draft} im Entwurf"
+                        : "{active} saved · {draft} draft",
+                      {
+                        active: appliedAppIds.length,
+                        draft: draftAppIds.length,
+                      },
+                    )
+                  : interpolate(t.library.activeDraft, {
+                      active: appliedAppIds.length,
+                      draft: draftAppIds.length,
+                    })}
               </p>
             ) : null}
           </div>

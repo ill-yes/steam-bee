@@ -5,13 +5,17 @@ import {
   CodeXml,
   Loader2,
   LogOut,
+  Palette,
   Settings2,
   TriangleAlert,
 } from "lucide-react";
 import type { SystemStatus } from "../../api";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/form";
-import type { ThemePreference } from "../../hooks/useTheme";
+import { useFontPreference, type ThemePreference } from "../../hooks/useTheme";
+import { AppearancePreferences } from "../appearance/AppearancePreferences";
+import { PreferenceDisclosure } from "../appearance/PreferenceDisclosure";
+import { appearanceCopy } from "../appearance/copy";
 import {
   localeOptions,
   useI18n,
@@ -38,9 +42,11 @@ export function AppShell({
   chrome?: "app" | "auth";
 }) {
   const { locale, messages: t, setLocale } = useI18n();
+  const { font, setFont } = useFontPreference();
+  const appearance = appearanceCopy(locale);
 
   return (
-    <div className={chrome === "auth" ? "min-h-screen" : "min-h-screen"}>
+    <div className="min-h-screen">
       <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--topbar)_92%,transparent)] px-4 backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid h-9 min-w-[104px] shrink-0 place-items-center overflow-hidden rounded-md border border-[var(--brand-line)] bg-[var(--brand)] px-2 text-[var(--brand-fg)] shadow-[var(--button-shadow)]">
@@ -56,9 +62,9 @@ export function AppShell({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {chrome === "app" ? <SystemStatusPill status={systemStatus} /> : null}
-          <label className="hidden items-center gap-2 text-xs font-semibold text-[var(--muted-strong)] sm:flex">
+          <label className="hidden items-center gap-2 text-xs font-semibold text-[var(--muted-strong)] lg:flex">
             <span>{t.appShell.languageLabel}</span>
             <Select
               id="locale-preference"
@@ -75,81 +81,73 @@ export function AppShell({
               ))}
             </Select>
           </label>
-          <label className="hidden items-center gap-2 text-xs font-semibold text-[var(--muted-strong)] md:flex">
-            <span>{t.appShell.themeLabel}</span>
-            <Select
-              id="theme-preference"
-              name="theme"
-              value={theme}
-              onChange={(event) =>
-                onThemeChange(event.target.value as ThemePreference)
-              }
-              className="h-8 min-h-8 w-[106px] py-0 text-xs"
-              aria-label={t.appShell.themeAria}
-            >
-              <option value="system">{t.common.system}</option>
-              <option value="dark">{t.common.dark}</option>
-              <option value="light">{t.common.light}</option>
-            </Select>
-          </label>
-          <details className="relative sm:hidden">
-            <summary
-              className="grid h-11 w-11 cursor-pointer list-none place-items-center rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted-strong)] [&::-webkit-details-marker]:hidden"
-              aria-label={t.appShell.mobileSettings}
-              title={t.appShell.mobileSettings}
-            >
-              <Settings2 size={17} />
-            </summary>
-            <div className="absolute right-0 top-11 z-40 grid w-[min(280px,calc(100vw-2rem))] gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-[var(--modal-shadow)] rtl:left-0 rtl:right-auto">
-              {chrome === "app" ? (
-                <MobileSystemStatus status={systemStatus} />
-              ) : null}
-              <Preference label={t.appShell.languageLabel}>
-                <Select
-                  name="mobile-locale"
-                  value={locale}
-                  onChange={(event) =>
-                    setLocale(event.target.value as LocaleCode)
-                  }
-                  aria-label={t.appShell.languageAria}
-                >
-                  {localeOptions.map((option) => (
-                    <option key={option.code} value={option.code}>
-                      {option.nativeLabel}
-                    </option>
-                  ))}
-                </Select>
-              </Preference>
-              <Preference label={t.appShell.themeLabel}>
-                <Select
-                  name="mobile-theme"
-                  value={theme}
-                  onChange={(event) =>
-                    onThemeChange(event.target.value as ThemePreference)
-                  }
-                  aria-label={t.appShell.themeAria}
-                >
-                  <option value="system">{t.common.system}</option>
-                  <option value="dark">{t.common.dark}</option>
-                  <option value="light">{t.common.light}</option>
-                </Select>
-              </Preference>
-              <a
-                href={sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex min-h-11 items-center gap-2 rounded-md px-2.5 text-xs font-semibold text-[var(--muted-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+          <PreferenceDisclosure
+            className="relative hidden lg:block"
+            summaryClassName="flex h-9 cursor-pointer list-none items-center justify-center gap-2 rounded-md border border-[var(--line)] bg-[var(--surface-2)] px-2.5 text-xs font-semibold text-[var(--muted-strong)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [&::-webkit-details-marker]:hidden"
+            label={appearance.appearanceAria}
+            trigger={
+              <>
+                <Palette size={16} />
+                <span className="hidden xl:inline">
+                  {appearance.appearance}
+                </span>
+              </>
+            }
+          >
+            <AppearancePreferences
+              theme={theme}
+              onThemeChange={onThemeChange}
+              font={font}
+              onFontChange={setFont}
+            />
+          </PreferenceDisclosure>
+          <PreferenceDisclosure
+            className="relative lg:hidden"
+            summaryClassName="grid h-11 w-11 cursor-pointer list-none place-items-center rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted-strong)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [&::-webkit-details-marker]:hidden"
+            label={t.appShell.mobileSettings}
+            trigger={<Settings2 size={17} />}
+          >
+            {chrome === "app" ? (
+              <MobileSystemStatus status={systemStatus} />
+            ) : null}
+            <Preference label={t.appShell.languageLabel}>
+              <Select
+                name="mobile-locale"
+                value={locale}
+                onChange={(event) =>
+                  setLocale(event.target.value as LocaleCode)
+                }
+                aria-label={t.appShell.languageAria}
               >
-                <CodeXml size={16} />
-                <span>{t.common.sourceCode}</span>
-              </a>
-            </div>
-          </details>
+                {localeOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.nativeLabel}
+                  </option>
+                ))}
+              </Select>
+            </Preference>
+            <AppearancePreferences
+              theme={theme}
+              onThemeChange={onThemeChange}
+              font={font}
+              onFontChange={setFont}
+              mobile
+            />
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex min-h-11 items-center gap-2 rounded-md px-2.5 text-xs font-semibold text-[var(--muted-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
+            >
+              <CodeXml size={16} />
+              <span>{t.common.sourceCode}</span>
+            </a>
+          </PreferenceDisclosure>
           <a
             href={sourceUrl}
             target="_blank"
             rel="noreferrer"
-            className="hidden h-9 w-9 shrink-0 place-items-center rounded-md border border-transparent text-[var(--muted-strong)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)] sm:grid"
+            className="hidden h-9 w-9 shrink-0 place-items-center rounded-md border border-transparent text-[var(--muted-strong)] outline-none hover:bg-[var(--surface-2)] hover:text-[var(--ink)] focus-visible:ring-2 focus-visible:ring-[var(--ring)] lg:grid"
             aria-label={t.common.sourceCode}
             title={t.common.sourceCode}
           >
@@ -204,7 +202,7 @@ function SystemStatusPill({
 
   return (
     <span
-      className="hidden min-h-8 max-w-[220px] items-center gap-1.5 truncate rounded-md border border-[var(--line)] bg-[var(--surface-2)] px-2.5 text-xs font-semibold text-[var(--muted-strong)] sm:inline-flex"
+      className="hidden min-h-8 max-w-[180px] items-center gap-1.5 truncate rounded-md border border-[var(--line)] bg-[var(--surface-2)] px-2.5 text-xs font-semibold text-[var(--muted-strong)] lg:inline-flex"
       title={value.detail}
     >
       <Icon

@@ -73,6 +73,7 @@ export async function registerAccountRoutes(app: FastifyInstance) {
       (account) =>
         ({
           ...presentSteamAccount(account, steamManager.getStatus(account.id)),
+          ...steamManager.getActivity(account.id),
           health: operations.health.get(account.id)!,
           safety: operations.safety.get(account.id)!,
           games: games

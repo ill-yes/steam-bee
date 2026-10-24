@@ -10,11 +10,10 @@ import {
   notificationRule,
   scheduleException,
   steamAccount,
-  steamAccountLibrary,
-  steamAppCache,
   steamEvent,
 } from "../src/db/schema.js";
 import { steamManager } from "../src/steam/manager.js";
+import { replaceAccountLibrary } from "../src/steam/repository.js";
 
 describe("operations API", () => {
   beforeEach(async () => {
@@ -71,20 +70,12 @@ describe("operations API", () => {
         createdAt: now,
         updatedAt: now,
       });
-      await db.insert(steamAppCache).values({
-        appId: 730,
-        name: "Counter-Strike 2",
-        playtimeForever: 120,
-        source: "library",
-        updatedAt: now,
-      });
-      await db.insert(steamAccountLibrary).values({
+      replaceAccountLibrary(
         accountId,
-        appId: 730,
-        playtimeForever: 120,
-        source: "library",
-        importedAt: now,
-      });
+        [{ appId: 730, name: "Counter-Strike 2", playtimeForever: 120 }],
+        new Map(),
+        now,
+      );
 
       const accounts = await app.inject({
         method: "GET",

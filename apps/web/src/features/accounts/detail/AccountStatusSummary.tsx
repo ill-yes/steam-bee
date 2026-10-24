@@ -13,6 +13,7 @@ import {
 import { cn } from "../../../lib/utils";
 import { interpolate, useI18n } from "../../../i18n";
 import { StatusFact } from "./StatusFact";
+import { hubCopy } from "./hubCopy";
 
 export function AccountStatusSummary({
   account,
@@ -31,7 +32,13 @@ export function AccountStatusSummary({
   selectionDirty: boolean;
   events: SteamEvent[];
 }) {
-  const { messages: t, localeInfo } = useI18n();
+  const { locale, messages: t, localeInfo } = useI18n();
+  const hub = hubCopy(locale);
+  const activeCount =
+    account.activeAppIds?.length ??
+    (account.runtimeStatus === "boosting" && account.activityMode !== "farming"
+      ? appliedCount
+      : 0);
   const o = t.operations;
   const health = account.health;
   const dateValue = (value: number | null | undefined) =>
@@ -49,15 +56,17 @@ export function AccountStatusSummary({
           {t.accountDetail.boostStatus}
         </p>
         <strong className="mt-1 block text-base">
-          {statusSummary(account.runtimeStatus, appliedCount, t)}
+          {statusSummary(account.runtimeStatus, activeCount, t)}
         </strong>
         <p className="mt-1 text-sm leading-5 text-[var(--muted)]">
-          {nextStepMessage(
-            account.runtimeStatus,
-            libraryCount,
-            appliedCount,
-            t,
-          )}
+          {account.activityMode === "farming"
+            ? hub.farmingStatusHint
+            : nextStepMessage(
+                account.runtimeStatus,
+                libraryCount,
+                appliedCount,
+                t,
+              )}
         </p>
       </div>
 
@@ -65,15 +74,17 @@ export function AccountStatusSummary({
         <StatusFact
           label={t.accountDetail.activeGames}
           value={interpolate(t.accountDetail.ofLimit, {
-            count: appliedCount,
+            count: activeCount,
             limit: gameLimit,
           })}
           detail={
-            selectionDirty
-              ? interpolate(t.accountDetail.draftGames, { count: draftCount })
-              : t.accountDetail.reportedToSteam
+            account.activityMode === "farming"
+              ? `${hub.savedSelection}: ${appliedCount}`
+              : selectionDirty
+                ? interpolate(t.accountDetail.draftGames, { count: draftCount })
+                : t.accountDetail.reportedToSteam
           }
-          tone={selectionDirty ? "warn" : appliedCount > 0 ? "good" : "neutral"}
+          tone={selectionDirty ? "warn" : activeCount > 0 ? "good" : "neutral"}
         />
         <StatusFact
           label={t.accountDetail.visibility}
