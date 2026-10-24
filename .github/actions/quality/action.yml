@@ -5,20 +5,22 @@ runs:
   using: composite
   steps:
     - name: Set up Node.js
-      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version: 26.8.1
+        node-version: 26.12.1
 
     - name: Enable Corepack
       shell: bash
       run: npm install --global corepack@0.36.0 && corepack enable
 
     - name: Restore pnpm cache
-      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
-        node-version: 26.8.1
+        node-version: 26.12.1
         cache: pnpm
-        cache-dependency-path: pnpm-lock.yaml
+        cache-dependency-path: |
+          pnpm-lock.yaml
+          pnpm-workspace.yaml
 
     - name: Install dependencies
       shell: bash
