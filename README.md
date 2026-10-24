@@ -150,7 +150,7 @@ your backup plan, and never bind `/data` to the checked-out repository. See
 
 Requirements:
 
-- Node.js 26.8.1 (matching CI and the container image).
+- Node.js 26.12.1 (matching CI and the container image).
 - Corepack with the repository-pinned pnpm version.
 - Docker Engine with Docker Compose v2 for container-related changes.
 
@@ -160,6 +160,12 @@ corepack enable
 pnpm install
 pnpm dev
 ```
+
+Corepack selects the integrity-pinned pnpm version from `package.json`.
+Installation, CI, and Docker builds also verify the exact version. The workspace
+keeps a single-document project lockfile for GitHub's dependency scanning;
+pnpm's automatic version switching is disabled while Corepack verification and
+the dependency security policies remain enabled.
 
 The server listens on `http://localhost:3000` and serves the built web app in
 production. In development, run the web app separately if you want Vite HMR:
