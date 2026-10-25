@@ -89,6 +89,18 @@ const en = {
     "Load the market wallet currency before changing price amounts.",
   currencyBinding:
     "Amounts use {currency} and are bound to this wallet currency. Fees are included in the buyer price.",
+  lowestCard: "Sells a little slower, more revenue",
+  highestCard: "Sells right away, a little less revenue",
+  exampleTitle: "How it would look now",
+  exampleSubtitle: "Worked example for a card at {price}",
+  exampleAdjustment: "Your adjustment",
+  exampleLimited: "Limited by your minimum or maximum",
+  exampleBuyerPays: "Buyer pays",
+  exampleFees: "Steam and game fee (estimated)",
+  exampleReceive: "You receive",
+  exampleInvalid: "Enter valid amounts to see the example.",
+  exampleNote: "Saving sells nothing. Every sale is reviewed first.",
+  advancedDelay: "Advanced: {seconds} s pause between sales",
   adjustmentHelp:
     "A negative amount undercuts the source price. Use decimal amounts, for example -0.01. No amount is rounded silently.",
   invalidAmount: "Enter a valid amount with at most {digits} decimal places.",
@@ -229,6 +241,18 @@ const de: typeof en = {
     "Lade die Wallet-Währung vom Markt, bevor du Preisbeträge änderst.",
   currencyBinding:
     "Beträge gelten in {currency} und sind an diese Wallet-Währung gebunden. Der Käuferpreis enthält Gebühren.",
+  lowestCard: "Verkauft etwas langsamer, mehr Erlös",
+  highestCard: "Verkauft sofort, etwas weniger Erlös",
+  exampleTitle: "So würde es jetzt aussehen",
+  exampleSubtitle: "Rechenbeispiel für eine Karte zu {price}",
+  exampleAdjustment: "Deine Anpassung",
+  exampleLimited: "Begrenzt durch Mindest- oder Höchstpreis",
+  exampleBuyerPays: "Käufer zahlt",
+  exampleFees: "Steam- und Spielgebühr (geschätzt)",
+  exampleReceive: "Du erhältst",
+  exampleInvalid: "Gib gültige Beträge ein, um das Beispiel zu sehen.",
+  exampleNote: "Speichern verkauft nichts. Jeder Verkauf wird vorher geprüft.",
+  advancedDelay: "Erweitert: {seconds} s Pause zwischen Verkäufen",
   adjustmentHelp:
     "Ein negativer Betrag unterbietet die Preisquelle. Verwende Dezimalbeträge, zum Beispiel -0,01. Beträge werden nie still gerundet.",
   invalidAmount:

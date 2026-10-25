@@ -5,10 +5,13 @@ import { api, ApiError, apiErrorMessage, isAbortError } from "../../api";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Input, Label, Select } from "../../components/ui/form";
+import { Input, Label } from "../../components/ui/form";
 import { interpolate, useI18n } from "../../i18n";
 import { advancedInventoryCopy } from "./advanced-copy";
 import { formatMinorToMajor, parseMajorToMinor } from "./inventory-model";
+import { formatMoney } from "./inventory-ui";
+import { priceExample } from "./price-example";
+import { cn } from "../../lib/utils";
 import {
   readPriceRulesDraft,
   storePriceRulesDraft,
@@ -83,20 +86,20 @@ export function PriceRulesPanel({
     const sameCurrency =
       value.currencyId === null || value.currencyId === wallet?.id;
     const digits = wallet?.minorUnit ?? 2;
+    const amount = (minor: number) => {
+      const text = formatMinorToMajor(minor, digits);
+      return text === null ? null : localizeDecimal(text, locale);
+    };
     setMode(value.priceMode);
-    setAdjustment(
-      sameCurrency
-        ? (formatMinorToMajor(value.adjustment, digits) ?? "0")
-        : "0",
-    );
+    setAdjustment(sameCurrency ? (amount(value.adjustment) ?? "0") : "0");
     setMinimum(
       sameCurrency && value.minBuyerPrice !== null
-        ? (formatMinorToMajor(value.minBuyerPrice, digits) ?? "")
+        ? (amount(value.minBuyerPrice) ?? "")
         : "",
     );
     setMaximum(
       sameCurrency && value.maxBuyerPrice !== null
-        ? (formatMinorToMajor(value.maxBuyerPrice, digits) ?? "")
+        ? (amount(value.maxBuyerPrice) ?? "")
         : "",
     );
     setDelay(String(value.delaySeconds));
@@ -277,10 +280,7 @@ export function PriceRulesPanel({
     >
       <div className="flex flex-wrap items-center gap-2">
         {embedded ? (
-          <h3
-            tabIndex={-1}
-            className="flex items-center gap-2 text-sm font-semibold outline-none"
-          >
+          <h3 tabIndex={-1} className="sr-only">
             <Settings2 size={15} />
             {a.priceRules}
           </h3>
@@ -358,90 +358,137 @@ export function PriceRulesPanel({
                   </Alert>
                 )
               )}
-              <Label>
-                {a.priceMode}
-                <Select
-                  value={mode}
-                  onChange={(event) => {
-                    const value = event.target
-                      .value as MarketPriceSettings["priceMode"];
-                    setMode(value);
-                    change({ priceMode: value });
-                  }}
-                  disabled={disabled || saving}
-                >
-                  <option value="lowestSellOrder">{a.lowestSellOrder}</option>
-                  <option value="highestBuyOrder">{a.highestBuyOrder}</option>
-                </Select>
-              </Label>
-              <p className="text-xs text-[var(--muted)]">
-                {mode === "highestBuyOrder" ? a.highestHelp : a.lowestHelp}
-              </p>
-              <div className="grid min-w-0 gap-3 sm:grid-cols-3">
-                <Label>
-                  {a.adjustment}
-                  {currency
-                    ? ` (${(draftCurrency.current ?? currency).code})`
-                    : ""}
-                  <Input
-                    inputMode="text"
-                    type="text"
-                    value={adjustment}
-                    onChange={(event) => {
-                      setAdjustment(event.target.value);
-                      change({ adjustment: event.target.value });
-                    }}
-                    disabled={disabled || saving || !currency}
+              <div className="@container min-w-0">
+                <div className="grid min-w-0 items-start gap-4 @min-[44rem]:grid-cols-[minmax(0,3fr)_minmax(240px,2fr)]">
+                  <div className="grid min-w-0 gap-3">
+                    <fieldset
+                      role="radiogroup"
+                      className="grid min-w-0 gap-2 @min-[28rem]:grid-cols-2"
+                      disabled={disabled || saving}
+                    >
+                      <legend className="mb-1.5 text-xs font-semibold text-[var(--muted-strong)]">
+                        {a.priceMode}
+                      </legend>
+                      {(
+                        [
+                          ["lowestSellOrder", a.lowestSellOrder, a.lowestCard],
+                          ["highestBuyOrder", a.highestBuyOrder, a.highestCard],
+                        ] as const
+                      ).map(([value, title, hint]) => (
+                        <label
+                          key={value}
+                          className={cn(
+                            "flex min-w-0 cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm",
+                            mode === value
+                              ? "border-[var(--primary)] bg-[var(--surface-2)] ring-1 ring-[var(--primary)]"
+                              : "border-[var(--line)] hover:border-[var(--line-strong)]",
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name={`${contentId}-mode`}
+                            value={value}
+                            checked={mode === value}
+                            onChange={() => {
+                              setMode(value);
+                              change({ priceMode: value });
+                            }}
+                            className="mt-0.5"
+                          />
+                          <span className="min-w-0">
+                            <strong className="block">{title}</strong>
+                            <span className="text-xs text-[var(--muted)]">
+                              {hint}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                    <p className="text-xs text-[var(--muted)]">
+                      {mode === "highestBuyOrder"
+                        ? a.highestHelp
+                        : a.lowestHelp}
+                    </p>
+                    <div className="grid min-w-0 gap-3 @min-[28rem]:grid-cols-3">
+                      <Label>
+                        {a.adjustment}
+                        {currency
+                          ? ` (${(draftCurrency.current ?? currency).code})`
+                          : ""}
+                        <Input
+                          inputMode="text"
+                          type="text"
+                          value={adjustment}
+                          onChange={(event) => {
+                            setAdjustment(event.target.value);
+                            change({ adjustment: event.target.value });
+                          }}
+                          disabled={disabled || saving || !currency}
+                        />
+                      </Label>
+                      <Label>
+                        {a.minPrice}
+                        <Input
+                          inputMode="decimal"
+                          type="text"
+                          placeholder={a.optional}
+                          value={minimum}
+                          onChange={(event) => {
+                            setMinimum(event.target.value);
+                            change({ minimum: event.target.value });
+                          }}
+                          disabled={disabled || saving || !currency}
+                        />
+                      </Label>
+                      <Label>
+                        {a.maxPrice}
+                        <Input
+                          inputMode="decimal"
+                          type="text"
+                          placeholder={a.optional}
+                          value={maximum}
+                          onChange={(event) => {
+                            setMaximum(event.target.value);
+                            change({ maximum: event.target.value });
+                          }}
+                          disabled={disabled || saving || !currency}
+                        />
+                      </Label>
+                    </div>
+                    <p className="text-xs leading-5 text-[var(--muted)]">
+                      {a.adjustmentHelp}
+                    </p>
+                    <details className="text-sm">
+                      <summary className="cursor-pointer font-semibold">
+                        {interpolate(a.advancedDelay, { seconds: delay })}
+                      </summary>
+                      <Label className="mt-2">
+                        {a.delay}
+                        <Input
+                          type="number"
+                          min={1}
+                          max={60}
+                          step={1}
+                          value={delay}
+                          onChange={(event) => {
+                            setDelay(event.target.value);
+                            change({ delay: event.target.value });
+                          }}
+                          disabled={disabled || saving}
+                          className="max-w-32"
+                        />
+                      </Label>
+                    </details>
+                  </div>
+                  <PriceExampleCard
+                    mode={mode}
+                    adjustment={adjustment}
+                    minimum={minimum}
+                    maximum={maximum}
+                    currency={draftCurrency.current ?? currency}
                   />
-                </Label>
-                <Label>
-                  {a.minPrice}
-                  <Input
-                    inputMode="decimal"
-                    type="text"
-                    placeholder={a.optional}
-                    value={minimum}
-                    onChange={(event) => {
-                      setMinimum(event.target.value);
-                      change({ minimum: event.target.value });
-                    }}
-                    disabled={disabled || saving || !currency}
-                  />
-                </Label>
-                <Label>
-                  {a.maxPrice}
-                  <Input
-                    inputMode="decimal"
-                    type="text"
-                    placeholder={a.optional}
-                    value={maximum}
-                    onChange={(event) => {
-                      setMaximum(event.target.value);
-                      change({ maximum: event.target.value });
-                    }}
-                    disabled={disabled || saving || !currency}
-                  />
-                </Label>
+                </div>
               </div>
-              <p className="text-xs leading-5 text-[var(--muted)]">
-                {a.adjustmentHelp}
-              </p>
-              <Label>
-                {a.delay}
-                <Input
-                  type="number"
-                  min={1}
-                  max={60}
-                  step={1}
-                  value={delay}
-                  onChange={(event) => {
-                    setDelay(event.target.value);
-                    change({ delay: event.target.value });
-                  }}
-                  disabled={disabled || saving}
-                  className="max-w-32"
-                />
-              </Label>
               <Button
                 type="submit"
                 size="sm"
@@ -462,5 +509,122 @@ export function PriceRulesPanel({
         </div>
       )}
     </section>
+  );
+}
+
+function localizeDecimal(text: string, locale: string) {
+  return locale === "de" ? text.replace(".", ",") : text;
+}
+
+function PriceExampleCard({
+  mode,
+  adjustment,
+  minimum,
+  maximum,
+  currency,
+}: {
+  mode: MarketPriceSettings["priceMode"];
+  adjustment: string;
+  minimum: string;
+  maximum: string;
+  currency: MarketCurrency | null;
+}) {
+  const { locale, localeInfo } = useI18n();
+  const a = advancedInventoryCopy(locale);
+  const digits = currency?.minorUnit ?? 2;
+  const adjust = parseMajorToMinor(adjustment, digits, { allowNegative: true });
+  const min = minimum.trim() === "" ? null : parseMajorToMinor(minimum, digits);
+  const max = maximum.trim() === "" ? null : parseMajorToMinor(maximum, digits);
+  const valid =
+    currency !== null &&
+    adjust !== null &&
+    (minimum.trim() === "" || min !== null) &&
+    (maximum.trim() === "" || max !== null);
+  const example = valid
+    ? priceExample({ mode, adjustment: adjust, minimum: min, maximum: max })
+    : null;
+  const money = (value: number) =>
+    formatMoney(value, currency, localeInfo.dateLocale);
+  const signed = (value: number) =>
+    value < 0 ? `−${money(-value)}` : `+${money(value)}`;
+
+  return (
+    <aside
+      aria-label={a.exampleTitle}
+      className="grid min-w-0 gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-4 text-sm"
+    >
+      <strong>{a.exampleTitle}</strong>
+      {example ? (
+        <>
+          <span className="text-xs text-[var(--muted)]">
+            {interpolate(a.exampleSubtitle, { price: money(example.source) })}
+          </span>
+          <dl className="mt-2 grid">
+            <ExampleRow
+              label={
+                mode === "highestBuyOrder"
+                  ? a.highestBuyOrder
+                  : a.lowestSellOrder
+              }
+              value={money(example.source)}
+            />
+            <ExampleRow
+              label={a.exampleAdjustment}
+              value={signed(example.adjustment)}
+            />
+            <ExampleRow
+              label={a.exampleBuyerPays}
+              value={money(example.buyerPays)}
+              hint={example.limited ? a.exampleLimited : undefined}
+            />
+            <ExampleRow
+              label={a.exampleFees}
+              value={`−${money(example.fees)}`}
+            />
+            <ExampleRow
+              label={a.exampleReceive}
+              value={money(example.receive)}
+              strong
+            />
+          </dl>
+        </>
+      ) : (
+        <span className="text-xs text-[var(--muted)]">{a.exampleInvalid}</span>
+      )}
+      <span className="mt-2 text-xs text-[var(--muted)]">{a.exampleNote}</span>
+    </aside>
+  );
+}
+
+function ExampleRow({
+  label,
+  value,
+  hint,
+  strong = false,
+}: {
+  label: string;
+  value: string;
+  hint?: string | undefined;
+  strong?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-t border-[var(--line)] py-1.5 first:border-t-0">
+      <dt className={cn("min-w-0", strong && "font-semibold")}>
+        {label}
+        {hint ? (
+          <small className="block text-[11px] text-[var(--muted)]">
+            {hint}
+          </small>
+        ) : null}
+      </dt>
+      <dd
+        className={cn(
+          "shrink-0 tabular-nums",
+          strong && "font-bold text-[var(--good)]",
+        )}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

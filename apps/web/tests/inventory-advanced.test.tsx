@@ -726,8 +726,10 @@ describe("grouped inventory and batch market tools", () => {
     renderPanel();
     await screen.findByText("Bee card");
     fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
-    const mode = await screen.findByRole("combobox", { name: "Price source" });
-    fireEvent.change(mode, { target: { value: "highestBuyOrder" } });
+    expect(
+      await screen.findByRole("radiogroup", { name: "Price source" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: /^Highest buy order/ }));
     fireEvent.change(
       screen.getByRole("textbox", { name: /Buyer-price adjustment/ }),
       { target: { value: "-0,01" } },
@@ -1070,7 +1072,7 @@ describe("grouped inventory and batch market tools", () => {
       await screen.findByRole("button", { name: "Retry loading rules" }),
     );
     expect(
-      await screen.findByRole("combobox", { name: "Price source" }),
+      await screen.findByRole("radiogroup", { name: "Price source" }),
     ).toBeVisible();
     expect(
       screen.queryByText("Rules temporarily unavailable"),
@@ -1225,7 +1227,7 @@ describe("grouped inventory and batch market tools", () => {
     await screen.findByText("Loading pricing rules…");
     showInventory();
     fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
-    await screen.findByRole("combobox", { name: "Price source" });
+    await screen.findByRole("radiogroup", { name: "Price source" });
     await act(async () => {
       rejectOld(new Error("Obsolete rules error"));
     });
