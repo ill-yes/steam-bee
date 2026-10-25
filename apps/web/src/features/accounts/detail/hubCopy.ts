@@ -72,12 +72,22 @@ const en = {
   confirmIdle:
     "Stop reporting games to Steam? The account stays connected and paused; your selections stay saved.",
   idleConfirm: "Pause",
+  reloginTitle: "Sign in again: {name}",
+  reloginDescription:
+    "Sign in with the same Steam account. Your selections, presets and settings stay saved.",
+  reloginBannerTitle: "Steam ended the sign-in",
+  reloginBannerText:
+    "This happens after a password change or when the session expires. Sign in again once, then boosting, farming and the inventory work as before. Your selections stay saved.",
+  reloginQr: "Sign in again (QR code)",
+  reloginPassword: "With password",
+  steamMessage: "Steam says: {message}",
+  modeAfterLogin: "Available after signing in again",
 };
 const de: typeof en = {
   workspace: "Konto-Arbeitsbereich",
   library: "Spiele & Spielzeit",
   inventory: "Inventar & Markt",
-  farming: "Karten-Farming",
+  farming: "Karten farmen",
   offers: "Gratisangebote",
   account: "Konto & Sicherheit",
   activeGames: "Gerade an Steam gemeldet",
@@ -145,6 +155,16 @@ const de: typeof en = {
   confirmIdle:
     "Keine Spiele mehr an Steam melden? Das Konto bleibt verbunden und pausiert, deine Auswahl bleibt gespeichert.",
   idleConfirm: "Pausieren",
+  reloginTitle: "Neu anmelden: {name}",
+  reloginDescription:
+    "Melde dich mit demselben Steam-Konto an. Deine Auswahl, Vorlagen und Einstellungen bleiben erhalten.",
+  reloginBannerTitle: "Steam hat die Anmeldung beendet",
+  reloginBannerText:
+    "Das passiert nach einem Passwortwechsel oder wenn die Sitzung abläuft. Melde dich einmal neu an, danach laufen Boosten, Farming und Inventar wie vorher. Deine Auswahl bleibt erhalten.",
+  reloginQr: "Neu anmelden (QR-Code)",
+  reloginPassword: "Mit Passwort",
+  steamMessage: "Steam meldet: {message}",
+  modeAfterLogin: "Nach der Anmeldung verfügbar",
 };
 
 export function hubCopy(locale: LocaleCode) {

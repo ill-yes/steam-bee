@@ -127,8 +127,8 @@ export const en = {
     title: "Add Steam account",
     description: "QR is recommended. Credentials are only used once.",
     loginMode: "Login mode",
-    qrLogin: "QR login",
-    fallback: "Fallback",
+    qrLogin: "QR code",
+    fallback: "Username & password",
     qrIntro:
       "Scan the code in the Steam mobile app. SteamBee waits for approval and then stores only the refresh token.",
     qrStarting: "Starting...",

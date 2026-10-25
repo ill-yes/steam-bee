@@ -16,6 +16,7 @@ export function AccountHubBar({
   busyAction,
   primaryCommand,
   connected,
+  needsRelogin = false,
   canStop,
   eventCount,
   appliedCount,
@@ -31,6 +32,7 @@ export function AccountHubBar({
   busyAction: string | null;
   primaryCommand: ReturnType<typeof getPrimaryCommand>;
   connected: boolean;
+  needsRelogin?: boolean | undefined;
   canStop: boolean;
   eventCount: number;
   appliedCount: number;
@@ -121,7 +123,11 @@ export function AccountHubBar({
         appliedCount={appliedCount}
         gameLimit={gameLimit}
         farming={farming}
-        disabled={Boolean(busyAction) || primaryCommand?.disabled === true}
+        disabled={
+          Boolean(busyAction) ||
+          needsRelogin ||
+          primaryCommand?.disabled === true
+        }
         onSelect={onSelectMode}
       />
       <div

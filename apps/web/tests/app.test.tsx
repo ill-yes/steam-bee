@@ -191,6 +191,37 @@ describe("web smoke", () => {
     });
   });
 
+  it("offers a new sign-in instead of connect and disconnect when Steam ended the login", () => {
+    const onRelogin = vi.fn();
+    renderWithProviders(
+      <AccountDetail
+        account={{
+          ...pausedAccount,
+          status: "login_required",
+          runtimeStatus: "login_required",
+          lastError: "Refresh token is missing or incomplete.",
+        }}
+        events={[]}
+        diagnostics={diagnostics}
+        onReload={vi.fn()}
+        onRelogin={onRelogin}
+      />,
+    );
+
+    expect(screen.getByText("Steam ended the sign-in")).toBeInTheDocument();
+    expect(
+      screen.getByText("Steam says: Refresh token is missing or incomplete."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Disconnect/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Connect/ })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in again (QR code)" }),
+    );
+    expect(onRelogin).toHaveBeenCalledWith("qr");
+    fireEvent.click(screen.getByRole("button", { name: "With password" }));
+    expect(onRelogin).toHaveBeenCalledWith("credentials");
+  });
+
   it("shows the session-conflict attempt and cooldown state", async () => {
     renderAccountDetail({
       ...pausedAccount,

@@ -377,7 +377,7 @@ describe("add account flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect once" }));
     expect(credentialSignal?.aborted).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "QR login" }));
+    fireEvent.click(screen.getByRole("button", { name: "QR code" }));
     expect(credentialSignal?.aborted).toBe(true);
     credentialRequest.resolve({
       status: "authenticated",
@@ -698,7 +698,7 @@ function renderModal({
 }
 
 function openCredentials() {
-  fireEvent.click(screen.getByRole("button", { name: "Fallback" }));
+  fireEvent.click(screen.getByRole("button", { name: "Username & password" }));
 }
 
 function fillCredentials(guardCode = "") {

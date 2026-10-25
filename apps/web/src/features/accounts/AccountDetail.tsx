@@ -36,6 +36,8 @@ import { SafetyPanel } from "./detail/SafetyPanel";
 import { useAccountResources } from "./useAccountController";
 import { SteamToolsPanel, type AccountWorkspaceTab } from "./SteamToolsPanel";
 import { AccountHubBar } from "./detail/AccountHubBar";
+import { ReloginBanner } from "./detail/ReloginBanner";
+import type { LoginMode } from "./useAddAccountFlow";
 import type { ActivityMode } from "./detail/ActivityModeSwitch";
 import { useFarmingSummary } from "../farming/useFarmingSummary";
 import { hubCopy } from "./detail/hubCopy";
@@ -52,6 +54,7 @@ type AccountDetailProps = {
   events: SteamEvent[];
   diagnostics: Diagnostics | null;
   onReload: () => Promise<void>;
+  onRelogin?: ((mode: LoginMode) => void) | undefined;
 };
 
 export function AccountDetail(props: AccountDetailProps) {
@@ -63,6 +66,7 @@ function AccountWorkspace({
   events,
   diagnostics,
   onReload,
+  onRelogin,
 }: AccountDetailProps) {
   const { locale, messages: t } = useI18n();
   const hub = hubCopy(locale);
@@ -134,7 +138,8 @@ function AccountWorkspace({
   const canPause = statusCapability.canPause;
   const connected = statusCapability.active || statusCapability.paused;
   const farming = useFarmingSummary(account.id, account.activityMode);
-  const canStop = statusCapability.canStop;
+  const needsRelogin = account.runtimeStatus === "login_required";
+  const canStop = statusCapability.canStop && !needsRelogin;
   const primaryCommand = getPrimaryCommand(
     account.runtimeStatus,
     appliedAppIds.length,
@@ -882,7 +887,8 @@ function AccountWorkspace({
         account={account}
         library={library}
         busyAction={busyAction}
-        primaryCommand={primaryCommand}
+        primaryCommand={needsRelogin ? null : primaryCommand}
+        needsRelogin={needsRelogin}
         connected={connected}
         canStop={canStop}
         eventCount={events.length}
@@ -894,7 +900,11 @@ function AccountWorkspace({
         onStop={() => void accountAction("stop")}
         onLogs={() => setLogOpen(true)}
       />
-      {account.lastError && <Alert tone="danger">{account.lastError}</Alert>}
+      {needsRelogin && onRelogin ? (
+        <ReloginBanner steamMessage={account.lastError} onRelogin={onRelogin} />
+      ) : account.lastError ? (
+        <Alert tone="danger">{account.lastError}</Alert>
+      ) : null}
       {actionError && !confirmation ? (
         <Alert tone="danger">{actionError}</Alert>
       ) : null}

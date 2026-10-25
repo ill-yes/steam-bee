@@ -133,8 +133,8 @@ const messages = {
     description:
       "QR ist empfohlen. Zugangsdaten werden nur einmalig verwendet.",
     loginMode: "Login-Modus",
-    qrLogin: "QR Login",
-    fallback: "Fallback",
+    qrLogin: "QR-Code",
+    fallback: "Benutzername & Passwort",
     qrIntro:
       "Scanne den Code in der Steam Mobile App. SteamBee wartet auf die Freigabe und speichert danach nur den Refresh-Token.",
     qrStarting: "Starte...",

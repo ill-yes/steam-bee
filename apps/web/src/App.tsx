@@ -33,6 +33,7 @@ import { AppShell } from "./features/accounts/AppShell";
 import { EmptyWorkspace } from "./features/accounts/EmptyWorkspace";
 import { AuthPanel } from "./features/auth/AuthPanel";
 import { accountActivityStatus } from "./features/accounts/activity-status";
+import type { LoginMode } from "./features/accounts/useAddAccountFlow";
 
 const AddAccountModal = lazy(() =>
   import("./features/accounts/AddAccountModal").then((module) => ({
@@ -61,7 +62,11 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [railCollapsed, setRailCollapsed] = useState(true);
-  const [addAccountOpen, setAddAccountOpen] = useState(false);
+  const [addAccount, setAddAccount] = useState<{
+    mode?: LoginMode;
+    accountName?: string;
+  } | null>(null);
+  const openAddAccount = () => setAddAccount({});
   const [adminOpen, setAdminOpen] = useState(false);
   const loadGeneration = useRef(0);
   const loadController = useRef<AbortController | null>(null);
@@ -321,11 +326,13 @@ export function App() {
           },
         }}
       />
-      {addAccountOpen && (
+      {addAccount && (
         <Suspense fallback={<LazyDialogStatus label={t.common.loading} />}>
           <AddAccountModal
-            onClose={() => setAddAccountOpen(false)}
+            onClose={() => setAddAccount(null)}
             onDone={load}
+            initialMode={addAccount.mode}
+            reloginAccountName={addAccount.accountName}
           />
         </Suspense>
       )}
@@ -342,7 +349,7 @@ export function App() {
           collapsed={railCollapsed}
           onToggleCollapsed={() => setRailCollapsed((value) => !value)}
           onSelect={setSelectedId}
-          onAdd={() => setAddAccountOpen(true)}
+          onAdd={openAddAccount}
           onOpenAdmin={() => setAdminOpen(true)}
         />
 
@@ -357,7 +364,7 @@ export function App() {
             accounts={accounts}
             selected={selected}
             onSelect={setSelectedId}
-            onAdd={() => setAddAccountOpen(true)}
+            onAdd={openAddAccount}
             onOpenAdmin={() => setAdminOpen(true)}
           />
 
@@ -370,9 +377,12 @@ export function App() {
               )}
               diagnostics={diagnostics}
               onReload={load}
+              onRelogin={(mode) =>
+                setAddAccount({ mode, accountName: selected.accountName })
+              }
             />
           ) : (
-            <EmptyWorkspace onAdd={() => setAddAccountOpen(true)} />
+            <EmptyWorkspace onAdd={openAddAccount} />
           )}
         </section>
       </main>
