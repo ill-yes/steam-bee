@@ -1,7 +1,7 @@
 import type { LocaleCode } from "../../i18n";
 
 const en = {
-  title: "Trading card farming",
+  title: "Card farming",
   description:
     "Collect remaining Steam trading card drops and track the games being farmed.",
   overview: "Overview",
@@ -179,7 +179,7 @@ const en = {
 };
 
 const de: typeof en = {
-  title: "Sammelkarten-Farming",
+  title: "Karten farmen",
   description:
     "Sammle verbleibende Steam-Kartendrops und behalte die gefarmten Spiele im Blick.",
   overview: "Übersicht",

@@ -77,7 +77,11 @@ describe("account workspace navigation", () => {
       <SteamToolsPanel
         accountId="first"
         libraryPanel={<p>Saved games</p>}
-        planningPanel={<p>Presets</p>}
+        automationPanels={{
+          presets: <p>Presets</p>,
+          schedules: <p>Schedules</p>,
+          analytics: <p>Statistics</p>,
+        }}
         accountPanel={<p>Account settings</p>}
       />,
       { wrapper: I18nProvider },
@@ -85,13 +89,18 @@ describe("account workspace navigation", () => {
     const groups = nav().getAllByRole("group");
     expect(
       groups.map((group) => group.getAttribute("aria-labelledby")),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(
-      within(screen.getByRole("group", { name: "Items" }))
+      within(nav().getByRole("group", { name: "Items" }))
         .getAllByRole("button")
         .map((button) => button.textContent),
     ).toEqual(["Inventory", "Market listings", "Pricing rules"]);
-    expect(nav().getAllByRole("button")).toHaveLength(8);
+    expect(
+      within(nav().getByRole("group", { name: "Automation" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Presets", "Schedules", "Statistics"]);
+    expect(nav().getAllByRole("button")).toHaveLength(10);
     expect(
       nav()
         .getAllByRole("button")
@@ -125,14 +134,50 @@ describe("account workspace navigation", () => {
     expect(screen.getByTestId("watcher")).toBeInTheDocument();
   });
 
-  it("shows remaining card drops in the navigation and hides planning without a panel", () => {
+  it("offers every section in one mobile section picker", async () => {
+    render(
+      <SteamToolsPanel
+        accountId="first"
+        remainingDrops={3}
+        libraryPanel={<p>Saved games</p>}
+        automationPanels={{
+          presets: <p>Presets</p>,
+          schedules: <p>Schedules</p>,
+          analytics: <p>Statistics</p>,
+        }}
+      />,
+      { wrapper: I18nProvider },
+    );
+    const picker = screen.getByRole("combobox", { name: /Section/ });
+    expect(
+      within(picker)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "Games & playtime",
+      "Card farming (3 drops)",
+      "Inventory",
+      "Market listings",
+      "Pricing rules",
+      "Free game offers",
+      "Presets",
+      "Schedules",
+      "Statistics",
+      "Account & safety",
+    ]);
+    fireEvent.change(picker, { target: { value: "schedules" } });
+    expect(item("Schedules")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("region", { name: "Schedules" })).toHaveTextContent(
+      "Schedules",
+    );
+  });
+
+  it("shows remaining card drops in the navigation and hides automation without panels", () => {
     render(<SteamToolsPanel accountId="first" remainingDrops={37} />, {
       wrapper: I18nProvider,
     });
     expect(item("Card farming")).toHaveTextContent("37 drops");
-    expect(
-      nav().queryByRole("button", { name: /Presets & schedules/ }),
-    ).toBeNull();
+    expect(nav().queryByRole("button", { name: /^Presets/ })).toBeNull();
   });
 
   it("clears selected panels and private content when switching accounts", async () => {

@@ -59,12 +59,6 @@ export function SchedulePanel({
 
   return (
     <section className="grid gap-3">
-      <div>
-        <h3 className="text-sm font-semibold">{t.tools.schedules}</h3>
-        <p className="mt-0.5 text-xs text-[var(--muted)]">
-          {t.tools.schedulesDescription}
-        </p>
-      </div>
       <div className="grid gap-2">
         <Input
           value={scheduleName}

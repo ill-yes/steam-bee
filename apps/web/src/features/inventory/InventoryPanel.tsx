@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { marketRulesFingerprint } from "@steam-bee/contracts";
-import { Package } from "lucide-react";
+import { Package, SlidersHorizontal, Store } from "lucide-react";
 import type {
   InventorySnapshot,
   MarketActionResult,
@@ -28,6 +28,7 @@ import type { ComponentProps } from "react";
 import { interpolate, useI18n } from "../../i18n";
 import { inventoryCopy } from "./copy";
 import { advancedInventoryCopy } from "./advanced-copy";
+import { hubCopy } from "../accounts/detail/hubCopy";
 import { InventorySetBrowser } from "./InventorySetBrowser";
 import { SellBasketPanel } from "./SellBasket";
 import { formatMoney } from "./inventory-ui";
@@ -92,6 +93,19 @@ function AccountInventoryPanel({
   const basketId = useId();
   const [localView, setLocalView] = useState<InventoryView>("inventory");
   const view = providedView ?? localView;
+  const hub = hubCopy(locale);
+  const pageTitle =
+    view === "listings"
+      ? hub.listings
+      : view === "rules"
+        ? hub.rules
+        : hub.inventoryNav;
+  const pageDescription =
+    view === "listings"
+      ? hub.listingsDescription
+      : view === "rules"
+        ? hub.rulesDescription
+        : hub.inventoryDescription;
   const setView = (next: InventoryView) => {
     if (providedView === undefined) setLocalView(next);
     onViewChange?.(next);
@@ -464,9 +478,15 @@ function AccountInventoryPanel({
   return (
     <section className="grid min-w-0 gap-4" aria-label={t.title}>
       <ToolPageHeader
-        icon={Package}
-        title={t.title}
-        description={t.description}
+        icon={
+          view === "listings"
+            ? Store
+            : view === "rules"
+              ? SlidersHorizontal
+              : Package
+        }
+        title={pageTitle}
+        description={pageDescription}
         titleRef={heading}
         actions={
           <ToolRefreshButton

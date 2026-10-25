@@ -249,36 +249,38 @@ describe("web smoke", () => {
     ).toBeInTheDocument();
   });
 
-  it("places presets, schedules and analytics inside the boost tools panel without export actions", async () => {
+  it("gives presets, schedules, statistics and safety their own titled pages without export actions", async () => {
     renderAccountDetail();
 
     expect(await screen.findByText("Boost selection")).toBeInTheDocument();
-    fireEvent.click(section("Presets & schedules"));
-    expect(await screen.findByText("Automation & history")).toBeInTheDocument();
-    expect(screen.getByText("Boost presets")).toBeInTheDocument();
+    fireEvent.click(section("Presets"));
+    expect(
+      await screen.findByRole("heading", { name: "Presets", level: 2 }),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Preset name")).toBeInTheDocument();
     expect(screen.queryByText("CSV")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Analytics als JSON exportieren"),
     ).not.toBeInTheDocument();
 
-    const scheduleTab = screen.getByRole("button", { name: /Schedule/ });
-    expect(scheduleTab).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(scheduleTab);
-    expect(scheduleTab).toHaveAttribute("aria-pressed", "true");
-    expect(await screen.findByText("Schedules")).toBeInTheDocument();
+    fireEvent.click(section("Schedules"));
+    expect(section("Schedules")).toHaveAttribute("aria-current", "page");
+    expect(
+      await screen.findByRole("heading", { name: "Schedules", level: 2 }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Choose preset")).toBeInTheDocument();
     const monday = screen.getByRole("button", { name: "Mon" });
     expect(monday).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(monday);
     expect(monday).toHaveAttribute("aria-pressed", "false");
 
-    fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
+    fireEvent.click(section("Statistics"));
     expect(await screen.findByText("Top games")).toBeInTheDocument();
     expect(screen.getByText("Snapshot goals")).toBeInTheDocument();
     expect(screen.getAllByText("Counter-Strike 2").length).toBeGreaterThan(0);
     expect(screen.queryByText("CSV")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Safety/ }));
+    fireEvent.click(section("Account & safety"));
     expect(
       await screen.findByRole("heading", { name: "Session safety" }),
     ).toBeInTheDocument();
@@ -354,10 +356,10 @@ describe("web smoke", () => {
       return [];
     });
     renderAccountDetail();
-    fireEvent.click(section("Presets & schedules"));
-    await screen.findByText("Boost presets");
+    fireEvent.click(section("Presets"));
+    await screen.findByLabelText("Preset name");
 
-    fireEvent.click(screen.getByRole("button", { name: /Schedule/ }));
+    fireEvent.click(section("Schedules"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /operation failed|Aktion ist fehlgeschlagen/i,
     );
@@ -371,11 +373,11 @@ describe("web smoke", () => {
         /No upcoming schedule windows|Keine bevorstehenden Zeitplanfenster/,
       ),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Analytics/ }));
+    fireEvent.click(section("Statistics"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /operation failed|Aktion ist fehlgeschlagen/i,
     );
-    fireEvent.click(screen.getByRole("button", { name: /Safety/ }));
+    fireEvent.click(section("Account & safety"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /operation failed|Aktion ist fehlgeschlagen/i,
     );
@@ -595,7 +597,7 @@ describe("web smoke", () => {
 
   it("creates a preset from the current draft selection", async () => {
     renderAccountDetail();
-    fireEvent.click(section("Presets & schedules"));
+    fireEvent.click(section("Presets"));
 
     fireEvent.change(await screen.findByLabelText("Preset name"), {
       target: { value: "Idle Evening" },
@@ -855,8 +857,8 @@ describe("web smoke", () => {
       activityMode: "farming",
       activeAppIds: [570],
     });
-    fireEvent.click(section("Presets & schedules"));
-    await screen.findByText("Boost presets");
+    fireEvent.click(section("Presets"));
+    await screen.findByLabelText("Preset name");
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
     expect(screen.getByRole("alertdialog")).toHaveTextContent(
       "Applying this preset stops farming",

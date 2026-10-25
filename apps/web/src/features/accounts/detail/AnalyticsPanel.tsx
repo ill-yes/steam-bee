@@ -32,12 +32,6 @@ export function AnalyticsPanel({
 
   return (
     <section className="grid gap-3">
-      <div>
-        <h3 className="text-sm font-semibold">{t.tools.analytics}</h3>
-        <p className="mt-0.5 text-xs text-[var(--muted)]">
-          {t.tools.analyticsDescription}
-        </p>
-      </div>
       <div className="grid grid-cols-2 gap-2">
         <StatusFact
           label={t.tools.today}

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  BarChart3,
+  Bookmark,
+  CalendarClock,
+  ShieldCheck,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   ACCOUNT_STATUS_CAPABILITIES,
@@ -24,12 +31,13 @@ import { getPrimaryCommand, selectionApplyCopy } from "../../lib/status";
 import { interpolate, useI18n } from "../../i18n";
 import { LogDrawer } from "../events/LogDrawer";
 import { GameLibraryPanel } from "../library/GameLibraryPanel";
-import { AccountControlPanel } from "./detail/AccountControlPanel";
-import { AccountHeader } from "./detail/AccountHeader";
-import { AccountProfilePanel } from "./detail/AccountProfilePanel";
-import { AccountStatusSummary } from "./detail/AccountStatusSummary";
+import {
+  AccountDangerZone,
+  AccountProfileSettings,
+} from "./detail/AccountProfileSettings";
+import { AccountStatePanel } from "./detail/AccountStatePanel";
 import { AnalyticsPanel } from "./detail/AnalyticsPanel";
-import { BoostToolsPanel, type PlanningTab } from "./detail/BoostToolsPanel";
+import { ToolPageHeader } from "../../components/ui/tool-page-header";
 import { PresetPanel } from "./detail/PresetPanel";
 import { SchedulePanel } from "./detail/SchedulePanel";
 import { SafetyPanel } from "./detail/SafetyPanel";
@@ -102,7 +110,6 @@ function AccountWorkspace({
   const [scheduleWeekdays, setScheduleWeekdays] = useState<number[]>([
     1, 2, 3, 4, 5,
   ]);
-  const [planningTab, setPlanningTab] = useState<PlanningTab>("presets");
   const [workspaceTab, setWorkspaceTab] =
     useState<AccountWorkspaceTab>("library");
   const farmingActive = account.activityMode === "farming";
@@ -624,69 +631,7 @@ function AccountWorkspace({
     );
   }
 
-  const loadedPlanningPanel =
-    planningTab === "presets" ? (
-      <PresetPanel
-        presets={presets}
-        activePresetId={account.activePresetId}
-        presetName={presetName}
-        busyAction={busyAction}
-        selectedCount={draftAppIds.length}
-        personaState={personaState}
-        customTitle={customTitle}
-        onPresetNameChange={setPresetName}
-        onCreatePreset={() => void createPreset()}
-        onApplyPreset={(preset) => void applyPreset(preset)}
-        onDeletePreset={(preset) => void deletePreset(preset)}
-      />
-    ) : planningTab === "schedule" ? (
-      <SchedulePanel
-        schedules={schedules}
-        presets={presets}
-        scheduleName={scheduleName}
-        schedulePresetId={schedulePresetId}
-        scheduleStart={scheduleStart}
-        scheduleEnd={scheduleEnd}
-        scheduleWeekdays={scheduleWeekdays}
-        timezone={localTimezone}
-        busyAction={busyAction}
-        onScheduleNameChange={setScheduleName}
-        onSchedulePresetChange={setSchedulePresetId}
-        onScheduleStartChange={setScheduleStart}
-        onScheduleEndChange={setScheduleEnd}
-        onToggleWeekday={toggleWeekday}
-        onCreateSchedule={() => void createSchedule()}
-        onToggleSchedule={(schedule) => void toggleSchedule(schedule)}
-        onDeleteSchedule={(schedule) => void deleteSchedule(schedule)}
-        preview={schedulePreview}
-        previewState={optionalStates.schedulePreview}
-        onRefreshPreview={() => void refreshSchedulePreview()}
-        onSkipNext={(schedule) => void skipNextSchedule(schedule)}
-      />
-    ) : planningTab === "analytics" ? (
-      <AnalyticsPanel
-        analytics={analytics}
-        goals={goals}
-        library={library}
-        busy={Boolean(busyAction)}
-        goalsState={optionalStates.goals}
-        onSaveGoal={(appId, targetMinutes) =>
-          void saveGoal(appId, targetMinutes)
-        }
-        onDeleteGoal={(goal) => void deleteGoal(goal)}
-      />
-    ) : (
-      <SafetyPanel
-        policy={safety}
-        loadState={optionalStates.safety}
-        busy={Boolean(busyAction)}
-        canPauseUntil={account.desiredState === "running"}
-        onSave={(input) => void saveSafetyPolicy(input)}
-        onPauseUntil={(until) => void pauseUntil(until)}
-      />
-    );
-
-  const planningPanel =
+  const gateResources = (panel: ReactNode) =>
     loadState === "loading" ? (
       <p role="status" className="text-sm text-[var(--muted)]">
         {t.common.loading}
@@ -694,8 +639,95 @@ function AccountWorkspace({
     ) : loadState === "error" ? (
       <Alert tone="danger">{libraryError ?? o.failed}</Alert>
     ) : (
-      loadedPlanningPanel
+      panel
     );
+  const toolPage = (
+    icon: LucideIcon,
+    title: string,
+    description: string,
+    body: ReactNode,
+  ) => (
+    <div className="grid min-w-0 gap-4">
+      <ToolPageHeader icon={icon} title={title} description={description} />
+      {body}
+    </div>
+  );
+  const cardClass =
+    "min-w-0 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4";
+  const presetsPanel = toolPage(
+    Bookmark,
+    hub.presets,
+    t.tools.presetsDescription,
+    <div className={cardClass}>
+      {gateResources(
+        <PresetPanel
+          presets={presets}
+          activePresetId={account.activePresetId}
+          presetName={presetName}
+          busyAction={busyAction}
+          selectedCount={draftAppIds.length}
+          personaState={personaState}
+          customTitle={customTitle}
+          onPresetNameChange={setPresetName}
+          onCreatePreset={() => void createPreset()}
+          onApplyPreset={(preset) => void applyPreset(preset)}
+          onDeletePreset={(preset) => void deletePreset(preset)}
+        />,
+      )}
+    </div>,
+  );
+  const schedulesPanel = toolPage(
+    CalendarClock,
+    hub.schedules,
+    t.tools.schedulesDescription,
+    <div className={cardClass}>
+      {gateResources(
+        <SchedulePanel
+          schedules={schedules}
+          presets={presets}
+          scheduleName={scheduleName}
+          schedulePresetId={schedulePresetId}
+          scheduleStart={scheduleStart}
+          scheduleEnd={scheduleEnd}
+          scheduleWeekdays={scheduleWeekdays}
+          timezone={localTimezone}
+          busyAction={busyAction}
+          onScheduleNameChange={setScheduleName}
+          onSchedulePresetChange={setSchedulePresetId}
+          onScheduleStartChange={setScheduleStart}
+          onScheduleEndChange={setScheduleEnd}
+          onToggleWeekday={toggleWeekday}
+          onCreateSchedule={() => void createSchedule()}
+          onToggleSchedule={(schedule) => void toggleSchedule(schedule)}
+          onDeleteSchedule={(schedule) => void deleteSchedule(schedule)}
+          preview={schedulePreview}
+          previewState={optionalStates.schedulePreview}
+          onRefreshPreview={() => void refreshSchedulePreview()}
+          onSkipNext={(schedule) => void skipNextSchedule(schedule)}
+        />,
+      )}
+    </div>,
+  );
+  const analyticsPanel = toolPage(
+    BarChart3,
+    hub.analytics,
+    t.tools.analyticsDescription,
+    <div className={cardClass}>
+      {gateResources(
+        <AnalyticsPanel
+          analytics={analytics}
+          goals={goals}
+          library={library}
+          busy={Boolean(busyAction)}
+          goalsState={optionalStates.goals}
+          onSaveGoal={(appId, targetMinutes) =>
+            void saveGoal(appId, targetMinutes)
+          }
+          onDeleteGoal={(goal) => void deleteGoal(goal)}
+        />,
+      )}
+    </div>,
+  );
 
   async function updateLibraryMeta(
     appId: number,
@@ -793,49 +825,48 @@ function AccountWorkspace({
     });
   }
 
-  const accountPanel = (
-    <div className="grid min-w-0 gap-4">
-      <AccountHeader
-        controls={
-          <AccountControlPanel
+  const accountPanel = toolPage(
+    ShieldCheck,
+    hub.account,
+    hub.accountDescription,
+    <div className="@container min-w-0">
+      <div className="grid min-w-0 items-start gap-4 @min-[46rem]:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]">
+        <div className="grid min-w-0 gap-4">
+          <AccountProfileSettings
             busyAction={busyAction}
-            eventCount={events.length}
             personaState={personaState}
             customTitle={customTitle}
-            onOpenLogs={() => setLogOpen(true)}
-            onDelete={() => void deleteAccount()}
             onPersonaChange={setPersonaState}
             onCustomTitleChange={setCustomTitle}
             onSaveSettings={saveSettings}
           />
-        }
-        status={
-          <AccountStatusSummary
-            account={account}
-            libraryCount={library.length}
-            appliedCount={appliedAppIds.length}
-            draftCount={draftAppIds.length}
-            gameLimit={gameLimit}
-            selectionDirty={selectionDirty}
-            events={events}
+          <div className={cardClass}>
+            {gateResources(
+              <SafetyPanel
+                policy={safety}
+                loadState={optionalStates.safety}
+                busy={Boolean(busyAction)}
+                canPauseUntil={account.desiredState === "running"}
+                onSave={(input) => void saveSafetyPolicy(input)}
+                onPauseUntil={(until) => void pauseUntil(until)}
+              />,
+            )}
+          </div>
+          <AccountDangerZone
+            busy={Boolean(busyAction)}
+            onDelete={() => void deleteAccount()}
           />
-        }
-        profile={<AccountProfilePanel account={account} />}
-      />
-    </div>
-  );
-  const planningSection = (
-    <BoostToolsPanel
-      activeTab={planningTab}
-      onTabChange={setPlanningTab}
-      presetCount={presets.length}
-      activeScheduleCount={
-        schedules.filter((schedule) => schedule.enabled).length
-      }
-      analyticsLast7DaysMs={analytics?.last7DaysMs ?? 0}
-    >
-      {planningPanel}
-    </BoostToolsPanel>
+        </div>
+        <AccountStatePanel
+          account={account}
+          libraryCount={library.length}
+          appliedCount={appliedAppIds.length}
+          gameLimit={gameLimit}
+          events={events}
+          onOpenLogs={() => setLogOpen(true)}
+        />
+      </div>
+    </div>,
   );
   const libraryPanel = (
     <div className="grid min-w-0 gap-3">
@@ -917,7 +948,11 @@ function AccountWorkspace({
         onTabChange={setWorkspaceTab}
         remainingDrops={farming.summary?.remainingDrops}
         libraryPanel={libraryPanel}
-        planningPanel={planningSection}
+        automationPanels={{
+          presets: presetsPanel,
+          schedules: schedulesPanel,
+          analytics: analyticsPanel,
+        }}
         accountPanel={accountPanel}
         onSwitchToFarming={() => selectMode("farming")}
       />

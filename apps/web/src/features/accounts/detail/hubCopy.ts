@@ -48,7 +48,6 @@ const en = {
   inventoryNav: "Inventory",
   listings: "Market listings",
   rules: "Pricing rules",
-  planning: "Presets & schedules",
   dropsCount: "{count} drops",
   modeLabel: "Activity reported to Steam",
   modeNone: "Nothing",
@@ -82,6 +81,29 @@ const en = {
   reloginPassword: "With password",
   steamMessage: "Steam says: {message}",
   modeAfterLogin: "Available after signing in again",
+  navAutomation: "Automation",
+  sectionSelect: "Section",
+  presets: "Presets",
+  schedules: "Schedules",
+  analytics: "Statistics",
+  inventoryDescription:
+    "Your Steam items grouped by game and badge set. Pick duplicates for the sell basket.",
+  listingsDescription:
+    "Items you currently offer on the Steam Community Market.",
+  rulesDescription: "How SteamBee calculates the price when you sell.",
+  accountDescription:
+    "Steam profile, playtime limits and the connection state of this account.",
+  stateTitle: "State",
+  steamProfile: "Steam profile",
+  dangerTitle: "Remove account",
+  dangerText: "Deletes the sign-in and settings for this account in SteamBee.",
+  removeEllipsis: "Remove …",
+  lastEvent: "Last event",
+  allLogs: "View all logs",
+  noEvents: "No events yet",
+  activeGamesState: "Active games",
+  boostingSince: "Boosting since",
+  visibility: "Visibility",
 };
 const de: typeof en = {
   workspace: "Konto-Arbeitsbereich",
@@ -131,7 +153,6 @@ const de: typeof en = {
   inventoryNav: "Inventar",
   listings: "Marktangebote",
   rules: "Preisregeln",
-  planning: "Vorlagen & Zeitpläne",
   dropsCount: "{count} Drops",
   modeLabel: "Was dieses Konto an Steam meldet",
   modeNone: "Nichts",
@@ -165,6 +186,29 @@ const de: typeof en = {
   reloginPassword: "Mit Passwort",
   steamMessage: "Steam meldet: {message}",
   modeAfterLogin: "Nach der Anmeldung verfügbar",
+  navAutomation: "Automatik",
+  sectionSelect: "Bereich",
+  presets: "Vorlagen",
+  schedules: "Zeitpläne",
+  analytics: "Auswertung",
+  inventoryDescription:
+    "Deine Steam-Gegenstände nach Spiel und Kartenset. Wähle Duplikate für den Verkaufskorb.",
+  listingsDescription:
+    "Gegenstände, die du gerade auf dem Steam-Communitymarkt anbietest.",
+  rulesDescription: "So berechnet SteamBee den Preis, wenn du verkaufst.",
+  accountDescription:
+    "Steam-Profil, Spielzeit-Grenzen und der Verbindungszustand dieses Kontos.",
+  stateTitle: "Zustand",
+  steamProfile: "Steam-Profil",
+  dangerTitle: "Konto entfernen",
+  dangerText: "Löscht Anmeldung und Einstellungen dieses Kontos in SteamBee.",
+  removeEllipsis: "Entfernen …",
+  lastEvent: "Letztes Ereignis",
+  allLogs: "Alle Logs ansehen",
+  noEvents: "Noch keine Ereignisse",
+  activeGamesState: "Aktive Spiele",
+  boostingSince: "Boostet seit",
+  visibility: "Sichtbarkeit",
 };
 
 export function hubCopy(locale: LocaleCode) {

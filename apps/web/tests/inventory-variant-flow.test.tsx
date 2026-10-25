@@ -269,7 +269,7 @@ describe("inventory variant sale flows with real asset allocations", () => {
         }),
       ),
     );
-    await waitFor(() => expect(tile()).toHaveTextContent("$1.15"));
+    await waitFor(() => expect(tile()).toHaveTextContent("+$1.00"));
     expect(
       screen.getByRole("listitem", { name: "Queen Bee, missing from the set" }),
     ).toBeVisible();
