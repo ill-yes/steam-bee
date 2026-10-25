@@ -8,10 +8,11 @@ import {
 import type { Account } from "../../api";
 import { Button } from "../../components/ui/button";
 import { interpolate, useI18n } from "../../i18n";
-import { accountStats, statusLabel } from "../../lib/status";
+import { accountStats } from "../../lib/status";
 import { cn } from "../../lib/utils";
 import { AccountAvatar } from "./AccountAvatar";
 import { StatusDot } from "./StatusIndicators";
+import { accountActivityStatus } from "./activity-status";
 
 export function AccountRail({
   accounts,
@@ -30,7 +31,7 @@ export function AccountRail({
   onAdd: () => void;
   onOpenAdmin: () => void;
 }) {
-  const { messages: t } = useI18n();
+  const { locale, messages: t } = useI18n();
   const stats = accountStats(accounts);
 
   return (
@@ -127,13 +128,12 @@ export function AccountRail({
               onClick={() => onSelect(account.id)}
               aria-label={interpolate(t.rail.accountAria, {
                 accountName: account.accountName,
-                status: statusLabel(account.runtimeStatus, t),
+                status: accountActivityStatus(account, t, locale).label,
                 count: account.games.length,
               })}
-              title={`${account.accountName} - ${statusLabel(
-                account.runtimeStatus,
-                t,
-              )}`}
+              title={`${account.accountName} - ${
+                accountActivityStatus(account, t, locale).label
+              }`}
             >
               <span
                 className={cn(
@@ -141,7 +141,10 @@ export function AccountRail({
                   !collapsed && "contents",
                 )}
               >
-                <StatusDot status={account.runtimeStatus} />
+                <StatusDot
+                  status={account.runtimeStatus}
+                  tone={accountActivityStatus(account, t, locale).tone}
+                />
               </span>
               <AccountAvatar account={account} size="md" />
               {!collapsed && (
@@ -151,7 +154,7 @@ export function AccountRail({
                       {account.accountName}
                     </strong>
                     <small className="truncate text-xs text-[var(--muted)]">
-                      {statusLabel(account.runtimeStatus, t)}
+                      {accountActivityStatus(account, t, locale).label}
                     </small>
                   </span>
                   <span className="grid h-6 min-w-7 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] px-2 text-xs font-bold text-[var(--muted-strong)]">

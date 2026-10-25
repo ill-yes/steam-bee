@@ -1,4 +1,4 @@
-import { CirclePlay, ListChecks, Square } from "lucide-react";
+import { CirclePlay, ListChecks, Unplug } from "lucide-react";
 import type { Account, SteamApp } from "../../../api";
 import { Button } from "../../../components/ui/button";
 import { getPrimaryCommand } from "../../../lib/status";
@@ -6,7 +6,7 @@ import { interpolate, useI18n } from "../../../i18n";
 import type { FarmingSummary } from "../../farming/useFarmingSummary";
 import { SteamAppArtwork } from "../../library/SteamAppArtwork";
 import { AccountAvatar } from "../AccountAvatar";
-import { StatusBadge } from "../StatusIndicators";
+import { ActivityBadge } from "../StatusIndicators";
 import { ActivityModeSwitch, type ActivityMode } from "./ActivityModeSwitch";
 import { hubCopy } from "./hubCopy";
 
@@ -68,7 +68,7 @@ export function AccountHubBar({
               {account.accountName}
             </h2>
             <div className="mt-1">
-              <StatusBadge status={account.runtimeStatus} />
+              <ActivityBadge account={account} />
             </div>
           </div>
         </div>
@@ -90,15 +90,15 @@ export function AccountHubBar({
           {canStop && (
             <Button
               size="sm"
-              variant="danger"
+              variant="secondary"
               className="min-h-11 gap-1.5 px-2 lg:min-h-8 lg:gap-2 lg:px-2.5"
               disabled={Boolean(busyAction)}
               onClick={onStop}
-              aria-label={t.common.stop}
+              aria-label={copy.disconnect}
             >
-              <Square size={15} aria-hidden="true" />
+              <Unplug size={15} aria-hidden="true" />
               <span className="lg:hidden">{copy.stopShort}</span>
-              <span className="hidden lg:inline">{t.common.stop}</span>
+              <span className="hidden lg:inline">{copy.disconnect}</span>
             </Button>
           )}
           <Button

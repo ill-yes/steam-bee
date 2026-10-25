@@ -32,7 +32,7 @@ import { AccountRail } from "./features/accounts/AccountRail";
 import { AppShell } from "./features/accounts/AppShell";
 import { EmptyWorkspace } from "./features/accounts/EmptyWorkspace";
 import { AuthPanel } from "./features/auth/AuthPanel";
-import { statusLabel } from "./lib/status";
+import { accountActivityStatus } from "./features/accounts/activity-status";
 
 const AddAccountModal = lazy(() =>
   import("./features/accounts/AddAccountModal").then((module) => ({
@@ -401,7 +401,7 @@ function MobileAccountPicker({
   onAdd: () => void;
   onOpenAdmin: () => void;
 }) {
-  const { messages: t } = useI18n();
+  const { locale, messages: t } = useI18n();
 
   if (accounts.length === 0) return null;
 
@@ -418,7 +418,8 @@ function MobileAccountPicker({
           >
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.accountName} · {statusLabel(account.runtimeStatus, t)}
+                {account.accountName} ·{" "}
+                {accountActivityStatus(account, t, locale).label}
               </option>
             ))}
           </Select>
