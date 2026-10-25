@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
 import type { AccountStatus, SteamApp } from "@steam-bee/contracts";
-import { Layers, Play, Search, Square } from "lucide-react";
+import { Layers, Play, Search } from "lucide-react";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -20,6 +20,8 @@ type Props = {
   library?: SteamApp[] | undefined;
   activityMode?: FarmingActivityMode | undefined;
   accountStatus?: AccountStatus | undefined;
+  /** Switches the account mode the same way the header switch does. */
+  onSwitchToFarming?: (() => void) | undefined;
 };
 
 export function FarmingPanel(props: Props) {
@@ -31,6 +33,7 @@ function AccountFarmingPanel({
   library,
   activityMode,
   accountStatus,
+  onSwitchToFarming,
 }: Props) {
   const state = useFarmingPanel(accountId, accountStatus, activityMode);
   const {
@@ -86,12 +89,26 @@ function AccountFarmingPanel({
         title={t.title}
         description={t.description}
         actions={
-          <ToolRefreshButton
-            label={t.refresh}
-            busy={busy === "refresh"}
-            disabled={loading || Boolean(busy)}
-            onClick={() => void action("refresh")}
-          />
+          <>
+            <Button
+              size="sm"
+              className="min-h-11 lg:min-h-8"
+              disabled={
+                loading || !snapshot || Boolean(busy) || active || dirty
+              }
+              aria-describedby={dirty ? `${id}-draft-hint` : undefined}
+              onClick={() => void action("scan")}
+            >
+              <Search size={14} aria-hidden="true" />
+              {busy === "scan" ? t.progress.scan : t.scan}
+            </Button>
+            <ToolRefreshButton
+              label={t.refresh}
+              busy={busy === "refresh"}
+              disabled={loading || Boolean(busy)}
+              onClick={() => void action("refresh")}
+            />
+          </>
         }
       >
         {snapshot && (
@@ -109,13 +126,6 @@ function AccountFarmingPanel({
                 {t.phases[snapshot.phase]}
               </Badge>
             </span>
-            <Badge tone={mode === "farming" ? "accent" : "neutral"}>
-              {mode === "farming"
-                ? t.modeFarming
-                : mode === "manual"
-                  ? t.modeManual
-                  : t.modeIdle}
-            </Badge>
           </div>
         )}
       </ToolPageHeader>
@@ -184,55 +194,39 @@ function AccountFarmingPanel({
                   )}
                 </Alert>
               )}
-              <div className="grid min-w-0 gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              {mode !== "farming" && (
+                <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-dashed border-[var(--line-strong)] bg-[var(--surface-2)] p-3">
+                  <div className="min-w-0 flex-[1_1_320px]">
+                    <p className="text-sm font-semibold">
+                      {mode === "manual"
+                        ? t.switchHintManualTitle
+                        : t.switchHintIdleTitle}
+                    </p>
+                    <p className="text-xs leading-5 text-[var(--muted-strong)]">
+                      {mode === "manual"
+                        ? t.switchHintManual
+                        : t.switchHintIdle}
+                    </p>
+                  </div>
                   <Button
                     variant="primary"
                     className="whitespace-normal"
-                    disabled={
-                      Boolean(busy) || active || dirty || !snapshot.canStart
-                    }
+                    disabled={Boolean(busy) || dirty || !snapshot.canStart}
                     aria-describedby={
                       [
-                        !snapshot.canStart && (!active || reason)
-                          ? `${id}-availability`
-                          : null,
+                        !snapshot.canStart ? `${id}-availability` : null,
                         dirty ? `${id}-draft-hint` : null,
                       ]
                         .filter(Boolean)
                         .join(" ") || undefined
                     }
-                    onClick={() => void action("start")}
+                    onClick={onSwitchToFarming ?? (() => void action("start"))}
                   >
                     <Play size={14} aria-hidden="true" />
-                    {busy === "start" ? t.progress.start : t.start}
-                  </Button>
-                  <Button
-                    className="whitespace-normal"
-                    disabled={Boolean(busy) || active || dirty}
-                    aria-describedby={dirty ? `${id}-draft-hint` : undefined}
-                    onClick={() => void action("scan")}
-                  >
-                    <Search size={14} aria-hidden="true" />
-                    {busy === "scan" ? t.progress.scan : t.scan}
-                  </Button>
-                  <Button
-                    className="col-span-2 whitespace-normal sm:col-span-1"
-                    variant="danger"
-                    disabled={
-                      (!active && busy !== "start" && busy !== "scan") ||
-                      busy === "stop"
-                    }
-                    onClick={() => void action("stop")}
-                  >
-                    <Square size={14} aria-hidden="true" />
-                    {busy === "stop" ? t.progress.stop : t.stop}
+                    {busy === "start" ? t.progress.start : t.switchCta}
                   </Button>
                 </div>
-                <p className="text-xs leading-5 text-[var(--muted)]">
-                  {t.modeHintCompact}
-                </p>
-              </div>
+              )}
               <ToolTabs<FarmingTab>
                 label={t.tabsLabel}
                 items={[

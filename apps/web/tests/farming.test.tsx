@@ -113,10 +113,10 @@ describe("card farming controls", () => {
     expect(protection).toBeChecked();
     fireEvent.click(protection);
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toHaveAccessibleDescription(
       /Save your changes before searching or starting/,
     );
@@ -138,41 +138,9 @@ describe("card farming controls", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Start farming" }),
+        screen.getByRole("button", { name: "Switch to card farming" }),
       ).toBeEnabled(),
     );
-  });
-
-  it("keeps stop available while start is pending and ignores the late start response", async () => {
-    const pending = deferred<FarmingSnapshot>();
-    vi.mocked(api).mockImplementation(async (path) =>
-      path.endsWith("/start") ? pending.promise : snapshot(),
-    );
-    render(
-      <I18nProvider>
-        <FarmingPanel accountId="first" />
-      </I18nProvider>,
-    );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Start farming" }),
-    );
-    const stop = screen.getByRole("button", { name: "Stop farming" });
-    expect(stop).toBeEnabled();
-    fireEvent.click(stop);
-    await waitFor(() =>
-      expect(api).toHaveBeenCalledWith("/api/accounts/first/farming/stop", {
-        method: "POST",
-      }),
-    );
-    await act(async () => {
-      pending.resolve(snapshot("first", "farming"));
-    });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Start farming" }),
-      ).toBeEnabled(),
-    );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
   });
 
   it("does not show another account's delayed badge results", async () => {
@@ -190,7 +158,7 @@ describe("card farming controls", () => {
         <FarmingPanel accountId="second" />
       </I18nProvider>,
     );
-    await screen.findByRole("button", { name: "Start farming" });
+    await screen.findByRole("button", { name: "Switch to card farming" });
     await act(async () => {
       pending.resolve({
         ...snapshot("first"),
@@ -263,7 +231,7 @@ describe("card farming controls", () => {
     expect(screen.getByRole("spinbutton")).toHaveValue(null);
     expect(screen.getByRole("checkbox")).not.toBeChecked();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
@@ -273,7 +241,9 @@ describe("card farming controls", () => {
     expect(
       window.sessionStorage.getItem("steam-bee-farming-draft:first"),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "Start farming" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Switch to card farming" }),
+    ).toBeEnabled();
   });
 
   it("keeps a draft on navigation when session storage is blocked", async () => {
@@ -351,7 +321,7 @@ describe("card farming controls", () => {
       screen.getByRole("button", { name: "Find card drops" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
   });
 
@@ -378,42 +348,16 @@ describe("card farming controls", () => {
     });
     render(<FarmingPanel accountId="first" />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Start farming" }),
+      await screen.findByRole("button", { name: "Switch to card farming" }),
     );
 
     expect(await screen.findByText("Farming cards")).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The latest status could not be confirmed",
     );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
-  });
-
-  it("keeps a successful stop visible and restart blocked if the subsequent status read fails", async () => {
-    let reads = 0;
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) return snapshot();
-      if (++reads === 1) return snapshot("first", "farming");
-      throw new Error("Latest status unavailable");
-    });
-    render(<FarmingPanel accountId="first" />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Stop farming" }),
-    );
-
-    expect(await screen.findByText("Stopped")).toBeInTheDocument();
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The latest status could not be confirmed",
-    );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText(/The account is paused or stopped/),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Switch to card farming" }),
+    ).not.toBeInTheDocument();
   });
 
   it("commits a successful save and retains known availability when the status follow-up fails", async () => {
@@ -442,32 +386,15 @@ describe("card farming controls", () => {
     expect(
       screen.queryByRole("button", { name: "Save settings" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start farming" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Switch to card farming" }),
+    ).toBeEnabled();
     expect(
       screen.getByText(/This account can warm up at most 31 games/),
     ).toBeInTheDocument();
     expect(
       window.sessionStorage.getItem("steam-bee-farming-draft:first"),
     ).toBeNull();
-  });
-
-  it("keeps stop available for retry after a stop request fails", async () => {
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) throw new Error("Stop request unavailable");
-      return snapshot("first", "farming");
-    });
-    render(<FarmingPanel accountId="first" />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Stop farming" }),
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Stop request unavailable",
-    );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
   });
 
   it("recovers a failed status poll without losing the active farming state", async () => {
@@ -484,7 +411,7 @@ describe("card farming controls", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Temporary read failure",
     );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
+    expect(screen.getByText("Farming cards")).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
@@ -492,44 +419,6 @@ describe("card farming controls", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("Farming cards")).toBeInTheDocument();
     expect(vi.mocked(api)).toHaveBeenCalledTimes(3);
-  });
-
-  it("serializes polling requests and ignores a late poll after stop", async () => {
-    vi.useFakeTimers();
-    const pending = deferred<FarmingSnapshot>();
-    let reads = 0;
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) return snapshot();
-      reads += 1;
-      return reads === 1
-        ? snapshot("first", "farming")
-        : reads === 2
-          ? pending.promise
-          : snapshot();
-    });
-    render(<FarmingPanel accountId="first" />);
-    await act(async () => {});
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
-    });
-    expect(reads).toBe(2);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-    expect(reads).toBe(2);
-    fireEvent.click(screen.getByRole("button", { name: "Stop farming" }));
-    await act(async () => {});
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
-    await act(async () => {
-      pending.resolve(snapshot("first", "farming"));
-    });
-
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(reads).toBe(3);
   });
 
   it("explains a concrete safety hold and keeps refund details associated with the checkbox", async () => {
@@ -547,7 +436,9 @@ describe("card farming controls", () => {
     expect(checkbox).toHaveAccessibleDescription(
       /Unknown purchase dates are also skipped/,
     );
-    const start = screen.getByRole("button", { name: "Start farming" });
+    const start = screen.getByRole("button", {
+      name: "Switch to card farming",
+    });
     expect(start).toBeDisabled();
     expect(start).toHaveAccessibleDescription(
       /The daily playtime limit is reached/,
@@ -572,7 +463,7 @@ describe("card farming controls", () => {
     await openSettings();
     const limit = await screen.findByRole("spinbutton");
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
     fireEvent.change(limit, { target: { value: "4" } });
 
@@ -594,49 +485,14 @@ describe("card farming controls", () => {
       screen.queryByText(/The account is paused or stopped/),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(screen.getByRole("button", { name: "Start farming" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Switch to card farming" }),
+    ).toBeEnabled();
     expect(
       vi
         .mocked(api)
         .mock.calls.every(([, options]) => options?.method === undefined),
     ).toBe(true);
-  });
-
-  it("ignores an availability refresh that returns after farming is stopped", async () => {
-    const pending = deferred<FarmingSnapshot>();
-    let reads = 0;
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) return snapshot();
-      reads += 1;
-      return reads === 1
-        ? snapshot("first", "farming")
-        : reads === 2
-          ? pending.promise
-          : snapshot();
-    });
-    const view = render(
-      <FarmingPanel
-        accountId="first"
-        accountStatus="boosting"
-        activityMode="farming"
-      />,
-    );
-    await screen.findByText("Farming cards");
-    view.rerender(
-      <FarmingPanel
-        accountId="first"
-        accountStatus="paused_manual"
-        activityMode="idle"
-      />,
-    );
-    await waitFor(() => expect(reads).toBe(2));
-    fireEvent.click(screen.getByRole("button", { name: "Stop farming" }));
-    await waitFor(() => expect(reads).toBe(3));
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
-    await act(async () => pending.resolve(snapshot("first", "farming")));
-
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
   });
 
   it("shows badge artwork, drops and playtime in the overview before opening settings", async () => {
@@ -780,9 +636,8 @@ describe("card farming controls", () => {
       within(controls).getByRole("radio", { name: "Excluded" }),
     ).toBeChecked();
     expect(
-      screen.getByText(/temporarily replaces the manual game list/),
+      screen.getByText("Boosting playtime is running right now"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Manual playtime")).toBeInTheDocument();
     fireEvent.click(within(controls).getByRole("radio", { name: "Allowed" }));
     expect(
       within(controls).getByRole("radio", { name: "Allowed" }),
@@ -791,13 +646,13 @@ describe("card farming controls", () => {
       screen.getByText(/1 games allowed only · 0 excluded/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Start farming" }),
+        screen.getByRole("button", { name: "Switch to card farming" }),
       ).toBeEnabled(),
     );
     expect(config.whitelist).toEqual([730]);
@@ -940,7 +795,7 @@ describe("card farming controls", () => {
     ).toHaveLength(3);
   });
 
-  it("locks game preference changes during farming while leaving search and stop usable", async () => {
+  it("locks game preference changes during farming and leaves mode control to the account header", async () => {
     vi.mocked(api).mockResolvedValue(snapshot("first", "farming"));
     render(
       <FarmingPanel
@@ -957,11 +812,12 @@ describe("card farming controls", () => {
       within(controls).getByRole("radio", { name: "Allowed" }),
     ).toBeDisabled();
     expect(screen.getByRole("searchbox")).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
-    expect(screen.getByText("Card farming + playtime")).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Switch to card farming" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /stop/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Save settings" }),
     ).not.toBeInTheDocument();
@@ -1053,7 +909,7 @@ describe("card farming controls", () => {
     );
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
     fireEvent.click(review);
 
@@ -1093,7 +949,6 @@ describe("card farming controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next games" }));
     expect(within(queue).getAllByRole("listitem")).toHaveLength(8);
     expect(screen.getByText("13–20 of 20 games")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     expect(
       vi.mocked(api).mock.calls.some(([path]) => path.endsWith("/library")),

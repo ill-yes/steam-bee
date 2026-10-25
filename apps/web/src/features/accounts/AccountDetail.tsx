@@ -909,6 +909,7 @@ function AccountWorkspace({
         libraryPanel={libraryPanel}
         planningPanel={planningSection}
         accountPanel={accountPanel}
+        onSwitchToFarming={() => selectMode("farming")}
       />
 
       <LogDrawer

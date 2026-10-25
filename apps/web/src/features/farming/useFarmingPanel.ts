@@ -16,7 +16,7 @@ import {
   type FarmingDraft,
 } from "./drafts";
 
-type Action = "scan" | "start" | "stop" | "refresh" | "config";
+type Action = "scan" | "start" | "refresh" | "config";
 type FieldErrors = Partial<
   Record<"maxConcurrentGames" | "whitelist" | "blacklist", string>
 >;
@@ -164,8 +164,7 @@ export function useFarmingPanel(
   }
 
   async function action(name: Action) {
-    if (busyRef.current && (name !== "stop" || busyRef.current === "stop"))
-      return;
+    if (busyRef.current) return;
     if ((name === "scan" || name === "start") && dirtyRef.current) return;
     if (name === "config" && !dirtyRef.current) return;
     const max = Number(draft.maxConcurrentGames);
@@ -218,21 +217,15 @@ export function useFarmingPanel(
         }
         // The command response is authoritative even when the following status read fails.
         accept(
-          name === "stop"
+          name === "config" || name === "scan"
             ? {
                 ...result,
-                canStart: false,
-                reason: result.reason ?? "not_running",
+                // These endpoints report badge/config state. Keep the last
+                // observed account availability until the GET confirms it.
+                canStart: currentSnapshot?.canStart ?? result.canStart,
+                gameLimit: currentSnapshot?.gameLimit ?? result.gameLimit,
               }
-            : name === "config" || name === "scan"
-              ? {
-                  ...result,
-                  // These endpoints report badge/config state. Keep the last
-                  // observed account availability until the GET confirms it.
-                  canStart: currentSnapshot?.canStart ?? result.canStart,
-                  gameLimit: currentSnapshot?.gameLimit ?? result.gameLimit,
-                }
-              : result,
+            : result,
         );
         if (result.phase !== "error") setNotice(t.success[name]);
         try {

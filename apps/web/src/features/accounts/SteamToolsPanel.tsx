@@ -54,6 +54,7 @@ type Props = {
   libraryPanel?: ReactNode;
   planningPanel?: ReactNode;
   accountPanel?: ReactNode;
+  onSwitchToFarming?: (() => void) | undefined;
 };
 
 const inventoryViews = new Set<AccountWorkspaceTab>([
@@ -77,6 +78,7 @@ function AccountSteamToolsPanel({
   libraryPanel,
   planningPanel,
   accountPanel,
+  onSwitchToFarming,
 }: Props) {
   const { locale, messages: t } = useI18n();
   const copy = hubCopy(locale);
@@ -223,6 +225,7 @@ function AccountSteamToolsPanel({
               library={library}
               activityMode={activityMode}
               accountStatus={accountStatus}
+              onSwitchToFarming={onSwitchToFarming}
             />
           )}
         </Suspense>

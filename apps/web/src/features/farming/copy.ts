@@ -25,8 +25,14 @@ const en = {
   dropCount: "{count} drops",
   hours: "Hours",
   scan: "Find card drops",
+  switchCta: "Switch to card farming",
+  switchHintManualTitle: "Boosting playtime is running right now",
+  switchHintManual:
+    "Switching stops playtime for your boost games. Your boost selection stays saved and you can switch back in the header at any time.",
+  switchHintIdleTitle: "Card farming is not running",
+  switchHintIdle:
+    "This account reports no game to Steam right now. Switching starts farming the games below.",
   start: "Start farming",
-  stop: "Stop farming",
   refresh: "Refresh",
   lastScan: "Card drops last checked",
   neverScanned: "Card drops have not been checked yet.",
@@ -69,14 +75,6 @@ const en = {
   fixManualIds:
     "Fix the AppIDs in advanced options before changing the visual game selection.",
   advancedIds: "Advanced: enter AppIDs manually",
-  activity: "This account is currently using",
-  modeManual: "Manual playtime",
-  modeFarming: "Card farming + playtime",
-  modeIdle: "No active card farming",
-  modeHintCompact:
-    "Farming adds playtime and temporarily replaces the manual game list. Your selection stays saved.",
-  modeHint:
-    "Farming also adds playtime to its games. SteamBee uses one mode per account: starting farming temporarily replaces the saved manual game list, rather than running a second list alongside it.",
   workflow:
     "Adjust and save your settings, then find card drops or start farming. Starting always checks the badges again.",
   table: "Games with remaining trading card drops",
@@ -205,8 +203,14 @@ const de: typeof en = {
   dropCount: "{count} Drops",
   hours: "Stunden",
   scan: "Kartendrops suchen",
+  switchCta: "Zu Karten farmen wechseln",
+  switchHintManualTitle: "Gerade läuft „Spielzeit boosten“",
+  switchHintManual:
+    "Beim Wechsel stoppt die Spielzeit für deine Boost-Spiele. Die Boost-Auswahl bleibt gespeichert, oben im Kopf kannst du jederzeit zurückwechseln.",
+  switchHintIdleTitle: "Karten-Farming läuft gerade nicht",
+  switchHintIdle:
+    "Dieses Konto meldet gerade kein Spiel an Steam. Beim Wechsel werden die Spiele unten gefarmt.",
   start: "Farming starten",
-  stop: "Farming stoppen",
   refresh: "Aktualisieren",
   lastScan: "Kartendrops zuletzt geprüft",
   neverScanned: "Kartendrops wurden noch nicht geprüft.",
@@ -250,14 +254,6 @@ const de: typeof en = {
   fixManualIds:
     "Korrigiere die AppIDs in den erweiterten Optionen, bevor du die visuelle Spielauswahl änderst.",
   advancedIds: "Erweitert: AppIDs manuell eingeben",
-  activity: "Dieses Konto verwendet gerade",
-  modeManual: "Manuelle Spielzeit",
-  modeFarming: "Karten-Farming + Spielzeit",
-  modeIdle: "Kein aktives Karten-Farming",
-  modeHintCompact:
-    "Farming sammelt Spielzeit und ersetzt vorübergehend die manuelle Spielliste. Deine Auswahl bleibt gespeichert.",
-  modeHint:
-    "Farming sammelt zugleich Spielzeit für die gefarmten Spiele. SteamBee verwendet einen Modus pro Konto: Beim Farming ersetzt die Farming-Auswahl vorübergehend die gespeicherte manuelle Spielliste; beide Listen laufen nicht unabhängig nebeneinander.",
   workflow:
     "Passe die Einstellungen an und speichere sie. Suche danach Kartendrops oder starte das Farming. Beim Start werden die Abzeichen erneut geprüft.",
   table: "Spiele mit verbleibenden Sammelkartendrops",
