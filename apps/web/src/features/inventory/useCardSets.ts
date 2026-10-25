@@ -50,6 +50,8 @@ export function useCardSets(accountId: string, appIds: readonly number[]) {
           }));
         })
         .finally(() => {
+          // A request from an aborted generation no longer holds a slot.
+          if (signal !== controller.current.signal) return;
           running.current -= 1;
           if (!signal.aborted) pump();
         });
@@ -73,15 +75,23 @@ export function useCardSets(accountId: string, appIds: readonly number[]) {
     [pump],
   );
 
+  // Declared before the request effect so a remount (React StrictMode) starts a
+  // fresh generation before the visible sets are requested again.
+  useEffect(() => {
+    if (controller.current.signal.aborted) {
+      controller.current = new AbortController();
+      requested.current.clear();
+      queue.current = [];
+      running.current = 0;
+    }
+    const abort = controller.current;
+    return () => abort.abort();
+  }, []);
+
   const key = appIds.join(",");
   useEffect(() => {
     request(key ? key.split(",").map(Number) : []);
   }, [key, request]);
-
-  useEffect(() => {
-    const abort = controller.current;
-    return () => abort.abort();
-  }, []);
 
   const retry = useCallback((appId: number) => request([appId]), [request]);
   return { sets, retry };

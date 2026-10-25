@@ -934,7 +934,16 @@ function AccountWorkspace({
       {needsRelogin && onRelogin ? (
         <ReloginBanner steamMessage={account.lastError} onRelogin={onRelogin} />
       ) : account.lastError ? (
-        <Alert tone="danger">{account.lastError}</Alert>
+        <Alert tone="danger">
+          <span className="grid gap-0.5">
+            {account.health && account.health.errorClass !== "none" ? (
+              <span>{o.errorClasses[account.health.errorClass]}</span>
+            ) : null}
+            <span className="break-words text-xs font-normal">
+              {interpolate(hub.steamMessage, { message: account.lastError })}
+            </span>
+          </span>
+        </Alert>
       ) : null}
       {actionError && !confirmation ? (
         <Alert tone="danger">{actionError}</Alert>

@@ -19,7 +19,7 @@ export function FarmingOverview({
   scanning: boolean;
   onSettings: () => void;
 }) {
-  const { locale, localeInfo } = useI18n();
+  const { locale, localeInfo, messages } = useI18n();
   const t = farmingCopy(locale);
   const id = useId();
   const [page, setPage] = useState(0);
@@ -147,10 +147,12 @@ export function FarmingOverview({
                       </span>
                     </div>
                     <p className="text-xs text-[var(--muted)]">
-                      {t.hours}:{" "}
+                      <span className="sr-only">{t.hours}: </span>
                       {game.playtimeMinutes === null
                         ? "—"
-                        : hours.format(game.playtimeMinutes / 60)}
+                        : interpolate(messages.format.hours, {
+                            count: hours.format(game.playtimeMinutes / 60),
+                          })}
                     </p>
                   </li>
                 );

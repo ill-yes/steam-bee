@@ -520,7 +520,7 @@ describe("card farming controls", () => {
     ).toBeInTheDocument();
     expect(within(list).getByText("No drops left")).toBeInTheDocument();
     expect(within(list).getByText("0 drops")).toBeInTheDocument();
-    expect(within(list).getByText("Hours: 2.5")).toBeInTheDocument();
+    expect(within(list).getByText("2.5 h")).toBeInTheDocument();
     expect(list.querySelector('img[src*="/730/header.jpg"]')).not.toBeNull();
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
