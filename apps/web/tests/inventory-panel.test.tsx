@@ -210,7 +210,10 @@ describe("inventory and explicit market confirmation", () => {
   it("keeps protected and unmarketable items out of the basket and game selection", async () => {
     renderPanel();
     await screen.findByText("Bee card");
-    expect(tile("One badge")).toHaveTextContent("Only one copy");
+    expect(tile("One badge")).toHaveAttribute(
+      "aria-description",
+      "Only one copy",
+    );
     expect(tile("Locked card")).toHaveTextContent("Not marketable");
     expect(tile("One badge")).not.toHaveAttribute("aria-pressed");
 
@@ -488,9 +491,9 @@ describe("inventory and explicit market confirmation", () => {
     ).toBeVisible();
     expect(
       first.getByRole("list", {
-        name: "Game 01: Card set. Scroll sideways for more.",
+        name: "Game 01: Card set",
       }),
-    ).toHaveAttribute("tabindex", "0");
+    ).toBeVisible();
     expect(
       vi.mocked(api).mock.calls.filter(([path]) => path.includes("card-sets")),
     ).toHaveLength(10);

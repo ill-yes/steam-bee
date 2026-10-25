@@ -484,6 +484,7 @@ function GameSet({
           <TileRow
             gameName={name}
             label={s.otherRow}
+            compact
             slots={others.map((variant) => ({ kind: "item", variant }))}
             basket={basket}
             prices={prices}
@@ -500,6 +501,7 @@ function GameSet({
 function TileRow({
   gameName,
   label,
+  compact = false,
   slots,
   basket,
   prices,
@@ -509,6 +511,7 @@ function TileRow({
 }: {
   gameName: string;
   label: string;
+  compact?: boolean;
   slots: Slot[];
   basket: SellBasket;
   prices: Record<string, VariantPriceState>;
@@ -526,15 +529,19 @@ function TileRow({
       <ul
         role="list"
         aria-label={interpolate(s.rowRegion, { name: gameName, row: label })}
-        tabIndex={0}
-        className="flex min-w-0 snap-x gap-2 overflow-x-auto pb-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        className={cn(
+          "grid min-w-0 gap-2",
+          compact
+            ? "grid-cols-[repeat(auto-fill,minmax(180px,1fr))]"
+            : "grid-cols-[repeat(auto-fill,minmax(92px,1fr))]",
+        )}
       >
         {slots.map((slot) =>
           slot.kind === "missing" ? (
             <li
               key={`missing:${slot.card.name}`}
               aria-label={interpolate(s.missingLabel, { name: slot.card.name })}
-              className="grid w-24 shrink-0 snap-start content-start gap-1 rounded-md border border-dashed border-[var(--line-strong)] p-1.5 opacity-70"
+              className="grid min-w-0 content-start gap-1 rounded-md border border-dashed border-[var(--line-strong)] p-1.5 opacity-70"
             >
               <InventoryArtwork
                 src={slot.card.imageUrl}
@@ -548,8 +555,9 @@ function TileRow({
               </span>
             </li>
           ) : (
-            <li key={slot.variant.variantId} className="shrink-0 snap-start">
+            <li key={slot.variant.variantId} className="min-w-0">
               <Tile
+                compact={compact}
                 variant={slot.variant}
                 inBasket={!!basket[slot.variant.variantId]}
                 price={prices[slot.variant.variantId]}
@@ -567,6 +575,7 @@ function TileRow({
 }
 
 function Tile({
+  compact = false,
   variant,
   inBasket,
   price,
@@ -575,6 +584,7 @@ function Tile({
   locale: numberLocale,
   onToggle,
 }: {
+  compact?: boolean;
   variant: InventoryVariant;
   inBasket: boolean;
   price: VariantPriceState | undefined;
@@ -594,33 +604,25 @@ function Tile({
   const shown =
     price &&
     price.currency &&
+    price.sellerReceivesPerItem !== null &&
     (price.displayUntil === null || price.displayUntil > now)
-      ? formatMoney(price.buyerPrice, price.currency, numberLocale)
+      ? formatMoney(price.sellerReceivesPerItem, price.currency, numberLocale)
       : null;
-  return (
-    <button
-      type="button"
-      data-variant-id={variant.variantId}
-      aria-pressed={sellable ? inBasket : undefined}
-      aria-label={interpolate(s.tileLabel, {
-        name: variant.name,
-        count: variant.quantity,
-      })}
-      aria-description={reason ?? (inBasket ? s.inBasket : undefined)}
-      disabled={disabled || !sellable}
-      onClick={() => onToggle(variant)}
-      className={cn(
-        "relative grid w-24 content-start gap-1 rounded-md border p-1.5 text-start outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-default",
-        inBasket
-          ? "border-[var(--primary)] bg-[var(--info-soft)]"
-          : "border-[var(--line)] bg-[var(--surface-2)] enabled:hover:border-[var(--line-strong)]",
-        !sellable && "opacity-80",
-      )}
+  // Only a reason the user can act on is shown; "keep one copy" stays a hint.
+  const visibleReason = variant.marketable ? null : reason;
+  const priceText = sellable ? (
+    <span
+      className="flex items-center justify-between gap-1 text-[10px] text-[var(--muted)]"
+      title={s.receive}
     >
-      <InventoryArtwork
-        src={variant.iconUrl}
-        className="grid h-28 w-full place-items-center overflow-hidden rounded bg-[var(--surface-3)]"
-      />
+      <span className="tabular-nums">{shown ? `+${shown}` : "…"}</span>
+      {!inBasket && <Plus size={12} aria-hidden="true" />}
+    </span>
+  ) : visibleReason ? (
+    <span className="text-[10px] text-[var(--muted)]">{visibleReason}</span>
+  ) : null;
+  const badges = (
+    <>
       {variant.quantity > 1 && (
         <span className="absolute right-1 top-1 rounded-full bg-[var(--ink)] px-1.5 text-[10px] font-bold text-[var(--surface)]">
           ×{variant.quantity}
@@ -631,19 +633,53 @@ function Tile({
           <Check size={12} aria-hidden="true" />
         </span>
       )}
-      <span className="line-clamp-2 text-[11px] font-semibold leading-4">
-        {variant.name}
-      </span>
-      <span className="flex items-center justify-between gap-1 text-[10px] text-[var(--muted)]">
-        {reason ? (
-          <span>{reason}</span>
-        ) : (
-          <>
-            <span>{shown ?? "…"}</span>
-            {!inBasket && <Plus size={12} aria-hidden="true" />}
-          </>
+    </>
+  );
+  return (
+    <button
+      type="button"
+      data-variant-id={variant.variantId}
+      aria-pressed={sellable ? inBasket : undefined}
+      aria-label={interpolate(s.tileLabel, {
+        name: variant.name,
+        count: variant.quantity,
+      })}
+      aria-description={reason ?? (inBasket ? s.inBasket : undefined)}
+      title={reason ?? undefined}
+      disabled={disabled || !sellable}
+      onClick={() => onToggle(variant)}
+      className={cn(
+        "relative w-full min-w-0 rounded-md border p-1.5 text-start outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] disabled:cursor-default",
+        compact ? "flex items-center gap-2 pe-8" : "grid content-start gap-1",
+        inBasket
+          ? "border-[var(--primary)] bg-[var(--info-soft)]"
+          : "border-[var(--line)] bg-[var(--surface-2)] enabled:hover:border-[var(--line-strong)]",
+        !sellable && "opacity-80",
+      )}
+    >
+      <InventoryArtwork
+        src={variant.iconUrl}
+        className={cn(
+          "grid place-items-center overflow-hidden rounded bg-[var(--surface-3)]",
+          compact ? "h-10 w-10 shrink-0" : "h-28 w-full",
         )}
-      </span>
+      />
+      {badges}
+      {compact ? (
+        <span className="grid min-w-0 flex-1 gap-0.5">
+          <span className="truncate text-[11px] font-semibold leading-4">
+            {variant.name}
+          </span>
+          {priceText}
+        </span>
+      ) : (
+        <>
+          <span className="line-clamp-2 text-[11px] font-semibold leading-4">
+            {variant.name}
+          </span>
+          {priceText}
+        </>
+      )}
     </button>
   );
 }

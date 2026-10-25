@@ -469,7 +469,7 @@ describe("grouped inventory and batch market tools", () => {
       bee.getByRole("progressbar", { name: "1 of 2 cards" }),
     ).toHaveAttribute("value", "1");
     const set = bee.getByRole("list", {
-      name: "Bee Quest: Card set. Scroll sideways for more.",
+      name: "Bee Quest: Card set",
     });
     expect(
       within(set)
@@ -484,12 +484,12 @@ describe("grouped inventory and batch market tools", () => {
     ).toHaveTextContent("Missing");
     expect(
       bee.getByRole("list", {
-        name: "Bee Quest: Foil cards. Scroll sideways for more.",
+        name: "Bee Quest: Foil cards",
       }),
     ).toHaveTextContent("Shiny Bee");
     expect(
       game("Hive World").getByRole("list", {
-        name: "Hive World: Other items. Scroll sideways for more.",
+        name: "Hive World: Other items",
       }),
     ).toHaveTextContent("Hive profile");
     expect(
