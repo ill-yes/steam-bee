@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, Library, Search } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   flexRender,
   useTable,
@@ -30,6 +30,7 @@ export function LibraryTable({
   onSortingChange,
   onToggleApp,
   onUpdateMeta,
+  footer,
 }: {
   runtimeStatus: AccountStatus;
   libraryCount: number;
@@ -41,6 +42,7 @@ export function LibraryTable({
   onSortingChange: OnChangeFn<SortingState>;
   onToggleApp: (appId: number) => void;
   onUpdateMeta: (appId: number, patch: LibraryUpdatePatch) => Promise<void>;
+  footer?: ReactNode;
 }) {
   const { messages: t, localeInfo } = useI18n();
   const container = useRef<HTMLElement>(null);
@@ -50,7 +52,7 @@ export function LibraryTable({
     if (!element) return;
     const resize = (width: number) => {
       // Hidden containers and layout-free test environments have no useful width.
-      if (width > 0) setCompact(width < 760);
+      if (width > 0) setCompact(width < 560);
     };
     const measure = () => resize(element.getBoundingClientRect().width);
     measure();
@@ -143,13 +145,13 @@ export function LibraryTable({
                   <li
                     key={row.id}
                     className={cn(
-                      "grid min-w-0 gap-2 p-3",
+                      "flex min-w-0 items-center gap-2 px-3 py-1.5",
                       app.selected && "bg-[var(--selected)]",
                     )}
                   >
                     <label
                       className={cn(
-                        "flex min-w-0 cursor-pointer items-center gap-3",
+                        "flex min-w-0 flex-1 cursor-pointer items-center gap-3",
                         app.blockedByLimit && "cursor-not-allowed opacity-60",
                       )}
                     >
@@ -165,29 +167,27 @@ export function LibraryTable({
                         size="mini"
                       />
                       <span className="min-w-0 flex-1">
-                        <strong className="block break-words text-sm">
+                        <strong className="block break-words text-sm leading-5">
                           {app.name}
                         </strong>
-                        <span className="mt-1 block text-xs text-[var(--muted)]">
+                        <span className="block text-xs text-[var(--muted)]">
                           {formatPlaytime(app.playtimeForever, t, localeInfo)}
+                          {" · "}AppID: {app.appId}
                         </span>
                       </span>
                     </label>
-                    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs text-[var(--muted)]">
-                        AppID: {app.appId}
-                      </span>
+                    <span className="shrink-0">
                       {flexRender(
                         metadata.column.columnDef.cell,
                         metadata.getContext(),
                       )}
-                    </div>
+                    </span>
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <table className="w-full min-w-[760px] border-collapse text-sm">
+            <table className="w-full min-w-[520px] border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-[var(--surface-2)]">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <tr key={headerGroup.id}>
@@ -195,12 +195,12 @@ export function LibraryTable({
                       <th
                         key={header.id}
                         className={cn(
-                          "border-b border-[var(--line)] px-3 py-2 text-left text-xs font-semibold text-[var(--muted-strong)]",
-                          header.id === "select" && "w-10",
-                          header.id === "artwork" && "w-[110px]",
-                          header.id === "playtimeForever" && "w-28",
-                          header.id === "appId" && "w-24",
-                          header.id === "meta" && "w-32",
+                          "border-b border-[var(--line)] px-2 py-1.5 text-left text-xs font-semibold text-[var(--muted-strong)]",
+                          header.id === "select" && "w-9 pl-3",
+                          header.id === "artwork" && "w-[72px]",
+                          header.id === "playtimeForever" && "w-28 text-right",
+                          header.id === "appId" && "w-24 text-right",
+                          header.id === "meta" && "w-24 pr-3",
                         )}
                       >
                         {header.isPlaceholder
@@ -235,11 +235,13 @@ export function LibraryTable({
                           onToggleApp(row.original.appId);
                         }}
                         className={cn(
-                          "px-3 py-2 align-middle",
+                          "px-2 py-1 align-middle",
+                          cell.column.id === "select" && "pl-3",
+                          cell.column.id === "meta" && "pr-3",
                           cell.column.id === "playtimeForever" &&
-                            "text-xs text-[var(--muted)]",
+                            "whitespace-nowrap text-right tabular-nums",
                           cell.column.id === "appId" &&
-                            "text-xs font-semibold text-[var(--muted)]",
+                            "text-right text-xs tabular-nums text-[var(--muted)]",
                         )}
                       >
                         {flexRender(
@@ -263,6 +265,7 @@ export function LibraryTable({
           ) : null}
         </div>
       )}
+      {collapsed ? null : footer}
     </section>
   );
 }

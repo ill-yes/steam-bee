@@ -1,10 +1,14 @@
 import { Alert } from "../../components/ui/alert";
-import { Card, CardContent } from "../../components/ui/card";
+import { useId } from "react";
+import { Gamepad2, RefreshCw } from "lucide-react";
+import { Button } from "../../components/ui/button";
+import { ToolPageHeader } from "../../components/ui/tool-page-header";
 import { libraryFilterModes } from "../../lib/status";
 import { useI18n } from "../../i18n";
 import { BoostSelectionPanel } from "./BoostSelectionPanel";
 import { LibraryTable } from "./LibraryTable";
-import { LibraryToolbar } from "./LibraryToolbar";
+import { LibraryToolbar, ManualAppIdRow } from "./LibraryToolbar";
+import { hubCopy } from "../accounts/detail/hubCopy";
 import { appendManualAppId, nextDraftAppIds } from "./library-model";
 import type { GameLibraryPanelProps } from "./types";
 import { useGameLibraryController } from "./useGameLibraryController";
@@ -16,7 +20,8 @@ export function GameLibraryPanel({
   selection,
   rightRailExtra,
 }: GameLibraryPanelProps) {
-  const { messages: t } = useI18n();
+  const { messages: t, locale } = useI18n();
+  const id = useId();
   const {
     libraryFilter,
     setLibraryFilter,
@@ -66,60 +71,81 @@ export function GameLibraryPanel({
   }
 
   return (
-    <>
-      <Card className="overflow-hidden">
-        <CardContent className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
-          <div className="grid min-w-0 gap-3">
-            <LibraryToolbar
-              importAction={{
-                loading: library.loading,
-                available: library.canImport,
-                onImport: library.onImport,
-              }}
-              search={{ value: libraryFilter, onChange: setLibraryFilter }}
-              manualApp={{
-                value: manualAppId,
-                disabled: selection.draftAppIds.length >= selection.gameLimit,
-                inputRef: selection.manualAppInputRef,
-                onChange: setManualAppId,
-                onAdd: addManualAppId,
-              }}
-              view={{
-                mode: libraryMode,
-                sort: librarySort,
-                onModeChange: setLibraryMode,
-                onSortChange: setLibrarySort,
-              }}
+    <section className="grid min-w-0 gap-4" aria-labelledby={`${id}-title`}>
+      <ToolPageHeader
+        icon={Gamepad2}
+        titleId={`${id}-title`}
+        title={hubCopy(locale).library}
+        description={t.library.description}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void library.onImport()}
+            disabled={library.loading || !library.canImport}
+            title={
+              library.canImport
+                ? t.common.importLibrary
+                : t.library.importUnavailable
+            }
+          >
+            <RefreshCw
+              size={15}
+              aria-hidden="true"
+              className={library.loading ? "animate-spin" : undefined}
             />
+            {library.loading ? t.library.importing : t.library.import}
+          </Button>
+        }
+      />
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+        <div className="grid min-w-0 gap-3">
+          <LibraryToolbar
+            search={{ value: libraryFilter, onChange: setLibraryFilter }}
+            view={{
+              mode: libraryMode,
+              sort: librarySort,
+              onModeChange: setLibraryMode,
+              onSortChange: setLibrarySort,
+            }}
+          />
 
-            {library.error ? (
-              <Alert tone="danger">{library.error}</Alert>
-            ) : null}
+          {library.error ? <Alert tone="danger">{library.error}</Alert> : null}
 
-            <LibraryTable
-              runtimeStatus={account.runtimeStatus}
-              libraryCount={library.apps.length}
-              rows={rows}
-              modeLabel={selectedModeLabel}
-              collapsed={libraryCollapsed}
-              onToggleCollapsed={() => setLibraryCollapsed((value) => !value)}
-              sorting={sorting}
-              onSortingChange={setSorting}
-              onToggleApp={toggleDraftApp}
-              onUpdateMeta={library.onUpdateMeta}
-            />
-          </div>
+          <LibraryTable
+            runtimeStatus={account.runtimeStatus}
+            libraryCount={library.apps.length}
+            rows={rows}
+            modeLabel={selectedModeLabel}
+            collapsed={libraryCollapsed}
+            onToggleCollapsed={() => setLibraryCollapsed((value) => !value)}
+            sorting={sorting}
+            onSortingChange={setSorting}
+            onToggleApp={toggleDraftApp}
+            onUpdateMeta={library.onUpdateMeta}
+            footer={
+              <ManualAppIdRow
+                manualApp={{
+                  value: manualAppId,
+                  disabled: selection.draftAppIds.length >= selection.gameLimit,
+                  inputRef: selection.manualAppInputRef,
+                  onChange: setManualAppId,
+                  onAdd: addManualAppId,
+                }}
+              />
+            }
+          />
+        </div>
 
-          <div className="grid min-w-0 gap-3">
-            <BoostSelectionPanel
-              collapsed={selectionCollapsed}
-              onToggleCollapsed={() => setSelectionCollapsed((value) => !value)}
-              selection={selection}
-            />
-            {rightRailExtra}
-          </div>
-        </CardContent>
-      </Card>
-    </>
+        <div className="grid min-w-0 gap-3">
+          <BoostSelectionPanel
+            collapsed={selectionCollapsed}
+            onToggleCollapsed={() => setSelectionCollapsed((value) => !value)}
+            selection={selection}
+          />
+          {rightRailExtra}
+        </div>
+      </div>
+    </section>
   );
 }

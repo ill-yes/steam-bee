@@ -65,6 +65,7 @@ export function useLibraryTableColumns({
           <SteamAppArtwork
             appId={row.original.appId}
             name={row.original.name}
+            size="mini"
           />
         ),
         enableSorting: false,
@@ -73,14 +74,9 @@ export function useLibraryTableColumns({
         accessorKey: "name",
         header: t.common.game,
         cell: ({ row }) => (
-          <div className="min-w-0">
-            <strong className="block truncate text-sm">
-              {row.original.name}
-            </strong>
-            <small className="text-xs text-[var(--muted)]">
-              {formatPlaytime(row.original.playtimeForever, t, localeInfo)}
-            </small>
-          </div>
+          <strong className="block truncate text-sm" title={row.original.name}>
+            {row.original.name}
+          </strong>
         ),
       },
       {
