@@ -121,7 +121,7 @@ export function AccountStatePanel({
         <Row label={o.tokenExpiry}>
           {formatTokenDate(account.tokenExpiresAt, t, localeInfo)}
         </Row>
-        <Row label={t.accountDetail.autostart}>
+        <Row label={t.accountDetail.autostart.replace(/:\s*$/, "")}>
           {autostartCopy(account.desiredState, t)}
         </Row>
         <Row label={hub.lastEvent}>

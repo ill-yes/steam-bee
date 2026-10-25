@@ -166,7 +166,7 @@ function AccountSteamToolsPanel({
     items.find((item) => item.id === activeTab)?.label ?? copy.workspace;
 
   return (
-    <div className="grid min-w-0 items-start gap-3 lg:grid-cols-[200px_minmax(0,1fr)]">
+    <div className="grid min-w-0 items-start gap-3 lg:grid-cols-[236px_minmax(0,1fr)]">
       <FreeGamesWatcher accountId={accountId} />
       <label className="flex min-w-0 items-center gap-2 rounded-lg bg-[var(--primary)] px-3 text-[var(--primary-fg)] lg:hidden">
         <span className="shrink-0 text-xs opacity-80">
@@ -178,7 +178,7 @@ function AccountSteamToolsPanel({
             const next = items.find((item) => item.id === event.target.value);
             if (next) select(next.id);
           }}
-          className="min-h-12 min-w-0 flex-1 appearance-none bg-transparent text-base font-bold text-[var(--primary-fg)] outline-none [&_option]:text-[var(--ink)]"
+          className="min-h-12 min-w-0 flex-1 appearance-none bg-transparent bg-none! text-base font-bold text-[var(--primary-fg)] outline-none [&_option]:text-[var(--ink)]"
         >
           {groups.map((group) => (
             <optgroup key={group.label} label={group.label}>

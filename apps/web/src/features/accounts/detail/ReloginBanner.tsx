@@ -34,6 +34,7 @@ export function ReloginBanner({
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
+          variant="primary"
           className="min-h-11 lg:min-h-9"
           onClick={() => onRelogin("qr")}
         >
