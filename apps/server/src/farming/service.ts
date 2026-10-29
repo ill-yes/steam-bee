@@ -7,6 +7,7 @@ import { z } from "zod";
 import { db } from "../db/client.js";
 import {
   accountFarmingConfig,
+  accountFarmingResume,
   steamAccountLibrary,
   steamAppCache,
 } from "../db/schema.js";
@@ -14,12 +15,15 @@ import { appError } from "../http/errors.js";
 import { communityRequest } from "../steam/community.js";
 import { steamManager } from "../steam/manager.js";
 import { appIdSchema } from "../steam/validation.js";
+import { createLogger, errorLogFields } from "../util/logger.js";
 import {
   discoverBadgeDrops,
   enrichBadgeGames,
   MAX_BADGE_PAGE_BYTES,
 } from "./badges.js";
 import { FarmingController } from "./controller.js";
+
+const logger = createLogger("farming");
 
 export const farmingConfigSchema = z
   .object({
@@ -33,6 +37,8 @@ export const farmingConfigSchema = z
       .array(appIdSchema)
       .max(500)
       .transform((ids) => [...new Set(ids)]),
+    // Settings saved before this option existed resume by default.
+    autoResume: z.boolean().default(true),
   })
   .strict();
 
@@ -80,6 +86,27 @@ export const farmingController = new FarmingController({
   apply: (accountId, appIds, shouldApply) =>
     steamManager.applyFarmingGames(accountId, appIds, shouldApply),
   end: (accountId, shouldEnd) => steamManager.endFarming(accountId, shouldEnd),
+  remember: (accountId, resume) => {
+    try {
+      if (resume)
+        db.insert(accountFarmingResume)
+          .values({ accountId, requestedAt: Date.now() })
+          .onConflictDoUpdate({
+            target: accountFarmingResume.accountId,
+            set: { requestedAt: Date.now() },
+          })
+          .run();
+      else
+        db.delete(accountFarmingResume)
+          .where(eq(accountFarmingResume.accountId, accountId))
+          .run();
+    } catch (error) {
+      logger.warn(
+        errorLogFields(error, { accountId }),
+        "Card farming resume state could not be saved",
+      );
+    }
+  },
   discover: async (accountId, shouldContinue) => {
     if (shouldContinue && !shouldContinue())
       throw new Error("Badge scan cancelled.");
@@ -109,6 +136,17 @@ export const farmingController = new FarmingController({
       )
       .where(eq(steamAccountLibrary.accountId, accountId));
     enrichBadgeGames(discovery.games, library);
+    try {
+      const acquired = await steamManager.getAcquisitionTimes(
+        accountId,
+        discovery.games.map((game) => game.appId),
+      );
+      for (const game of discovery.games)
+        game.acquiredAt = acquired.get(game.appId) ?? null;
+    } catch (error) {
+      // Unknown dates keep the refund guard conservative.
+      logger.warn(errorLogFields(error), "Steam license dates unavailable");
+    }
     return discovery;
   },
 });
@@ -134,4 +172,42 @@ async function readBadgeResponse(response: Response) {
     reader.releaseLock();
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+/** Synchronous for shutdown: whether this account's farming will resume. */
+export function farmingResumesAfterRestart(accountId: string) {
+  try {
+    const pending = db
+      .select()
+      .from(accountFarmingResume)
+      .where(eq(accountFarmingResume.accountId, accountId))
+      .get();
+    if (!pending) return false;
+    const stored = db
+      .select()
+      .from(accountFarmingConfig)
+      .where(eq(accountFarmingConfig.accountId, accountId))
+      .get();
+    return stored
+      ? farmingConfigSchema.parse(JSON.parse(stored.configJson)).autoResume
+      : DEFAULT_FARMING_CONFIG.autoResume;
+  } catch {
+    return false;
+  }
+}
+
+/** Restart farming that a restart or a brief Steam disconnect interrupted. */
+export async function resumeInterruptedFarming(accountId: string) {
+  const [pending] = await db
+    .select()
+    .from(accountFarmingResume)
+    .where(eq(accountFarmingResume.accountId, accountId));
+  if (!pending) return;
+  const config = await readFarmingConfig(accountId);
+  if (!config.autoResume) return;
+  const phase = farmingController.snapshot(accountId).phase;
+  if (["scanning", "warming", "farming"].includes(phase)) return;
+  if (!(await steamManager.getFarmingAvailability(accountId)).allowed) return;
+  logger.info({ accountId }, "Resuming interrupted card farming");
+  await farmingController.start(accountId, config, undefined, true);
 }

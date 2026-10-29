@@ -23,6 +23,7 @@ const en = {
   queueHint:
     "Active games appear first. Active playtime is estimated; Steam controls drop counts and timing.",
   dropCount: "{count} drops",
+  dropCountOne: "1 drop",
   hours: "Hours",
   scan: "Find card drops",
   switchCta: "Switch to card farming",
@@ -70,7 +71,7 @@ const en = {
     "Your imported library could not be loaded. Badge results and saved choices are still available.",
   retryLibrary: "Retry library",
   libraryEmpty:
-    "No imported games yet. Import your library in Games & playtime, find card drops, or use the advanced AppID fields below.",
+    "No imported games yet. Import your library in Boost playtime, find card drops, or use the advanced AppID fields below.",
   noGameMatches: "No games match this search and filter.",
   fixManualIds:
     "Fix the AppIDs in advanced options before changing the visual game selection.",
@@ -126,6 +127,21 @@ const en = {
       "This Steam account is being used elsewhere. Finish that session, then resume the account explicitly.",
     login_required:
       "The Steam login needs attention. Sign in again before farming.",
+    resumed:
+      "Farming resumed automatically after an interruption. Card drops were checked again.",
+    shutdown:
+      "SteamBee restarted while farming. Farming resumes once the account is online, unless you turned that off.",
+    connecting:
+      "The Steam connection was interrupted. Farming resumes when the account is online again.",
+    reconnecting:
+      "The Steam connection was interrupted. Farming resumes when the account is online again.",
+    disconnected:
+      "The Steam connection was lost. Farming resumes when the account is online again.",
+    error:
+      "The Steam connection failed. Farming resumes when the account is online again.",
+    paused: "You paused the account, so farming stopped.",
+    paused_manual: "You paused the account, so farming stopped.",
+    "preset-applied": "A preset was applied, so farming stopped.",
   },
   loading: "Loading card farming…",
   failed: "Card farming could not be loaded.",
@@ -134,6 +150,7 @@ const en = {
   blacklist: "Exclude these AppIDs",
   idsHint: "Separate AppIDs with commas or spaces. Exclusions take priority.",
   protect: "Protect refundable games",
+  autoResume: "Resume farming after a SteamBee restart",
   protection:
     "Games below two hours are skipped during the first 14 days after acquisition. Unknown purchase dates are also skipped. Disable this only if you accept that additional playtime can affect refunds.",
   unavailable:
@@ -201,6 +218,7 @@ const de: typeof en = {
   queueHint:
     "Aktive Spiele stehen zuerst. Die laufende Spielzeit ist geschätzt; Steam bestimmt Anzahl und Zeitpunkt der Drops.",
   dropCount: "{count} Drops",
+  dropCountOne: "1 Drop",
   hours: "Stunden",
   scan: "Kartendrops suchen",
   switchCta: "Zu Karten farmen wechseln",
@@ -249,7 +267,7 @@ const de: typeof en = {
     "Deine importierte Bibliothek konnte nicht geladen werden. Abzeichenergebnisse und gespeicherte Auswahlen bleiben verfügbar.",
   retryLibrary: "Bibliothek erneut laden",
   libraryEmpty:
-    "Noch keine Spiele importiert. Importiere deine Bibliothek unter Spiele & Spielzeit, suche Kartendrops oder nutze unten die erweiterten AppID-Felder.",
+    "Noch keine Spiele importiert. Importiere deine Bibliothek unter Spielzeit boosten, suche Kartendrops oder nutze unten die erweiterten AppID-Felder.",
   noGameMatches: "Keine Spiele passen zu dieser Suche und diesem Filter.",
   fixManualIds:
     "Korrigiere die AppIDs in den erweiterten Optionen, bevor du die visuelle Spielauswahl änderst.",
@@ -307,6 +325,23 @@ const de: typeof en = {
       "Dieses Steam-Konto wird woanders verwendet. Beende die andere Sitzung und setze das Konto danach ausdrücklich fort.",
     login_required:
       "Die Steam-Anmeldung benötigt deine Aufmerksamkeit. Melde dich vor dem Farming erneut an.",
+    resumed:
+      "Das Farming wurde nach einer Unterbrechung automatisch fortgesetzt. Die Kartendrops wurden neu geprüft.",
+    shutdown:
+      "SteamBee wurde während des Farmings neu gestartet. Das Farming geht weiter, sobald das Konto online ist, außer du hast das abgeschaltet.",
+    connecting:
+      "Die Verbindung zu Steam wurde unterbrochen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    reconnecting:
+      "Die Verbindung zu Steam wurde unterbrochen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    disconnected:
+      "Die Verbindung zu Steam ist abgerissen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    error:
+      "Die Verbindung zu Steam ist fehlgeschlagen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    paused: "Du hast das Konto pausiert, deshalb wurde das Farming gestoppt.",
+    paused_manual:
+      "Du hast das Konto pausiert, deshalb wurde das Farming gestoppt.",
+    "preset-applied":
+      "Ein Preset wurde angewendet, deshalb wurde das Farming gestoppt.",
   },
   loading: "Sammelkarten werden geladen…",
   failed: "Sammelkarten konnten nicht geladen werden.",
@@ -316,6 +351,7 @@ const de: typeof en = {
   idsHint:
     "AppIDs durch Kommas oder Leerzeichen trennen. Ausschlüsse haben Vorrang.",
   protect: "Erstattungsfähige Spiele schützen",
+  autoResume: "Nach einem Neustart von SteamBee automatisch weiterfarmen",
   protection:
     "Spiele unter zwei Stunden werden in den ersten 14 Tagen nach Erwerb übersprungen. Bei unbekanntem Kaufdatum werden sie ebenfalls übersprungen. Deaktiviere dies nur, wenn du Auswirkungen zusätzlicher Spielzeit auf Erstattungen akzeptierst.",
   unavailable:

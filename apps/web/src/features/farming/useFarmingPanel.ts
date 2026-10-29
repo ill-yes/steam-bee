@@ -204,6 +204,7 @@ export function useFarmingPanel(
                   skipRefundable: draft.skipRefundable,
                   whitelist: whitelist!,
                   blacklist: blacklist!,
+                  autoResume: draft.autoResume,
                 }),
               }
             : { method: "POST" },

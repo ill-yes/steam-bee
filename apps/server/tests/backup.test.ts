@@ -506,6 +506,7 @@ const migrationIds = [
   "012_card_farming_settings",
   "013_market_price_settings",
   "014_library_import_marker",
+  "015_card_farming_resume",
 ];
 
 function readProbe(path: string) {

@@ -23,7 +23,20 @@ export type FarmingAdapter = {
     shouldApply: () => boolean,
   ): Promise<void>;
   end(accountId: string, shouldEnd?: () => boolean): Promise<void>;
+  /** Persists whether farming should resume after an interruption. */
+  remember?(accountId: string, resume: boolean): void;
 };
+
+/** Interruptions that do not mean the user wanted farming to end. */
+const RESUMABLE_HALTS = new Set([
+  "shutdown",
+  "shutting_down",
+  "connecting",
+  "reconnecting",
+  "disconnected",
+  "error",
+  "not_connected",
+]);
 
 type Session = {
   snapshot: FarmingSnapshot;
@@ -117,6 +130,7 @@ export class FarmingController {
     accountId: string,
     config: FarmingConfig,
     expectedGeneration?: number,
+    resumed = false,
   ) {
     if (this.shuttingDown) throw new Error("Card farming is shutting down.");
     this.snapshot(accountId, config);
@@ -135,6 +149,10 @@ export class FarmingController {
     session.snapshot.reason = null;
     session.applied = false;
     await this.advance(session, generation, true);
+    if (this.isActive(session)) {
+      this.adapter.remember?.(accountId, true);
+      if (resumed) session.snapshot.reason = "resumed";
+    }
     return this.snapshot(accountId);
   }
 
@@ -147,6 +165,7 @@ export class FarmingController {
     session.timer = null;
     session.activeSince = null;
     session.snapshot.activeAppIds = [];
+    if (!RESUMABLE_HALTS.has(reason)) this.adapter.remember?.(accountId, false);
     if (reason === "stopped" || this.isActive(session)) {
       session.snapshot.phase = reason === "stopped" ? "stopped" : "blocked";
       session.snapshot.reason = reason === "stopped" ? null : reason;
@@ -311,6 +330,7 @@ export class FarmingController {
       if (appIds.length === 0) {
         const applied = session.applied;
         session.snapshot.phase = "completed";
+        this.adapter.remember?.(accountId, false);
         session.snapshot.reason =
           eligible.length === 0 && session.snapshot.games.length > 0
             ? "no_eligible_games"

@@ -59,6 +59,8 @@ type SteamWorkerOptions = {
     source: "login" | "live";
     errorCode: number | null;
   }) => Promise<void>;
+  /** True when interrupted farming will resume, so the account stays running. */
+  farmingResumesAfterShutdown?: () => boolean;
 };
 
 export class SteamWorker extends EventEmitter {
@@ -66,6 +68,7 @@ export class SteamWorker extends EventEmitter {
   private readonly client: LifecycleSteamUser;
   private readonly communitySession: CommunitySessionBroker;
   private farmingAppIds: number[] | null = null;
+  private readonly packageApps = new Map<number, number[]>();
   private farmingInterruptedByShutdown = false;
   private reportedAppIds: number[] = [];
   private reportedActivityMode: "idle" | "manual" | "farming" = "idle";
@@ -96,6 +99,7 @@ export class SteamWorker extends EventEmitter {
   private readonly recordSessionConflict: NonNullable<
     SteamWorkerOptions["recordSessionConflict"]
   >;
+  private readonly farmingResumesAfterShutdown: () => boolean;
 
   constructor(account: SteamAccountRow, options: SteamWorkerOptions = {}) {
     super();
@@ -110,6 +114,8 @@ export class SteamWorker extends EventEmitter {
       options.runAccountOperation ?? (async (operation) => operation());
     this.recordSessionConflict =
       options.recordSessionConflict ?? (async () => undefined);
+    this.farmingResumesAfterShutdown =
+      options.farmingResumesAfterShutdown ?? (() => false);
 
     const dataDirectory = join(paths.steamData, account.id);
     mkdirSync(dataDirectory, { recursive: true });
@@ -177,6 +183,53 @@ export class SteamWorker extends EventEmitter {
 
   getCommunitySession() {
     return this.communitySession.get();
+  }
+
+  /**
+   * Earliest license date per app, from the licenses Steam sends at logon.
+   * Apps without a known license are left out.
+   */
+  async acquisitionTimes(appIds: number[]): Promise<Map<number, number>> {
+    const wanted = new Set(appIds);
+    const licenses = (this.client.licenses ?? []) as Array<{
+      package_id?: unknown;
+      time_created?: unknown;
+    }>;
+    const created = new Map<number, number>();
+    for (const license of licenses) {
+      const packageId = Number(license.package_id);
+      const seconds = Number(license.time_created);
+      if (!Number.isSafeInteger(packageId) || packageId <= 0) continue;
+      if (!Number.isFinite(seconds) || seconds <= 0) continue;
+      created.set(
+        packageId,
+        Math.min(created.get(packageId) ?? Infinity, seconds * 1000),
+      );
+    }
+    const missing = [...created.keys()].filter(
+      (packageId) => !this.packageApps.has(packageId),
+    );
+    for (let start = 0; start < missing.length; start += 500) {
+      const batch = missing.slice(start, start + 500);
+      const info = await this.client.getProductInfo([], batch, true);
+      for (const packageId of batch) {
+        const appids = info.packages[packageId]?.packageinfo?.appids;
+        this.packageApps.set(
+          packageId,
+          Array.isArray(appids)
+            ? appids.map(Number).filter(Number.isSafeInteger)
+            : [],
+        );
+      }
+    }
+    const times = new Map<number, number>();
+    for (const [packageId, time] of created) {
+      for (const appId of this.packageApps.get(packageId) ?? []) {
+        if (!wanted.has(appId)) continue;
+        times.set(appId, Math.min(times.get(appId) ?? Infinity, time));
+      }
+    }
+    return times;
   }
 
   clearFarmingSelection() {
@@ -289,7 +342,8 @@ export class SteamWorker extends EventEmitter {
   beginShutdown() {
     if (this.quiescing) return;
     this.quiescing = true;
-    this.farmingInterruptedByShutdown = this.farmingAppIds !== null;
+    this.farmingInterruptedByShutdown =
+      this.farmingAppIds !== null && !this.farmingResumesAfterShutdown();
     this.clearFarmingSelection();
     this.communitySession.invalidate();
     this.clearRetryTimers();

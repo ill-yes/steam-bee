@@ -12,6 +12,8 @@ export type FarmingConfig = {
   skipRefundable: boolean;
   whitelist: number[];
   blacklist: number[];
+  /** Restart farming after a SteamBee restart or a brief Steam disconnect. */
+  autoResume: boolean;
 };
 
 export type FarmingSkipReason =
@@ -46,4 +48,5 @@ export const DEFAULT_FARMING_CONFIG: FarmingConfig = {
   skipRefundable: true,
   whitelist: [],
   blacklist: [],
+  autoResume: true,
 };

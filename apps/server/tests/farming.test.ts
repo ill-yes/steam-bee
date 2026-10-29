@@ -44,6 +44,7 @@ function setup(games: FarmingGame[], gameLimit = 32) {
       expect(shouldApply()).toBe(true);
     }),
     end: vi.fn(async () => undefined),
+    remember: vi.fn(),
   };
   const controller = new FarmingController(adapter);
   return { adapter, controller };
@@ -177,6 +178,24 @@ describe("card farming lifecycle", () => {
       [1],
       expect.any(Function),
     );
+  });
+
+  it("keeps the resume request through interruptions and clears it on a stop", async () => {
+    const { controller, adapter } = setup([game(1, 119, oldPurchase)]);
+    await controller.start(accountId, DEFAULT_FARMING_CONFIG);
+    expect(adapter.remember).toHaveBeenLastCalledWith(accountId, true);
+    controller.halt(accountId, "reconnecting");
+    expect(adapter.remember).toHaveBeenCalledTimes(1);
+    expect(controller.snapshot(accountId).reason).toBe("reconnecting");
+    const resumed = await controller.start(
+      accountId,
+      DEFAULT_FARMING_CONFIG,
+      undefined,
+      true,
+    );
+    expect(resumed.reason).toBe("resumed");
+    controller.halt(accountId, "stopped");
+    expect(adapter.remember).toHaveBeenLastCalledWith(accountId, false);
   });
 
   it("honors the existing game cap, whitelist and blacklist precedence", async () => {

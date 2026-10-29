@@ -162,6 +162,15 @@ export function FarmingSettings({
               />
               {t.protect}
             </label>
+            <label className="flex min-h-11 items-center gap-2">
+              <input
+                type="checkbox"
+                className="shrink-0"
+                checked={draft.autoResume}
+                onChange={(event) => edit({ autoResume: event.target.checked })}
+              />
+              {t.autoResume}
+            </label>
           </div>
         </fieldset>
         <div className="mt-3">

@@ -229,7 +229,9 @@ describe("card farming controls", () => {
       ).toHaveValue("730, unfinished"),
     );
     expect(screen.getByRole("spinbutton")).toHaveValue(null);
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Protect refundable games" }),
+    ).not.toBeChecked();
     expect(
       screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
@@ -237,7 +239,9 @@ describe("card farming controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
 
     expect(screen.getByRole("spinbutton")).toHaveValue(32);
-    expect(screen.getByRole("checkbox")).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Protect refundable games" }),
+    ).toBeChecked();
     expect(
       window.sessionStorage.getItem("steam-bee-farming-draft:first"),
     ).toBeNull();
@@ -382,7 +386,9 @@ describe("card farming controls", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The latest status could not be confirmed",
     );
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Protect refundable games" }),
+    ).not.toBeChecked();
     expect(
       screen.queryByRole("button", { name: "Save settings" }),
     ).not.toBeInTheDocument();

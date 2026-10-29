@@ -36,7 +36,11 @@ import {
 } from "./operations-repository.js";
 import { SafetyCoordinator } from "./safety-coordinator.js";
 import { closeWithLeaseCleanup } from "../startup.js";
-import { farmingController } from "../farming/service.js";
+import {
+  farmingController,
+  farmingResumesAfterRestart,
+  resumeInterruptedFarming,
+} from "../farming/service.js";
 import { stopAccountBatches, shutdownBatches } from "../inventory/runtime.js";
 
 class SteamManager {
@@ -558,6 +562,11 @@ class SteamManager {
     return worker.getCommunitySession();
   }
 
+  async getAcquisitionTimes(accountId: string, appIds: number[]) {
+    const worker = await this.getWorkerForAccount(accountId);
+    return worker.acquisitionTimes(appIds);
+  }
+
   async getFarmingAvailability(accountId: string) {
     const account = await getAccountOrThrow(accountId);
     const worker = this.workers.get(accountId);
@@ -744,6 +753,8 @@ class SteamManager {
       const createdWorker = new SteamWorker(account, {
         runAccountOperation: (operation) =>
           this.runAccountOperation(account.id, operation),
+        farmingResumesAfterShutdown: () =>
+          farmingResumesAfterRestart(account.id),
         recordSessionConflict: ({ source: conflictSource, ...input }) =>
           this.recordInfo(
             account.id,
@@ -802,6 +813,17 @@ class SteamManager {
           return;
         }
         await this.processWorkerStatus(accountId, payload);
+      })
+      .then(() => {
+        if (!["online", "boosting"].includes(payload.status)) return;
+        if (this.workers.get(accountId) !== worker || this.quiescing) return;
+        // Outside the account queue: farming takes the queue itself.
+        void resumeInterruptedFarming(accountId).catch((error) => {
+          this.logger.warn(
+            errorLogFields(error, { accountId }),
+            "Interrupted card farming could not resume",
+          );
+        });
       })
       .catch((error) => {
         this.logger.error(

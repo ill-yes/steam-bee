@@ -136,9 +136,11 @@ export function FarmingOverview({
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone={isActive ? "accent" : "neutral"}>
-                        {interpolate(t.dropCount, {
-                          count: game.remainingDrops,
-                        })}
+                        {game.remainingDrops === 1
+                          ? t.dropCountOne
+                          : interpolate(t.dropCount, {
+                              count: game.remainingDrops,
+                            })}
                       </Badge>
                       <span
                         className={`text-xs font-medium ${isActive ? "text-[var(--accent-ink)]" : "text-[var(--muted-strong)]"}`}

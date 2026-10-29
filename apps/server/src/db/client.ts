@@ -567,6 +567,17 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: "015_card_farming_resume",
+    description:
+      "Remember running card farming so it can resume after a restart",
+    sql: `
+      CREATE TABLE IF NOT EXISTS account_farming_resume (
+        account_id TEXT PRIMARY KEY REFERENCES steam_account(id) ON DELETE CASCADE,
+        requested_at INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 export function migrate() {

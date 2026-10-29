@@ -75,6 +75,13 @@ export const accountFarmingConfig = sqliteTable("account_farming_config", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const accountFarmingResume = sqliteTable("account_farming_resume", {
+  accountId: text("account_id")
+    .primaryKey()
+    .references(() => steamAccount.id, { onDelete: "cascade" }),
+  requestedAt: integer("requested_at").notNull(),
+});
+
 export const accountMarketPriceSettings = sqliteTable(
   "account_market_price_settings",
   {
