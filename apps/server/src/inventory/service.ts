@@ -30,6 +30,7 @@ import {
   toMinorUnits,
   type Wallet,
 } from "./money.js";
+import { parseListingOrderBook } from "./order-book.js";
 
 type Json = Record<string, unknown>;
 type RequestInit = {
@@ -518,6 +519,39 @@ export class InventoryMarketService {
       this.settingsWrites.delete(accountId);
     }
   }
+  private async listingOrderBook(
+    accountId: string,
+    html: string,
+    wallet: Wallet,
+  ): Promise<Json> {
+    const book = parseListingOrderBook(html);
+    if (book) {
+      if (book.currencyId !== wallet.currency.id)
+        throw appError(
+          "Steam returned prices in another currency. No sale was submitted.",
+          409,
+        );
+      return {
+        success: 1,
+        lowest_sell_order: book.lowestSellOrder,
+        highest_buy_order: book.highestBuyOrder,
+      };
+    }
+    const match = html.match(/Market_LoadOrderSpread\(\s*(\d+)\s*\)/);
+    if (!match)
+      throw appError(
+        "Steam did not provide an authoritative order book for this item.",
+        409,
+      );
+    const query = new URLSearchParams({
+      country: wallet.country,
+      language: "english",
+      currency: String(wallet.currency.id),
+      item_nameid: match[1]!,
+      two_factor: "0",
+    });
+    return this.json(accountId, `/market/itemordershistogram?${query}`);
+  }
   private async quote(
     accountId: string,
     item: Item,
@@ -533,23 +567,7 @@ export class InventoryMarketService {
       accountId,
       `/market/listings/753/${encodeURIComponent(item.marketHashName)}?l=english`,
     );
-    const match = html.match(/Market_LoadOrderSpread\(\s*(\d+)\s*\)/);
-    if (!match)
-      throw appError(
-        "Steam did not provide an authoritative order book for this item.",
-        409,
-      );
-    const query = new URLSearchParams({
-      country: wallet.country,
-      language: "english",
-      currency: String(wallet.currency.id),
-      item_nameid: match[1]!,
-      two_factor: "0",
-    });
-    const data = await this.json(
-      accountId,
-      `/market/itemordershistogram?${query}`,
-    );
+    const data = await this.listingOrderBook(accountId, html, wallet);
     const reference =
       settings.priceMode === "highestBuyOrder"
         ? data.highest_buy_order

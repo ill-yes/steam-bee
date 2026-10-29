@@ -11,10 +11,32 @@ type CommunityRequestOptions = {
   shouldContinue?: () => boolean;
 };
 
+/** Cookies Steam sets during its market check; never auth cookies. */
+const marketCookieNames = new Set(["webTradeEligibility", "steamCountry"]);
+
 export function createCommunityRequest(
   sessionFor: (accountId: string) => Promise<CommunitySession>,
   fetcher: typeof fetch = fetch,
+  now: () => number = Date.now,
 ) {
+  // Market cookies belong to one web session and expire with Steam's Max-Age.
+  const marketCookies = new Map<
+    string,
+    {
+      sessionId: string;
+      cookies: Map<string, { pair: string; expiresAt: number }>;
+    }
+  >();
+  const marketCookiesFor = (accountId: string, sessionId: string) => {
+    let entry = marketCookies.get(accountId);
+    if (entry?.sessionId !== sessionId) {
+      entry = { sessionId, cookies: new Map() };
+      marketCookies.set(accountId, entry);
+    }
+    for (const [name, cookie] of entry.cookies)
+      if (cookie.expiresAt <= now()) entry.cookies.delete(name);
+    return entry.cookies;
+  };
   return async (
     accountId: string,
     path: string,
@@ -59,12 +81,16 @@ export function createCommunityRequest(
           },
         );
       }
+      const extraCookies = marketCookiesFor(accountId, session.sessionId);
       let target = url;
       for (let hop = 0; ; hop++) {
         response = await fetcher(target, {
           method,
           headers: {
-            cookie: session.cookies.join("; "),
+            cookie: [
+              ...session.cookies,
+              ...[...extraCookies.values()].map((cookie) => cookie.pair),
+            ].join("; "),
             referer: `${origin}/market/`,
             origin,
             ...(form
@@ -80,8 +106,10 @@ export function createCommunityRequest(
         });
         if (response.status < 300 || response.status >= 400) break;
         await response.body?.cancel();
-        // Profiles with a custom URL redirect /profiles/<id>/... to /id/<name>/...;
-        // follow only same-host GET hops to another profile path.
+        rememberMarketCookies(response, extraCookies, now());
+        // Profiles with a custom URL redirect /profiles/<id>/... to /id/<name>/...,
+        // and the market first sends browsers through its eligibility check.
+        // Follow only those same-host GET hops.
         const next = communityRedirect(response, target, method, hop);
         if (!next) {
           log.warn(
@@ -155,14 +183,35 @@ function communityRedirect(
   } catch {
     return null;
   }
-  if (
-    next.origin !== from.origin ||
-    next.username ||
-    next.password ||
-    !/^\/(?:id|profiles)\/[^/]+\//.test(next.pathname)
-  )
+  if (next.origin !== from.origin || next.username || next.password)
     return null;
-  return next;
+  const profile = /^\/(?:id|profiles)\/[^/]+\//.test(next.pathname);
+  const eligibility = next.pathname === "/market/eligibilitycheck/";
+  const backToMarket =
+    from.pathname === "/market/eligibilitycheck/" &&
+    next.pathname.startsWith("/market/") &&
+    !eligibility;
+  return profile || eligibility || backToMarket ? next : null;
+}
+
+function rememberMarketCookies(
+  response: Response,
+  cookies: Map<string, { pair: string; expiresAt: number }>,
+  now: number,
+) {
+  for (const header of response.headers.getSetCookie()) {
+    const [pair = "", ...attributes] = header.split(";");
+    const name = pair.slice(0, pair.indexOf("=")).trim();
+    if (!marketCookieNames.has(name) || /[\r\n]/.test(pair)) continue;
+    const maxAge = attributes
+      .map((attribute) => /^\s*max-age=(\d+)\s*$/i.exec(attribute)?.[1])
+      .find(Boolean);
+    // Without Max-Age the cookie lives for the browser session; keep it an hour.
+    const seconds = maxAge === undefined ? 3600 : Number(maxAge);
+    if (seconds <= 0) cookies.delete(name);
+    else
+      cookies.set(name, { pair: pair.trim(), expiresAt: now + seconds * 1000 });
+  }
 }
 
 /** Path only: query strings can carry return URLs or tokens. */
