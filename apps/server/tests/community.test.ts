@@ -133,6 +133,73 @@ describe("Steam Community HTTP transport", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  it("follows a same-host redirect to the profile's custom URL", async () => {
+    const { fetcher, request } = harness();
+    fetcher
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: {
+            location:
+              "https://steamcommunity.com/id/custom-name/gamecards/730?l=english",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("badge page"));
+    const response = await request(
+      "account-one",
+      "/profiles/76561198000000001/gamecards/730/?l=english",
+    );
+    expect(await response.text()).toBe("badge page");
+    expect(String(fetcher.mock.calls[1]?.[0])).toBe(
+      "https://steamcommunity.com/id/custom-name/gamecards/730?l=english",
+    );
+    expect(fetcher.mock.calls[1]?.[1]?.redirect).toBe("manual");
+  });
+
+  it.each([
+    "https://steamcommunity.com/login/home/?goto=market",
+    "/market/eligibilitycheck/",
+  ])("treats a redirect to %j as an expired sign-in", async (location) => {
+    const { fetcher, request } = harness();
+    fetcher.mockResolvedValueOnce(
+      new Response(null, { status: 302, headers: { location } }),
+    );
+    await expect(
+      request("account-one", "/profiles/76561198000000001/badges/"),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops after three profile redirects", async () => {
+    const { fetcher, request } = harness();
+    fetcher.mockImplementation(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "/id/loop/badges/" },
+        }),
+    );
+    await expect(
+      request("account-one", "/profiles/76561198000000001/badges/"),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not replay a POST across a redirect", async () => {
+    const { fetcher, request } = harness();
+    fetcher.mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "/id/custom-name/badges/" },
+      }),
+    );
+    await expect(
+      request("account-one", "/market/sellitem/", { method: "POST" }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("always uses the broker's session ID when submitting form data", async () => {
     const { fetcher, request } = harness();
     fetcher.mockResolvedValueOnce(new Response("ok"));

@@ -1,6 +1,9 @@
 import { AppError, appError } from "../http/errors.js";
 import { steamManager } from "./manager.js";
 import type { CommunitySession } from "./community-session.js";
+import { createLogger } from "../util/logger.js";
+
+const log = createLogger("steam-community");
 
 type CommunityRequestOptions = {
   method?: "GET" | "POST";
@@ -56,26 +59,42 @@ export function createCommunityRequest(
           },
         );
       }
-      response = await fetcher(url, {
-        method,
-        headers: {
-          cookie: session.cookies.join("; "),
-          referer: `${origin}/market/`,
-          origin,
-          ...(form
-            ? {
-                "content-type":
-                  "application/x-www-form-urlencoded; charset=UTF-8",
-              }
-            : {}),
-        },
-        ...(form ? { body: form } : {}),
-        redirect: "manual",
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (response.status >= 300 && response.status < 400) {
+      let target = url;
+      for (let hop = 0; ; hop++) {
+        response = await fetcher(target, {
+          method,
+          headers: {
+            cookie: session.cookies.join("; "),
+            referer: `${origin}/market/`,
+            origin,
+            ...(form
+              ? {
+                  "content-type":
+                    "application/x-www-form-urlencoded; charset=UTF-8",
+                }
+              : {}),
+          },
+          ...(form ? { body: form } : {}),
+          redirect: "manual",
+          signal: AbortSignal.timeout(20_000),
+        });
+        if (response.status < 300 || response.status >= 400) break;
         await response.body?.cancel();
-        throw appError("Steam Community requires a renewed sign-in.", 409);
+        // Profiles with a custom URL redirect /profiles/<id>/... to /id/<name>/...;
+        // follow only same-host GET hops to another profile path.
+        const next = communityRedirect(response, target, method, hop);
+        if (!next) {
+          log.warn(
+            {
+              status: response.status,
+              path: target.pathname,
+              redirectPath: redirectPath(response, target),
+            },
+            "Steam Community redirect rejected",
+          );
+          throw appError("Steam Community requires a renewed sign-in.", 409);
+        }
+        target = next;
       }
       const reader = response.body?.getReader();
       const chunks: Uint8Array[] = [];
@@ -117,6 +136,43 @@ export function createCommunityRequest(
       );
     }
   };
+}
+
+const maxRedirects = 3;
+
+function communityRedirect(
+  response: Response,
+  from: URL,
+  method: string,
+  hop: number,
+): URL | null {
+  if (method !== "GET" || hop >= maxRedirects) return null;
+  const location = response.headers.get("location");
+  if (!location) return null;
+  let next: URL;
+  try {
+    next = new URL(location, from);
+  } catch {
+    return null;
+  }
+  if (
+    next.origin !== from.origin ||
+    next.username ||
+    next.password ||
+    !/^\/(?:id|profiles)\/[^/]+\//.test(next.pathname)
+  )
+    return null;
+  return next;
+}
+
+/** Path only: query strings can carry return URLs or tokens. */
+function redirectPath(response: Response, from: URL): string | null {
+  try {
+    const next = new URL(response.headers.get("location") ?? "", from);
+    return next.origin === from.origin ? next.pathname : next.origin;
+  } catch {
+    return null;
+  }
 }
 
 export const communityRequest = createCommunityRequest((accountId) =>
