@@ -69,6 +69,9 @@ type Preview =
   | { kind: "cancel"; value: CancelPreview };
 
 export type InventoryView = "inventory" | "listings" | "rules";
+const CONFIRMATION_POLL_MS = 8_000;
+const CONFIRMATION_WATCH_MS = 10 * 60_000;
+const CONFIRMATION_GRACE_MS = 30_000;
 type InventoryPanelProps = {
   accountId: string;
   /** The account navigation owns the view; standalone use keeps it locally. */
@@ -148,6 +151,10 @@ function AccountInventoryPanel({
   );
   const [preview, setPreview] = useState<Preview | null>(null);
   const [now, setNow] = useState(Date.now());
+  // Steam reports no event when a listing is confirmed in the mobile app; poll until it settles.
+  const [confirmationWatchUntil, setConfirmationWatchUntil] = useState(0);
+  const pendingListingIds = useRef<Set<string> | null>(null);
+  const confirmationWatchStarted = useRef(0);
   const active = useRef(false);
   const actionLock = useRef(false);
   const generation = useRef(0);
@@ -167,6 +174,7 @@ function AccountInventoryPanel({
 
   const batch = useBatchMarket(accountId, errorMessage, () => {
     setBasket({});
+    pendingListingIds.current = null;
     if (controller.current) void refresh(controller.current.signal);
   });
   const locked = busy || batch.busy || batch.running || batch.recoveryRequired;
@@ -283,6 +291,63 @@ function AccountInventoryPanel({
     setActionError(a.previewBlockedByBatch);
     restorePreviewFocus();
   }, [preview, busy, batch.running, a.previewBlockedByBatch]);
+
+  const hasPendingListings =
+    market?.listings.some((listing) => listing.pendingConfirmation) ?? false;
+  useEffect(() => {
+    if (!market) return;
+    const pending = new Set(
+      market.listings
+        .filter((listing) => listing.pendingConfirmation)
+        .map((listing) => listing.listingId),
+    );
+    const previous = pendingListingIds.current;
+    pendingListingIds.current = pending;
+    if (!previous) return;
+    const settled = [...previous].filter((id) => !pending.has(id));
+    if (settled.length === 0) return;
+    const nowActive = settled.some((id) =>
+      market.listings.some((listing) => listing.listingId === id),
+    );
+    setNotice(nowActive ? t.listingConfirmed : t.listingGone);
+    setNoticeView("listings");
+  }, [market, t.listingConfirmed, t.listingGone]);
+  useEffect(() => {
+    if (!hasPendingListings) return;
+    confirmationWatchStarted.current = Date.now();
+    setConfirmationWatchUntil((until) =>
+      Math.max(until, Date.now() + CONFIRMATION_WATCH_MS),
+    );
+  }, [hasPendingListings]);
+  const watchingConfirmations = confirmationWatchUntil > clock;
+  useEffect(() => {
+    if (!watchingConfirmations) return;
+    const timer = window.setInterval(() => {
+      if (document.hidden || Date.now() > confirmationWatchUntil) return;
+      if (actionLock.current) return;
+      const signal = controller.current?.signal;
+      if (!signal) return;
+      const request = generation.current;
+      void api<MarketListings>(`${base}/market/listings`, { signal })
+        .then((value) => {
+          // A full refresh started meanwhile owns the newer result.
+          if (!active.current || request !== generation.current) return;
+          setMarket(value);
+          setMarketError("");
+          // Steam can list a fresh sale a moment late; keep looking briefly before giving up.
+          if (
+            !value.listings.some((listing) => listing.pendingConfirmation) &&
+            Date.now() - confirmationWatchStarted.current >
+              CONFIRMATION_GRACE_MS
+          )
+            setConfirmationWatchUntil(0);
+        })
+        .catch(() => {
+          // Polling is best effort; the next tick or a manual refresh retries.
+        });
+    }, CONFIRMATION_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [watchingConfirmations, confirmationWatchUntil, base]);
 
   function money(amount: number, currency: MarketCurrency) {
     return new Intl.NumberFormat(localeInfo.dateLocale, {
@@ -467,6 +532,12 @@ function AccountInventoryPanel({
         );
         setNoticeView(selected.kind === "sale" ? "listings" : "inventory");
         if (selected.kind === "sale") setBasket({});
+        if (result.pendingConfirmation) {
+          confirmationWatchStarted.current = Date.now();
+          setConfirmationWatchUntil(Date.now() + CONFIRMATION_WATCH_MS);
+        }
+        // Own cancellations are not confirmations; start comparing afresh.
+        if (selected.kind === "cancel") pendingListingIds.current = null;
         if (controller.current) void refresh(controller.current.signal);
       },
       true,

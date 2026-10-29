@@ -642,7 +642,7 @@ describe("grouped inventory and batch market tools", () => {
     expect(screen.getByText("Steam confirmation required: 1")).toBeVisible();
     expect(
       screen.getByText(
-        "Complete the confirmation in Steam Mobile or your email before this market action becomes active.",
+        "Confirm this in the Steam Mobile app or by email. SteamBee notices the confirmation automatically.",
       ),
     ).toBeVisible();
     expect(

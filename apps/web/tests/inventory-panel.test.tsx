@@ -308,9 +308,50 @@ describe("inventory and explicit market confirmation", () => {
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
     );
     expect(
-      screen.getByText(/Complete the confirmation in Steam Mobile/),
+      screen.getByText(/Confirm this in the Steam Mobile app/),
     ).toBeVisible();
     expect(within(basket).getByText("0 items · 0 copies")).toBeVisible();
+  });
+
+  it("notices a listing confirmed in Steam without a manual refresh", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // jsdom reports a hidden document; polling pauses in background tabs.
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    let pending = true;
+    setupApi((path) =>
+      path.endsWith("/market/listings")
+        ? {
+            ...market,
+            listings: [
+              { ...market.listings[0]!, pendingConfirmation: pending },
+            ],
+          }
+        : undefined,
+    );
+    renderPanel("first", "listings");
+    expect(
+      await screen.findByText("Steam confirmation required"),
+    ).toBeVisible();
+    const listingCalls = () =>
+      vi
+        .mocked(api)
+        .mock.calls.filter(([path]) => path.endsWith("/market/listings"))
+        .length;
+    // Let the pending listing start the confirmation watch.
+    await act(async () => {});
+    const before = listingCalls();
+    pending = false;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(listingCalls()).toBe(before + 1);
+    expect(
+      screen.getByText("Confirmed in Steam. The listing is now active."),
+    ).toBeVisible();
+    expect(
+      vi.mocked(api).mock.calls.filter(([path]) => path.endsWith("/inventory"))
+        .length,
+    ).toBe(1);
   });
 
   it.each([
