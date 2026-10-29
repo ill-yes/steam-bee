@@ -47,6 +47,8 @@ const en = {
   buyerPays: "Buyers pay",
   fees: "Steam & game fees",
   receive: "You receive",
+  marketPrice: "Market price",
+  receivePerExtra: "You receive per sold extra",
   partialPrices:
     "Some prices are still missing; totals cover {count} of {total} items.",
   actions: "{count} Steam actions · {delay} s apart",
@@ -111,6 +113,8 @@ const de: typeof en = {
   buyerPays: "Käufer zahlen",
   fees: "Steam- & Spielgebühr",
   receive: "Du erhältst",
+  marketPrice: "Marktpreis",
+  receivePerExtra: "Du erhältst pro verkauftem Extra",
   partialPrices:
     "Einige Preise fehlen noch; die Summe umfasst {count} von {total} Gegenständen.",
   actions: "{count} Steam-Aktionen · alle {delay} s",

@@ -105,9 +105,9 @@ describe("account workspace navigation", () => {
       nav()
         .getAllByRole("button")
         .filter((button) => button.getAttribute("aria-current") === "page"),
-    ).toEqual([item("Games & playtime")]);
+    ).toEqual([item("Boost playtime")]);
     expect(
-      screen.getByRole("region", { name: "Games & playtime" }),
+      screen.getByRole("region", { name: "Boost playtime" }),
     ).toHaveTextContent("Saved games");
     expect(screen.getByTestId("watcher")).toHaveTextContent("first");
   });
@@ -154,7 +154,7 @@ describe("account workspace navigation", () => {
         .getAllByRole("option")
         .map((option) => option.textContent),
     ).toEqual([
-      "Games & playtime",
+      "Boost playtime",
       "Card farming (3 drops)",
       "Inventory",
       "Market listings",
@@ -195,9 +195,9 @@ describe("account workspace navigation", () => {
     );
     expect(screen.queryByText(/Inventory for first/)).not.toBeInTheDocument();
     expect(screen.queryByText("First library")).not.toBeInTheDocument();
-    expect(item("Games & playtime")).toHaveAttribute("aria-current", "page");
+    expect(item("Boost playtime")).toHaveAttribute("aria-current", "page");
     expect(
-      screen.getByRole("region", { name: "Games & playtime" }),
+      screen.getByRole("region", { name: "Boost playtime" }),
     ).toHaveTextContent("Second library");
     expect(screen.getByTestId("watcher")).toHaveTextContent("second");
   });

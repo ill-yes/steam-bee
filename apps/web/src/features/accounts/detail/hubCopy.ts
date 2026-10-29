@@ -2,7 +2,7 @@ import type { LocaleCode } from "../../../i18n";
 
 const en = {
   workspace: "Account workspace",
-  library: "Games & playtime",
+  library: "Boost playtime",
   inventory: "Inventory & market",
   farming: "Card farming",
   offers: "Free game offers",
@@ -38,10 +38,10 @@ const en = {
   savedSelectionHint:
     "Saved for manual playtime; farming uses the games shown above.",
   farmingStatusHint:
-    "Card farming controls the active games shown above. Your saved manual selection stays available in Games & playtime.",
+    "Card farming controls the active games shown above. Your saved manual selection stays available in Boost playtime.",
   openAccount: "Open account & safety",
   navLabel: "Account sections",
-  navActivity: "Activity",
+  navActivity: "Games",
   navItems: "Items",
   navDiscover: "Discover",
   navAccount: "Account",
@@ -107,7 +107,7 @@ const en = {
 };
 const de: typeof en = {
   workspace: "Konto-Arbeitsbereich",
-  library: "Spiele & Spielzeit",
+  library: "Spielzeit boosten",
   inventory: "Inventar & Markt",
   farming: "Karten farmen",
   offers: "Gratisangebote",
@@ -143,10 +143,10 @@ const de: typeof en = {
   savedSelectionHint:
     "Für manuelle Spielzeit gespeichert; Farming verwendet die oben angezeigten Spiele.",
   farmingStatusHint:
-    "Karten-Farming steuert die oben angezeigten aktiven Spiele. Deine gespeicherte manuelle Auswahl bleibt unter Spiele & Spielzeit verfügbar.",
+    "Karten-Farming steuert die oben angezeigten aktiven Spiele. Deine gespeicherte manuelle Auswahl bleibt unter Spielzeit boosten verfügbar.",
   openAccount: "Konto & Sicherheit öffnen",
   navLabel: "Konto-Bereiche",
-  navActivity: "Aktivität",
+  navActivity: "Spiele",
   navItems: "Gegenstände",
   navDiscover: "Entdecken",
   navAccount: "Konto",

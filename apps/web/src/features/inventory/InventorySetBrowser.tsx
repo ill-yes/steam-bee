@@ -601,22 +601,37 @@ function Tile({
     : !sellable
       ? s.keepOne
       : null;
-  const shown =
-    price &&
-    price.currency &&
-    price.sellerReceivesPerItem !== null &&
-    (price.displayUntil === null || price.displayUntil > now)
-      ? formatMoney(price.sellerReceivesPerItem, price.currency, numberLocale)
+  const current =
+    price?.currency && (price.displayUntil === null || price.displayUntil > now)
+      ? price
       : null;
+  const money = (value: number | null | undefined) =>
+    current?.currency && value !== null && value !== undefined
+      ? formatMoney(value, current.currency, numberLocale)
+      : null;
+  const market = money(current?.sourceBuyerPrice);
+  const receive = sellable ? money(current?.sellerReceivesPerItem) : null;
+  const priceFailed =
+    price?.status === "error" || price?.status === "unavailable";
   // Only a reason the user can act on is shown; "keep one copy" stays a hint.
   const visibleReason = variant.marketable ? null : reason;
-  const priceText = sellable ? (
-    <span
-      className="flex items-center justify-between gap-1 text-[10px] text-[var(--muted)]"
-      title={s.receive}
-    >
-      <span className="tabular-nums">{shown ? `+${shown}` : "…"}</span>
-      {!inBasket && <Plus size={12} aria-hidden="true" />}
+  const priceText = variant.marketable ? (
+    <span className="flex flex-wrap items-center justify-between gap-x-1 text-[10px] text-[var(--muted)]">
+      <span
+        className="whitespace-nowrap tabular-nums text-[var(--ink)]"
+        title={s.marketPrice}
+      >
+        {market ?? (priceFailed ? "–" : "…")}
+      </span>
+      {sellable && (
+        <span
+          className="flex items-center gap-0.5 whitespace-nowrap tabular-nums"
+          title={s.receivePerExtra}
+        >
+          {receive && `+${receive}`}
+          {!inBasket && <Plus size={12} aria-hidden="true" />}
+        </span>
+      )}
     </span>
   ) : visibleReason ? (
     <span className="text-[10px] text-[var(--muted)]">{visibleReason}</span>

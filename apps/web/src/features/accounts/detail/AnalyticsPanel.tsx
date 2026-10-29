@@ -91,7 +91,11 @@ export function AnalyticsPanel({
               <div className="flex justify-between gap-2">
                 <span className="truncate">
                   {session.presetName ??
-                    `${session.appIds.length} ${t.common.games}`}
+                    `${session.appIds.length} ${
+                      session.appIds.length === 1
+                        ? t.common.game
+                        : t.common.games
+                    }`}
                 </span>
                 <span className="shrink-0 text-[var(--muted)]">
                   {formatDurationMs(

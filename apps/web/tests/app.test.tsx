@@ -658,7 +658,7 @@ describe("web smoke", () => {
     ).not.toBeInTheDocument();
     await screen.findByLabelText("Search library");
     fireEvent.click(section("Account & safety"));
-    fireEvent.click(section("Games & playtime"));
+    fireEvent.click(section("Boost playtime"));
     expect(
       apiMock.mock.calls.some(
         ([, options]) =>
