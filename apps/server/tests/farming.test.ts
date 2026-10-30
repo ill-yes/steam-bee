@@ -109,6 +109,29 @@ describe("card farming lifecycle", () => {
     vi.useRealTimers();
   });
 
+  it("applies new settings to a running worker without stopping it", async () => {
+    const { adapter, controller } = setup([game(10, 30), game(20, 30)]);
+    await controller.start(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      skipRefundable: false,
+    });
+    expect(controller.snapshot(accountId).activeAppIds).toEqual([10, 20]);
+    const result = controller.reconfigure(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      skipRefundable: false,
+      blacklist: [20],
+    });
+    expect(result.phase).toBe("warming");
+    expect(result.games.find((entry) => entry.appId === 20)?.skipReason).toBe(
+      "blacklisted",
+    );
+    await vi.waitFor(() =>
+      expect(controller.snapshot(accountId).activeAppIds).toEqual([10]),
+    );
+    expect(adapter.end).not.toHaveBeenCalled();
+    await controller.stop(accountId);
+  });
+
   it("protects unknown and recent purchases below two hours by default", async () => {
     const { controller, adapter } = setup([
       game(1, 0),

@@ -1,30 +1,22 @@
-import { useEffect, useId, useRef, useState, type Ref } from "react";
-import type { SteamApp } from "@steam-bee/contracts";
+import { useEffect, useId, useRef, useState } from "react";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Input, Label } from "../../components/ui/form";
 import { interpolate } from "../../i18n";
-import { FarmingGamePicker } from "./FarmingGamePicker";
 import { parseDraftIds } from "./drafts";
 import type { useFarmingPanel } from "./useFarmingPanel";
 
+/** The rules dialog: limits, protection and AppID lists. Single games are chosen on the board. */
 export function FarmingSettings({
-  accountId,
-  library,
   state,
-  visible,
-  titleRef,
+  onSaved,
 }: {
-  accountId: string;
-  library?: SteamApp[] | undefined;
   state: ReturnType<typeof useFarmingPanel>;
-  visible: boolean;
-  titleRef?: Ref<HTMLHeadingElement>;
+  onSaved: () => void;
 }) {
   const {
     t,
     snapshot,
-    active,
     draft,
     dirty,
     errors,
@@ -47,73 +39,28 @@ export function FarmingSettings({
       setAdvancedOpen(true);
   }, [errors, draft.whitelist, draft.blacklist]);
   useEffect(() => {
-    if (!visible) return;
     const invalid = settingsForm.current?.querySelector<HTMLInputElement>(
       '[aria-invalid="true"]',
     );
     invalid?.focus();
     invalid?.scrollIntoView?.({ block: "center" });
-  }, [errors, advancedOpen, visible]);
+  }, [errors, advancedOpen]);
   if (!snapshot) return null;
   return (
-    <section className="grid min-w-0 gap-3" aria-labelledby={`${id}-title`}>
-      <div>
-        <h3
-          id={`${id}-title`}
-          ref={titleRef}
-          tabIndex={-1}
-          className="scroll-mt-24 text-sm font-semibold outline-none"
-        >
-          {t.selectionSettings}
-        </h3>
-        <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
-          {t.workflow}
-        </p>
-      </div>
+    <div className="grid min-w-0 gap-3">
       <form
         ref={settingsForm}
         aria-label={t.settings}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          void action("config");
+          void action("config").then((saved) => {
+            if (saved) onSaved();
+          });
         }}
       >
-        <div className="sticky top-20 z-10 mb-4 grid gap-2 rounded-md border border-[var(--line)] bg-[var(--surface)] p-3 shadow-[var(--panel-shadow)]">
-          {error && <Alert tone="danger">{error}</Alert>}
-          {dirty ? (
-            <>
-              <p className="text-xs text-[var(--muted-strong)]">
-                {t.pendingChanges}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="whitespace-normal"
-                  disabled={Boolean(busy) || active}
-                >
-                  {busy === "config" ? t.progress.config : t.save}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="whitespace-normal"
-                  disabled={Boolean(busy) || active}
-                  onClick={discard}
-                >
-                  {t.discard}
-                </Button>
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-[var(--muted)]">{t.savedState}</p>
-          )}
-          {active && (
-            <p className="text-xs text-[var(--warn)]">{t.configLocked}</p>
-          )}
-        </div>
         <fieldset
-          disabled={active || Boolean(busy)}
+          disabled={Boolean(busy)}
           className="grid min-w-0 gap-3 sm:grid-cols-2"
           aria-describedby={`${id}-config-hint`}
         >
@@ -173,17 +120,6 @@ export function FarmingSettings({
             </label>
           </div>
         </fieldset>
-        <div className="mt-3">
-          <FarmingGamePicker
-            key={accountId}
-            accountId={accountId}
-            snapshot={snapshot}
-            draft={draft}
-            library={library}
-            disabled={active || Boolean(busy)}
-            onChange={edit}
-          />
-        </div>
         <details
           className="mt-3 rounded-md border border-[var(--line)] px-3 py-2"
           open={advancedOpen}
@@ -193,7 +129,7 @@ export function FarmingSettings({
             {t.advancedIds}
           </summary>
           <fieldset
-            disabled={active || Boolean(busy)}
+            disabled={Boolean(busy)}
             className="mt-2 grid min-w-0 gap-3 sm:grid-cols-2"
           >
             <legend className="sr-only">{t.advancedIds}</legend>
@@ -246,9 +182,34 @@ export function FarmingSettings({
           <p id={`${id}-limit-hint`}>
             {interpolate(t.limitHint, { limit: snapshot.gameLimit })}
           </p>
-          {active && <p>{t.configLocked}</p>}
+        </div>
+        <div className="mt-4 grid gap-2 border-t border-[var(--line)] pt-3">
+          {error && <Alert tone="danger">{error}</Alert>}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <p className="mr-auto text-xs text-[var(--muted)]">
+              {dirty ? t.pendingChanges : t.savedState}
+            </p>
+            {dirty && (
+              <Button
+                variant="ghost"
+                className="whitespace-normal"
+                disabled={Boolean(busy)}
+                onClick={discard}
+              >
+                {t.discard}
+              </Button>
+            )}
+            <Button
+              type="submit"
+              variant="primary"
+              className="whitespace-normal"
+              disabled={Boolean(busy) || !dirty}
+            >
+              {busy === "config" ? t.progress.config : t.save}
+            </Button>
+          </div>
         </div>
       </form>
-    </section>
+    </div>
   );
 }

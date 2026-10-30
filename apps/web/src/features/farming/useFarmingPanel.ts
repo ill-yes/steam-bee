@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   DEFAULT_FARMING_CONFIG,
   type AccountStatus,
+  type FarmingConfig,
   type FarmingSnapshot,
 } from "@steam-bee/contracts";
 import { api, apiErrorMessage, isAbortError } from "../../api";
@@ -143,7 +144,7 @@ export function useFarmingPanel(
   }, [accountId, active, busy]);
 
   function edit(change: Partial<FarmingDraft>) {
-    if (busyRef.current || active) return;
+    if (busyRef.current) return;
     const next = { ...draft, ...change };
     setDraft(next);
     dirtyRef.current = true;
@@ -154,7 +155,7 @@ export function useFarmingPanel(
   }
 
   function discard() {
-    if (!currentSnapshot || busyRef.current || active) return;
+    if (!currentSnapshot || busyRef.current) return;
     clearFarmingDraft(accountId);
     dirtyRef.current = false;
     setDirty(false);
@@ -163,21 +164,27 @@ export function useFarmingPanel(
     setNotice(t.discarded);
   }
 
-  async function action(name: Action) {
-    if (busyRef.current) return;
-    if ((name === "scan" || name === "start") && dirtyRef.current) return;
-    if (name === "config" && !dirtyRef.current) return;
+  /** Resolves true once the command and its response were accepted. */
+  async function action(
+    name: Action,
+    override?: Pick<FarmingConfig, "whitelist" | "blacklist">,
+  ): Promise<boolean> {
+    if (busyRef.current) return false;
+    if ((name === "scan" || name === "start") && dirtyRef.current) return false;
+    // Quick game filters save the stored settings directly; a draft must be resolved first.
+    if (name === "config" && (override ? dirtyRef.current : !dirtyRef.current))
+      return false;
     const max = Number(draft.maxConcurrentGames);
     const whitelist = parseDraftIds(draft.whitelist);
     const blacklist = parseDraftIds(draft.blacklist);
-    if (name === "config") {
+    if (name === "config" && !override) {
       const validation: FieldErrors = {};
       if (!Number.isInteger(max) || max < 1 || max > 32)
         validation.maxConcurrentGames = t.invalidLimit;
       if (whitelist === null) validation.whitelist = t.invalidIds;
       if (blacklist === null) validation.blacklist = t.invalidIds;
       setErrors(validation);
-      if (Object.keys(validation).length > 0) return;
+      if (Object.keys(validation).length > 0) return false;
     }
     const requestEpoch = ++epoch.current;
     busyRef.current = name;
@@ -190,26 +197,31 @@ export function useFarmingPanel(
         const result = await api<FarmingSnapshot>(
           `/api/accounts/${accountId}/farming`,
         );
-        if (requestEpoch !== epoch.current) return;
+        if (requestEpoch !== epoch.current) return false;
         accept(result);
         setNotice(t.updated);
+        return true;
       } else {
         const result = await api<FarmingSnapshot>(
           `/api/accounts/${accountId}/farming/${name}`,
           name === "config"
             ? {
                 method: "PUT",
-                body: JSON.stringify({
-                  maxConcurrentGames: max,
-                  skipRefundable: draft.skipRefundable,
-                  whitelist: whitelist!,
-                  blacklist: blacklist!,
-                  autoResume: draft.autoResume,
-                }),
+                body: JSON.stringify(
+                  override && currentSnapshot
+                    ? { ...currentSnapshot.config, ...override }
+                    : {
+                        maxConcurrentGames: max,
+                        skipRefundable: draft.skipRefundable,
+                        whitelist: whitelist!,
+                        blacklist: blacklist!,
+                        autoResume: draft.autoResume,
+                      },
+                ),
               }
             : { method: "POST" },
         );
-        if (requestEpoch !== epoch.current) return;
+        if (requestEpoch !== epoch.current) return false;
         if (name === "config") {
           clearFarmingDraft(accountId);
           dirtyRef.current = false;
@@ -238,10 +250,12 @@ export function useFarmingPanel(
           if (requestEpoch === epoch.current && !isAbortError(failure))
             setRefreshError(apiErrorMessage(failure, messagesRef.current));
         }
+        return true;
       }
     } catch (failure) {
       if (requestEpoch === epoch.current && !isAbortError(failure))
         setError(apiErrorMessage(failure, messagesRef.current));
+      return false;
     } finally {
       if (requestEpoch === epoch.current) {
         busyRef.current = null;

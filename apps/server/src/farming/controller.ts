@@ -156,6 +156,23 @@ export class FarmingController {
     return this.snapshot(accountId);
   }
 
+  /** Apply new settings to a running worker without stopping it. */
+  reconfigure(accountId: string, config: FarmingConfig) {
+    this.snapshot(accountId, config);
+    const session = this.sessions.get(accountId)!;
+    if (!this.isActive(session)) return this.snapshot(accountId);
+    session.snapshot.config = structuredClone(config);
+    this.filterGames(session);
+    // Between ticks the worker is idle; re-select games now. An in-flight
+    // advance reads the new settings itself.
+    if (session.timer) {
+      clearTimeout(session.timer);
+      session.timer = null;
+      void this.advance(session, session.generation);
+    }
+    return this.snapshot(accountId);
+  }
+
   /** Invalidate synchronously before an account stop, pause, conflict, or shutdown. */
   halt(accountId: string, reason = "stopped") {
     const session = this.sessions.get(accountId);

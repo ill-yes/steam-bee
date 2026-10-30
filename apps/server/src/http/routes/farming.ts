@@ -39,15 +39,8 @@ export async function registerFarmingRoutes(app: FastifyInstance) {
       const { id } = accountIdParams.parse(request.params);
       const settings = farmingConfigSchema.parse(request.body);
       await getAccountOrThrow(id);
-      if (
-        ["scanning", "warming", "farming"].includes(
-          farmingController.snapshot(id).phase,
-        )
-      ) {
-        throw appError("Stop card farming before changing its settings.", 409);
-      }
       await saveFarmingConfig(id, settings);
-      return farmingController.snapshot(id, settings);
+      return farmingController.reconfigure(id, settings);
     },
   );
 
