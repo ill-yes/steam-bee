@@ -23,7 +23,13 @@ describe("card farming API", () => {
     const accountId = randomUUID();
     const availability = vi
       .spyOn(steamManager, "getFarmingAvailability")
-      .mockResolvedValue({ allowed: false, reason: "manual", gameLimit: 31 });
+      .mockResolvedValue({
+        allowed: false,
+        reason: "pause_until",
+        resumable: false,
+        gameLimit: 31,
+      });
+    const resume = vi.spyOn(steamManager, "resumeForFarming");
     const start = vi.spyOn(farmingController, "start");
     const app = await buildApp({ initSteam: false });
     try {
@@ -116,6 +122,7 @@ describe("card farming API", () => {
       expect(starts[0]?.statusCode).toBe(409);
       expect(starts.at(-1)?.statusCode).toBe(429);
       expect(start).not.toHaveBeenCalled();
+      expect(resume).not.toHaveBeenCalled();
       expect(
         (
           await app.inject({
@@ -126,6 +133,74 @@ describe("card farming API", () => {
           })
         ).statusCode,
       ).toBe(200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("resumes a manually paused account when farming starts", async () => {
+    const accountId = randomUUID();
+    vi.spyOn(steamManager, "getFarmingAvailability").mockResolvedValue({
+      allowed: false,
+      reason: "manual",
+      resumable: true,
+      gameLimit: 32,
+    });
+    const resume = vi
+      .spyOn(steamManager, "resumeForFarming")
+      .mockResolvedValue({
+        allowed: true,
+        reason: null,
+        resumable: false,
+        gameLimit: 32,
+      });
+    const start = vi
+      .spyOn(farmingController, "start")
+      .mockResolvedValue(farmingController.snapshot(accountId));
+    const app = await buildApp({ initSteam: false });
+    try {
+      const setup = await app.inject({
+        method: "POST",
+        url: "/api/setup",
+        payload: {
+          password: "correct horse battery staple",
+          setupToken: "steam-bee-test-setup-token",
+        },
+      });
+      const cookies = {
+        session: setup.cookies.find((cookie) => cookie.name === "session")!
+          .value,
+      };
+      const headers = {
+        "x-csrf-token": setup.json<{ csrfToken: string }>().csrfToken,
+      };
+      await db.insert(steamAccount).values({
+        id: accountId,
+        accountName: `farming-${accountId}`,
+        status: "paused_manual",
+        desiredState: "paused",
+        tokenKeyVersion: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const status = await app.inject({
+        method: "GET",
+        url: `/api/accounts/${accountId}/farming`,
+        cookies,
+      });
+      expect(status.json()).toMatchObject({ canStart: true, reason: null });
+      const started = await app.inject({
+        method: "POST",
+        url: `/api/accounts/${accountId}/farming/start`,
+        cookies,
+        headers,
+      });
+      expect(started.statusCode).toBe(200);
+      expect(resume).toHaveBeenCalledWith(accountId, {
+        source: "manual",
+        action: "farming-start",
+      });
+      expect(start).toHaveBeenCalledOnce();
     } finally {
       await app.close();
     }

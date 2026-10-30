@@ -584,8 +584,45 @@ class SteamManager {
     return {
       allowed: reason === null,
       reason,
+      // A manual pause or stop is no obstacle: starting farming resumes the session.
+      resumable:
+        !this.quiescing &&
+        (hold === null || hold.reason === "manual") &&
+        account.desiredState !== "running",
       gameLimit: gameSelectionLimit(account.customTitle),
     };
+  }
+
+  /** Resumes a manually paused or stopped account so card farming can start. */
+  async resumeForFarming(
+    accountId: string,
+    context: OperationContext = {},
+    timeoutMs = 30_000,
+  ) {
+    const resumed = await this.runAccountOperation(accountId, async () => {
+      const availability = await this.getFarmingAvailability(accountId);
+      if (availability.allowed || !availability.resumable) return false;
+      const worker = await this.getWorkerForAccount(accountId);
+      this.clearSafetyResume(accountId);
+      this.accountOperations.remember(accountId, "resume", context);
+      await clearSafetyHold(accountId);
+      await clearRecoveryHealth(accountId);
+      await worker.resumeForFarming();
+      await this.recordInfo(
+        accountId,
+        "steam.resume",
+        "The account was resumed for card farming.",
+        this.accountOperations.metadata(accountId),
+      );
+      return true;
+    });
+    if (!resumed) return this.getFarmingAvailability(accountId);
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const availability = await this.getFarmingAvailability(accountId);
+      if (availability.allowed || Date.now() >= deadline) return availability;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   }
 
   async beginFarming(

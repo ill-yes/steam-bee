@@ -2592,6 +2592,25 @@ describe("SteamWorker", () => {
       expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
     });
 
+    it("resumes a manual pause for farming without replaying the boost games", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      await steamManager.endFarming(account.id);
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({ allowed: false, reason: "manual", resumable: true });
+
+      await expect(
+        steamManager.resumeForFarming(account.id),
+      ).resolves.toMatchObject({ allowed: true });
+
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBeNull();
+      await steamManager.applyFarmingGames(account.id, [570]);
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([570]);
+    });
+
     it.each(["hold-write", "recovery-write", "pause-command"] as const)(
       "force-disconnects active farming when stopping fails at %s",
       async (failure) => {

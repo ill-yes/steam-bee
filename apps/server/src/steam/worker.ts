@@ -470,6 +470,24 @@ export class SteamWorker extends EventEmitter {
     await this.applyGames();
   }
 
+  /**
+   * Leaves a manual pause or stop for card farming. The empty farming selection
+   * keeps the manual boost games from playing while the badge scan runs.
+   */
+  async resumeForFarming() {
+    return this.runSerial("command:resume-farming", async () => {
+      this.logger.info("Resuming Steam worker for card farming");
+      this.manuallyPaused = false;
+      this.farmingAppIds = [];
+      await this.setDesiredState("running");
+      if (!this.connected) {
+        await this.startNow();
+        return;
+      }
+      await this.applyGames();
+    });
+  }
+
   async updateAccount(account: SteamAccountRow) {
     return this.runSerial("command:update-account", () =>
       this.updateAccountNow(account),
