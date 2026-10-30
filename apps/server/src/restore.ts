@@ -15,7 +15,7 @@ import Database from "better-sqlite3";
 import { decryptBackup } from "./backup/format.js";
 import { InstanceLease, InstanceLeaseError } from "./instance-lease.js";
 
-const supportedMigrationIds = [
+export const supportedMigrationIds = [
   "001_initial_schema",
   "002_operational_indexes",
   "003_presets_schedules_analytics",
@@ -30,6 +30,7 @@ const supportedMigrationIds = [
   "012_card_farming_settings",
   "013_market_price_settings",
   "014_library_import_marker",
+  "015_card_farming_resume",
 ] as const;
 const supportedMigrations = new Set<string>(supportedMigrationIds);
 

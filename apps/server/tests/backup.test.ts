@@ -16,7 +16,23 @@ import { InstanceLease } from "../src/instance-lease.js";
 import {
   IncompleteRestoreRollbackError,
   restoreBackup,
+  supportedMigrationIds,
 } from "../src/restore.js";
+
+describe("restore tool migrations", () => {
+  it("supports every migration the server applies", () => {
+    const source = readFileSync(
+      new URL("../src/db/client.ts", import.meta.url),
+      "utf8",
+    );
+    const serverIds = [
+      ...source.matchAll(/^ {4}id: "(\d{3}_[a-z_]+)",$/gm),
+    ].map((match) => match[1]);
+    expect(serverIds.length).toBeGreaterThan(0);
+    expect([...supportedMigrationIds]).toEqual(serverIds);
+    expect(migrationIds).toEqual(serverIds);
+  });
+});
 
 describe("encrypted backup format", () => {
   const entries = [
@@ -128,6 +144,7 @@ describe("encrypted backup format", () => {
     "012_card_farming_settings",
     "013_market_price_settings",
     "014_library_import_marker",
+    "015_card_farming_resume",
   ])(
     "accepts a supported %s snapshot and retains its stored account preferences",
     (migrationId) => {
@@ -190,7 +207,7 @@ describe("encrypted backup format", () => {
               )
               .run("owned-account", marketPreferences, 1000);
           }
-          if (migrationId === "014_library_import_marker") {
+          if (migrationId >= "014_library_import_marker") {
             snapshot.exec(`
               CREATE TABLE steam_account (id TEXT PRIMARY KEY, library_imported_at INTEGER);
               INSERT INTO steam_account (id, library_imported_at) VALUES ('owned-account', 1234);
@@ -240,7 +257,7 @@ describe("encrypted backup format", () => {
               settings_json: marketPreferences,
             });
           }
-          if (migrationId === "014_library_import_marker") {
+          if (migrationId >= "014_library_import_marker") {
             expect(
               restored
                 .prepare(
