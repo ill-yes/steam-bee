@@ -69,7 +69,7 @@ export function clearFarmingDraft(accountId: string) {
 
 export function parseDraftIds(value: string): number[] | null {
   if (!value.trim()) return [];
-  const values = value.trim().split(/[\s,]+/);
+  const values = value.split(/[\s,]+/).filter(Boolean);
   if (
     values.length > 500 ||
     values.some(

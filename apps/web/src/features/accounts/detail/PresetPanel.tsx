@@ -189,7 +189,10 @@ export function PresetPanel({
             <strong className="text-sm">{c.saveCurrent}</strong>
             <span className="text-xs text-[var(--muted)]">
               {interpolate(c.saveCurrentHint, {
-                count: selectedCount,
+                games:
+                  selectedCount === 1
+                    ? c.gameCount
+                    : interpolate(c.gamesCount, { count: selectedCount }),
                 persona: personaLabel(personaState, t),
                 title: title ? interpolate(c.withTitle, { title }) : c.noTitle,
               })}
@@ -233,6 +236,7 @@ export function PresetPanel({
                 type="button"
                 variant="ghost"
                 size="sm"
+                disabled={busyAction === "preset-create"}
                 onClick={() => setCreating(false)}
               >
                 {c.cancel}

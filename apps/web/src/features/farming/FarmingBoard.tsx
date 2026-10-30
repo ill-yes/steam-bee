@@ -5,7 +5,15 @@ import {
   type FarmingOrder,
   type FarmingSnapshot,
 } from "@steam-bee/contracts";
-import { ArrowUp, Ban, GripVertical, Layers, Pin, PinOff } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Ban,
+  GripVertical,
+  Layers,
+  Pin,
+  PinOff,
+} from "lucide-react";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Select } from "../../components/ui/form";
@@ -57,8 +65,11 @@ export function FarmingBoard({
   const [dragging, setDragging] = useState<number | null>(null);
 
   function exclude(appId: number) {
+    // An empty whitelist means "farm everything", so never empty it here;
+    // the blacklist wins over the whitelist anyway.
+    const narrowed = whitelist.filter((id) => id !== appId);
     onFilters({
-      whitelist: whitelist.filter((id) => id !== appId),
+      whitelist: narrowed.length > 0 ? narrowed : whitelist,
       blacklist: [...blacklist, appId],
       priority: priority.filter((id) => id !== appId),
     });
@@ -80,7 +91,12 @@ export function FarmingBoard({
     event.preventDefault();
     const appId = Number(event.dataTransfer.getData("text/plain"));
     setDragging(null);
-    if (!Number.isSafeInteger(appId) || disabled) return;
+    if (
+      disabled ||
+      !Number.isSafeInteger(appId) ||
+      !withDrops.some((game) => game.appId === appId)
+    )
+      return;
     if (index === null) {
       if (pinnedIds.has(appId)) unpin(appId);
     } else pinAt(appId, index);
@@ -210,6 +226,20 @@ export function FarmingBoard({
                             onClick={() => pinAt(game.appId, index - 1)}
                           >
                             <ArrowUp size={15} aria-hidden="true" />
+                          </Button>
+                        )}
+                        {index < pinned.length - 1 && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            disabled={disabled}
+                            aria-label={interpolate(t.moveDown, {
+                              name: game.name,
+                            })}
+                            title={interpolate(t.moveDown, { name: game.name })}
+                            onClick={() => pinAt(game.appId, index + 1)}
+                          >
+                            <ArrowDown size={15} aria-hidden="true" />
                           </Button>
                         )}
                         <Button

@@ -19,7 +19,7 @@ export function GoalsPanel({
   loadState?: ResourceLoadState;
   library: SteamApp[];
   busy: boolean;
-  onSave: (appId: number, targetMinutes: number) => void;
+  onSave: (appId: number, targetMinutes: number) => Promise<boolean>;
   onDelete: (goal: PlaytimeGoal) => void;
 }) {
   const { messages: t, localeInfo, locale } = useI18n();
@@ -27,6 +27,7 @@ export function GoalsPanel({
   const c = automationCopy(locale);
   const [appId, setAppId] = useState("");
   const [targetHours, setTargetHours] = useState("");
+  const targetMinutes = Math.round(Number(targetHours) * 60) || 0;
 
   return (
     <section className="grid gap-3">
@@ -59,10 +60,9 @@ export function GoalsPanel({
         />
         <Button
           size="sm"
-          disabled={busy || !appId || Number(targetHours) <= 0}
-          onClick={() => {
-            onSave(Number(appId), Math.round(Number(targetHours) * 60));
-            setTargetHours("");
+          disabled={busy || !appId || targetMinutes < 1}
+          onClick={async () => {
+            if (await onSave(Number(appId), targetMinutes)) setTargetHours("");
           }}
         >
           {o.saveGoal}
