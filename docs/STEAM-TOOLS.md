@@ -192,8 +192,8 @@ remain controlled by Steam; no completion time is guaranteed.
 **Up next** has an order menu: as on Steam's badge page (default), highest card
 value first, most or fewest drops first, most playtime first, longest owned
 first, or by name. The options follow ArchiSteamFarm's farming orders, plus card
-value. Drag games into **Pulled forward** (or use **Pull forward** and **Move
-up**) to farm them first, one at a time, in that order; **Release** returns a
+value. Drag games into **Pulled forward** (or use **Pull forward** and the
+move up and down buttons) to farm them first, one at a time, in that order; **Release** returns a
 game to the automatic order. Pinned games come first, then the chosen order,
 then the badge page order. Order and pins are saved with the farming rules.
 
