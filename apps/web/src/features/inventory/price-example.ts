@@ -12,7 +12,8 @@ export type PriceExample = {
   source: number;
   adjustment: number;
   buyerPays: number;
-  limited: boolean;
+  /** The server refuses sales outside the saved minimum/maximum instead of clamping. */
+  blocked: boolean;
   fees: number;
   receive: number;
 };
@@ -33,15 +34,16 @@ export function priceExample({
   maximum: number | null;
 }): PriceExample {
   const source = exampleSource[mode];
-  const lowest = Math.max(minimum ?? 0, 3);
-  let buyerPays = Math.max(source + adjustment, lowest);
-  if (maximum !== null && buyerPays > maximum) buyerPays = Math.max(maximum, 3);
+  const buyerPays = Math.max(source + adjustment, 3);
+  const blocked =
+    (minimum !== null && buyerPays < minimum) ||
+    (maximum !== null && buyerPays > maximum);
   const receive = sellerReceives(buyerPays);
   return {
     source,
     adjustment,
     buyerPays,
-    limited: buyerPays !== source + adjustment,
+    blocked,
     fees: buyerPays - receive,
     receive,
   };
@@ -49,7 +51,10 @@ export function priceExample({
 
 export function sellerReceives(buyerPays: number) {
   for (
-    let seller = Math.ceil(buyerPays / (1 + steamFeeRate + publisherFeeRate));
+    // Floored fees can leave room above buyerPays / 1.15; fees >= 0.15 * seller - 2 bounds it.
+    let seller = Math.floor(
+      (buyerPays + 2) / (1 + steamFeeRate + publisherFeeRate),
+    );
     seller > 0;
     seller -= 1
   ) {

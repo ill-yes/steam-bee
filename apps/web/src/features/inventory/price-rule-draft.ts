@@ -88,6 +88,7 @@ export function rulesDraftMatchesSettings(
     adjustment === settings.adjustment &&
     min === settings.minBuyerPrice &&
     max === settings.maxBuyerPrice &&
+    /^\d+$/.test(draft.delay) &&
     Number(draft.delay) === settings.delaySeconds &&
     currencyId === settings.currencyId
   );

@@ -130,7 +130,8 @@ const en = {
   exampleTitle: "How it would look now",
   exampleSubtitle: "Worked example for a card at {price}",
   exampleAdjustment: "Your adjustment",
-  exampleLimited: "Limited by your minimum or maximum",
+  exampleBlocked:
+    "Outside your minimum or maximum. SteamBee would not list this sale.",
   exampleBuyerPays: "Buyer pays",
   exampleFees: "Steam and game fee (estimated)",
   exampleReceive: "You receive",
@@ -320,7 +321,8 @@ const de: typeof en = {
   exampleTitle: "So würde es jetzt aussehen",
   exampleSubtitle: "Rechenbeispiel für eine Karte zu {price}",
   exampleAdjustment: "Deine Anpassung",
-  exampleLimited: "Begrenzt durch Mindest- oder Höchstpreis",
+  exampleBlocked:
+    "Außerhalb deines Mindest- oder Höchstpreises. SteamBee würde diesen Verkauf nicht einstellen.",
   exampleBuyerPays: "Käufer zahlt",
   exampleFees: "Steam- und Spielgebühr (geschätzt)",
   exampleReceive: "Du erhältst",
