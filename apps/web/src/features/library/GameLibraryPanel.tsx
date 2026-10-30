@@ -18,7 +18,6 @@ export function GameLibraryPanel({
   account,
   library,
   selection,
-  rightRailExtra,
 }: GameLibraryPanelProps) {
   const { messages: t, locale } = useI18n();
   const id = useId();
@@ -143,7 +142,6 @@ export function GameLibraryPanel({
             onToggleCollapsed={() => setSelectionCollapsed((value) => !value)}
             selection={selection}
           />
-          {rightRailExtra}
         </div>
       </div>
     </section>

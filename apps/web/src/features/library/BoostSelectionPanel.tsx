@@ -4,6 +4,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { formatEventTime, formatPlaytime } from "../../lib/format";
 import { interpolate, useI18n } from "../../i18n";
+import { hubCopy } from "../accounts/detail/hubCopy";
 import { SteamAppArtwork } from "./SteamAppArtwork";
 import type { SelectionModel } from "./types";
 
@@ -33,6 +34,7 @@ export function BoostSelectionPanel({
   selection: BoostSelectionModel;
 }) {
   const { locale, messages: t, localeInfo } = useI18n();
+  const hub = hubCopy(locale);
 
   return (
     <aside className="min-w-0 rounded-lg border border-[var(--line)] bg-[var(--surface)]">
@@ -42,9 +44,7 @@ export function BoostSelectionPanel({
           <div className="min-w-0">
             <strong className="block truncate text-sm">
               {activityMode === "farming"
-                ? locale === "de"
-                  ? "Manuelle Spielauswahl"
-                  : "Manual game selection"
+                ? hub.manualSelection
                 : t.library.selectionTitle}
             </strong>
             <span className="block truncate text-xs text-[var(--muted)]">
@@ -130,15 +130,10 @@ export function BoostSelectionPanel({
             {appliedAppIds.length !== draftAppIds.length || selectionDirty ? (
               <p className="text-xs leading-5 text-[var(--muted)]">
                 {activityMode === "farming"
-                  ? interpolate(
-                      locale === "de"
-                        ? "{active} gespeichert · {draft} im Entwurf"
-                        : "{active} saved · {draft} draft",
-                      {
-                        active: appliedAppIds.length,
-                        draft: draftAppIds.length,
-                      },
-                    )
+                  ? interpolate(hub.savedAndDraft, {
+                      active: appliedAppIds.length,
+                      draft: draftAppIds.length,
+                    })
                   : interpolate(t.library.activeDraft, {
                       active: appliedAppIds.length,
                       draft: draftAppIds.length,
