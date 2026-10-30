@@ -825,11 +825,14 @@ export class InventoryMarketService {
         }
         throw uncertainSubmission();
       }
-      if (!success(data.success))
+      if (!success(data.success)) {
+        // A definite rejection created no listing, so the asset may be retried after fixing the cause.
+        submitted.delete(assetId);
         throw appError(
           "Steam rejected the listing. Check market eligibility, trade holds, and Steam Guard in Steam before retrying.",
           409,
         );
+      }
       const pendingConfirmation =
         success(data.needs_mobile_confirmation) ||
         success(data.needs_email_confirmation);

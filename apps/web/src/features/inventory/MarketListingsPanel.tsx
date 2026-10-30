@@ -67,9 +67,11 @@ export function MarketListingsPanel({
   ).length;
   const clearsFiltered =
     filtered.length > 0 &&
-    (filtered.every((listing) => selected.has(listing.listingId)) ||
+    (filtered.every((listing) => validSelection.includes(listing.listingId)) ||
       (validSelection.length >= 50 &&
-        filtered.some((listing) => selected.has(listing.listingId))));
+        filtered.some((listing) =>
+          validSelection.includes(listing.listingId),
+        )));
   useEffect(() => {
     setPage((value) => Math.min(value, pageCount - 1));
   }, [pageCount]);
@@ -113,8 +115,12 @@ export function MarketListingsPanel({
     pageChangeRequested.current = true;
     setPage(next);
   }
+  // Unconfirmed listings are not on the market yet and expire if never confirmed.
   const totalReceive = market.listings.reduce(
-    (sum, listing) => sum + listing.sellerReceives * listing.quantity,
+    (sum, listing) =>
+      listing.pendingConfirmation
+        ? sum
+        : sum + listing.sellerReceives * listing.quantity,
     0,
   );
   const pageListings = filtered.slice(currentPage * 25, (currentPage + 1) * 25);
@@ -203,7 +209,7 @@ export function MarketListingsPanel({
                   setPage(0);
                 }}
               >
-                {filter.label}
+                {filter.label}{" "}
                 <span className="tabular-nums opacity-70">{filter.count}</span>
               </Button>
             ))}

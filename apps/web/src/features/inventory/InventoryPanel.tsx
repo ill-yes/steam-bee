@@ -292,8 +292,13 @@ function AccountInventoryPanel({
     restorePreviewFocus();
   }, [preview, busy, batch.running, a.previewBlockedByBatch]);
 
-  const hasPendingListings =
-    market?.listings.some((listing) => listing.pendingConfirmation) ?? false;
+  // Every newly pending listing restarts the watch, even while older ones still wait.
+  const pendingListingKey =
+    market?.listings
+      .filter((listing) => listing.pendingConfirmation)
+      .map((listing) => listing.listingId)
+      .sort()
+      .join(",") ?? "";
   useEffect(() => {
     if (!market) return;
     const pending = new Set(
@@ -311,14 +316,17 @@ function AccountInventoryPanel({
     );
     setNotice(nowActive ? t.listingConfirmed : t.listingGone);
     setNoticeView("listings");
+    // A declined listing returns its item to the inventory; reload both.
+    if (!nowActive && controller.current && !actionLock.current)
+      void refresh(controller.current.signal);
   }, [market, t.listingConfirmed, t.listingGone]);
   useEffect(() => {
-    if (!hasPendingListings) return;
+    if (!pendingListingKey) return;
     confirmationWatchStarted.current = Date.now();
     setConfirmationWatchUntil((until) =>
       Math.max(until, Date.now() + CONFIRMATION_WATCH_MS),
     );
-  }, [hasPendingListings]);
+  }, [pendingListingKey]);
   const watchingConfirmations = confirmationWatchUntil > clock;
   useEffect(() => {
     if (!watchingConfirmations) return;

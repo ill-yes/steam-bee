@@ -290,7 +290,9 @@ export class MarketPriceReader {
       return cached.value;
     }
     if (cached) this.itemIds.delete(marketHashName);
-    const current = this.itemIdFlights.get(marketHashName);
+    // The listing page embeds an order book in the requesting account's currency; never share it.
+    const flightKey = JSON.stringify([accountId, marketHashName]);
+    const current = this.itemIdFlights.get(flightKey);
     if (current) return current;
     const pending = (async () => {
       const html = await this.read(
@@ -311,8 +313,8 @@ export class MarketPriceReader {
         maxPublicEntries,
       );
       return match[1]!;
-    })().finally(() => this.itemIdFlights.delete(marketHashName));
-    this.itemIdFlights.set(marketHashName, pending);
+    })().finally(() => this.itemIdFlights.delete(flightKey));
+    this.itemIdFlights.set(flightKey, pending);
     return pending;
   }
 

@@ -354,6 +354,71 @@ describe("inventory and explicit market confirmation", () => {
     ).toBe(1);
   });
 
+  it("reloads the inventory when a pending listing disappears", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    let listings = [{ ...market.listings[0]!, pendingConfirmation: true }];
+    setupApi((path) =>
+      path.endsWith("/market/listings") ? { ...market, listings } : undefined,
+    );
+    renderPanel("first", "listings");
+    expect(
+      await screen.findByText("Steam confirmation required"),
+    ).toBeVisible();
+    await act(async () => {});
+    listings = [];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(
+      screen.getByText(/A listing that was waiting for confirmation/),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(api)
+          .mock.calls.filter(([path]) => path.endsWith("/inventory")).length,
+      ).toBe(2),
+    );
+  });
+
+  it("watches a new pending listing after an older one stopped being watched", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    const older = { ...market.listings[0]!, pendingConfirmation: true };
+    let listings = [older];
+    setupApi((path) =>
+      path.endsWith("/market/listings") ? { ...market, listings } : undefined,
+    );
+    renderPanel("first", "listings");
+    expect(
+      await screen.findByText("Steam confirmation required"),
+    ).toBeVisible();
+    await act(async () => {});
+    // The older listing outlives the ten-minute watch.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000 + 30_000);
+    });
+    const listingCalls = () =>
+      vi
+        .mocked(api)
+        .mock.calls.filter(([path]) => path.endsWith("/market/listings"))
+        .length;
+    const idle = listingCalls();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000);
+    });
+    expect(listingCalls()).toBe(idle);
+    listings = [older, { ...older, listingId: "listing-2", assetId: "card-2" }];
+    fireEvent.click(screen.getByRole("button", { name: /Refresh/ }));
+    await waitFor(() => expect(listingCalls()).toBe(idle + 1));
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(listingCalls()).toBe(idle + 2);
+  });
+
   it.each([
     [{ id: 8, code: "JPY", minorUnit: 0 }, 230, "¥230"],
     [{ id: 38, code: "KWD", minorUnit: 3 }, 230, "KWD 0.230"],

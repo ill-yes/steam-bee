@@ -76,6 +76,7 @@ function harness() {
     now: 1_000_000,
     pending: false,
     throwSale: false,
+    rejectSale: false,
     cancellationStale: false,
     pendingListings: [] as Record<string, unknown>[],
     pages: [] as ReturnType<typeof inventory>[],
@@ -96,6 +97,8 @@ function harness() {
           if (!state.cancellationStale) state.listings = [];
           return json({});
         }
+        if (state.rejectSale)
+          return json({ success: false, message: "Steam Guard required" });
         return json({
           success: true,
           listingid: "999",
@@ -328,6 +331,20 @@ describe("inventory and explicit market actions", () => {
     await expect(service.previewSale("a", "b", "101", 1)).rejects.toThrow(
       /Keep one/,
     );
+  });
+  it("allows a retry after Steam definitely rejected the listing", async () => {
+    const { service, state, posts } = harness();
+    const preview = await service.previewSale("a", "b", "100", 1);
+    state.rejectSale = true;
+    await expect(service.confirmSale("a", "b", preview.token)).rejects.toThrow(
+      /Steam rejected the listing/,
+    );
+    state.rejectSale = false;
+    const retry = await service.previewSale("a", "b", "100", 1);
+    await expect(
+      service.confirmSale("a", "b", retry.token),
+    ).resolves.toMatchObject({ ok: true });
+    expect(posts).toHaveLength(2);
   });
   it("does not blindly retry a submission after an ambiguous network failure", async () => {
     const { service, state, posts } = harness();

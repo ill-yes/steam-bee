@@ -775,9 +775,9 @@ function PriceScale({
           fees: money(example.fees),
           receive: money(example.receive),
         })}
-        {example.limited && (
-          <span className="block text-xs text-[var(--muted)]">
-            {a.exampleLimited}
+        {example.blocked && (
+          <span className="block text-xs text-[var(--danger)]">
+            {a.exampleBlocked}
           </span>
         )}
       </p>
