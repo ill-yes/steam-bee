@@ -269,8 +269,8 @@ windows stays below.
 
 **Statistics** shows what is running now, playtime today and in the last seven
 days, the number of sessions, playtime per day and top games as bars, recent
-sessions and playtime goals with progress bars. Daily values use the server's
-local days and count the games actually reported to Steam.
+sessions and playtime goals with progress bars. Days follow the browser's time
+zone, and the values count the games actually reported to Steam.
 
 ## Appearance
 
