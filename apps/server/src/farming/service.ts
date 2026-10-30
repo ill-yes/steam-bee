@@ -122,16 +122,25 @@ export const farmingController = new FarmingController({
     }
   },
   cardValues: async (accountId, appIds, shouldContinue) => {
-    const values = new Map<number, CardValue>();
+    const values = new Map<number, CardValue | null>();
     // One market search per game, spaced out, at most 60 games per pass.
     for (const [index, appId] of appIds.slice(0, 60).entries()) {
       if (!shouldContinue()) break;
       if (index > 0)
         await new Promise((resolve) => setTimeout(resolve, CARD_VALUE_GAP_MS));
-      const response = await communityRequest(accountId, cardSearchPath(appId));
-      if (response.status === 429) break;
-      const value = await readCardValueResponse(response);
-      if (value) values.set(appId, value);
+      let response: Response;
+      try {
+        response = await communityRequest(accountId, cardSearchPath(appId));
+      } catch (error) {
+        // Keep the prices read so far; the next pass retries the rest.
+        logger.warn(
+          errorLogFields(error, { accountId }),
+          "Card prices unavailable",
+        );
+        break;
+      }
+      if (response.status === 429 || response.status >= 500) break;
+      values.set(appId, await readCardValueResponse(response));
     }
     return values;
   },

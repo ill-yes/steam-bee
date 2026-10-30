@@ -25,15 +25,22 @@ export type FarmingAdapter = {
   end(accountId: string, shouldEnd?: () => boolean): Promise<void>;
   /** Persists whether farming should resume after an interruption. */
   remember?(accountId: string, resume: boolean): void;
-  /** Average card prices per game; games it cannot price are left out. */
+  /**
+   * Average card prices per game. Null marks a game that was looked up
+   * without a price; games it did not reach are left out.
+   */
   cardValues?(
     accountId: string,
     appIds: number[],
     shouldContinue: () => boolean,
-  ): Promise<Map<number, { average: number; text: string }>>;
+  ): Promise<Map<number, CardValue | null>>;
 };
 
+type CardValue = { average: number; text: string };
+
 const CARD_VALUE_TTL = 24 * 60 * 60_000;
+/** Games without market listings are asked again less eagerly than daily. */
+const MISSING_CARD_VALUE_TTL = 6 * 60 * 60_000;
 
 /** Interruptions that do not mean the user wanted farming to end. */
 const RESUMABLE_HALTS = new Set([
@@ -54,8 +61,7 @@ type Session = {
   applied: boolean;
   /** Position of each game on Steam's badge pages, the default order. */
   badgeOrder: Map<number, number>;
-  cardValues: Map<number, { average: number; text: string; at: number }>;
-  pricing: boolean;
+  cardValues: Map<number, { value: CardValue | null; at: number }>;
 };
 
 export class FarmingController {
@@ -86,6 +92,7 @@ export class FarmingController {
           reason: null,
           canStart: false,
           gameLimit: 32,
+          pricing: false,
         },
         generation: 0,
         timer: null,
@@ -93,7 +100,6 @@ export class FarmingController {
         applied: false,
         badgeOrder: new Map(),
         cardValues: new Map(),
-        pricing: false,
       };
       this.sessions.set(accountId, session);
     } else if (config && !this.isActive(session)) {
@@ -253,12 +259,11 @@ export class FarmingController {
         previous?.playtimeMinutes ?? 0,
       );
       // Preserve a conservative local estimate when Steam's badge page rounds hours.
-      const value = session.cardValues.get(game.appId);
       return {
         ...game,
         playtimeMinutes: observed || game.playtimeMinutes,
         skipReason: null,
-        cardValue: value ? { average: value.average, text: value.text } : null,
+        cardValue: session.cardValues.get(game.appId)?.value ?? null,
       };
     });
     session.snapshot.scannedAt = this.now();
@@ -339,7 +344,7 @@ export class FarmingController {
   private priceGames(session: Session) {
     if (
       !this.adapter.cardValues ||
-      session.pricing ||
+      session.snapshot.pricing ||
       this.shuttingDown ||
       session.snapshot.config.order !== "card_value"
     )
@@ -349,11 +354,15 @@ export class FarmingController {
       .filter((game) => game.remainingDrops > 0 && game.skipReason === null)
       .filter((game) => {
         const known = session.cardValues.get(game.appId);
-        return !known || now - known.at > CARD_VALUE_TTL;
+        return (
+          !known ||
+          now - known.at >
+            (known.value ? CARD_VALUE_TTL : MISSING_CARD_VALUE_TTL)
+        );
       })
       .map((game) => game.appId);
     if (missing.length === 0) return;
-    session.pricing = true;
+    session.snapshot.pricing = true;
     const { accountId } = session.snapshot;
     void this.adapter
       .cardValues(
@@ -364,17 +373,14 @@ export class FarmingController {
       )
       .then((values) => {
         for (const [appId, value] of values)
-          session.cardValues.set(appId, { ...value, at: this.now() });
-        for (const game of session.snapshot.games) {
-          const value = session.cardValues.get(game.appId);
-          if (value)
-            game.cardValue = { average: value.average, text: value.text };
-        }
+          session.cardValues.set(appId, { value, at: this.now() });
+        for (const game of session.snapshot.games)
+          game.cardValue = session.cardValues.get(game.appId)?.value ?? null;
         this.orderGames(session);
       })
       .catch(() => undefined)
       .finally(() => {
-        session.pricing = false;
+        session.snapshot.pricing = false;
       });
   }
 

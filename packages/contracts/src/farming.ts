@@ -58,6 +58,8 @@ export type FarmingSnapshot = {
   reason: string | null;
   canStart: boolean;
   gameLimit: number;
+  /** True while card prices are looked up for the card value order. */
+  pricing?: boolean;
 };
 
 export const DEFAULT_FARMING_CONFIG: FarmingConfig = {
