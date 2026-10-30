@@ -16,7 +16,8 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../src/api";
 import { InventoryPanel } from "../src/features/inventory/InventoryPanel";
-import { InventoryBrowser } from "../src/features/inventory/InventoryBrowser";
+import { InventorySetBrowser } from "../src/features/inventory/InventorySetBrowser";
+import { buildInventoryVariants } from "../src/features/inventory/inventory-model";
 import { I18nProvider } from "../src/i18n";
 
 vi.mock("../src/api", async (original) => ({
@@ -102,6 +103,26 @@ const market = {
     },
   ],
 };
+const cardSet = {
+  appId: 10,
+  badgeLevel: 2,
+  remainingDrops: 1,
+  fetchedAt: Date.now(),
+  cards: [
+    { name: "Bee card", imageUrl: null, owned: 3 },
+    {
+      name: "Wasp card",
+      imageUrl:
+        "https://community.akamai.steamstatic.com/economy/image/wasp/96fx96f",
+      owned: 0,
+    },
+  ],
+};
+const tileName = (name: string) => new RegExp(`^${name}, \\d+ in inventory`);
+const tile = (name = "Bee card") =>
+  screen.getByRole("button", { name: tileName(name) });
+const reviewButton = () => screen.getByRole("button", { name: "Review sale" });
+const game = (name: string) => within(screen.getByRole("article", { name }));
 function preview(kind: "sale" | "cancel" = "sale"): MarketBatchPreview {
   return {
     token: "batch-token",
@@ -166,6 +187,7 @@ function setup(
     if (path.endsWith("/market/settings"))
       return init?.body ? JSON.parse(String(init.body)) : rules;
     if (path.endsWith("/market/batches/active")) return null;
+    if (path.endsWith("/inventory/card-sets/10")) return cardSet;
     if (path.endsWith("/market/batch-preview"))
       return preview(JSON.parse(String(init?.body)).kind);
     if (path.endsWith("/market/batch-confirm")) return job();
@@ -212,7 +234,7 @@ describe("grouped inventory and batch market tools", () => {
     vi.restoreAllMocks();
   });
 
-  it("reports only intersecting variant cards to the price reader and clears them on unmount", async () => {
+  it("reports only intersecting tiles to the price reader and clears them on unmount", async () => {
     let notify!: IntersectionObserverCallback;
     let options: IntersectionObserverInit | undefined;
     const observe = vi.fn();
@@ -234,22 +256,23 @@ describe("grouped inventory and batch market tools", () => {
     try {
       const onVisible = vi.fn();
       const view = render(
-        <InventoryBrowser
-          inventory={inventory}
-          loading={false}
-          busy={false}
-          stale={false}
-          quantities={{}}
-          selected={new Set()}
-          onQuantity={vi.fn()}
-          onSelection={vi.fn()}
-          onPreview={vi.fn()}
-          onBatchPreview={vi.fn()}
+        <InventorySetBrowser
+          accountId="first"
+          variants={buildInventoryVariants(inventory.items)}
+          basket={{}}
+          prices={{}}
+          disabled={false}
+          now={Date.now()}
+          onToggle={vi.fn()}
+          onAddGame={vi.fn()}
+          onRemoveGame={vi.fn()}
           onVisibleVariantsChange={onVisible}
         />,
         { wrapper: I18nProvider },
       );
-      const card = await screen.findByRole("article", { name: "Bee card" });
+      const card = await screen.findByRole("button", {
+        name: tileName("Bee card"),
+      });
       const entry = (isIntersecting: boolean): IntersectionObserverEntry => ({
         target: card,
         isIntersecting,
@@ -261,7 +284,6 @@ describe("grouped inventory and batch market tools", () => {
       });
       expect(observe).toHaveBeenCalledTimes(3);
       expect(options?.root).toBeNull();
-      expect(parseFloat(options?.rootMargin ?? "0")).toBeLessThanOrEqual(-64);
       expect(onVisible).not.toHaveBeenCalled();
       act(() => notify([entry(true)], {} as IntersectionObserver));
       expect(onVisible).toHaveBeenLastCalledWith(["asset:card"]);
@@ -303,48 +325,31 @@ describe("grouped inventory and batch market tools", () => {
     ).toBe(false);
   });
 
-  it("keeps sale explanations visible and reveals bulk sale controls after selection", async () => {
+  it("explains the basket and enables a reviewed sale only once something is in it", async () => {
     renderPanel();
     await screen.findByText("Bee card");
-    expect(
-      screen.getByText(
-        "At least one copy of each variant stays in your inventory.",
-      ),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Clear selection" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Preview selected sales" }),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Bee card" }));
-    expect(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    ).toBeEnabled();
-    expect(
-      screen.getByText(
-        "Prices are estimates. The sale preview shows the current fees and proceeds before you confirm.",
-      ),
-    ).toBeVisible();
-    expect(
-      screen.getByText(
-        "At least one copy of each variant stays in your inventory.",
-      ),
-    ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(
-      screen.queryByRole("button", { name: "Preview selected sales" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "At least one copy of each variant stays in your inventory.",
-      ),
-    ).toBeVisible();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Select filtered duplicates" }),
-      ).toHaveFocus(),
+    const basket = within(
+      screen.getByRole("complementary", { name: "Sell basket" }),
     );
+    expect(
+      basket.getByText(/One copy of each item always stays\./),
+    ).toBeVisible();
+    expect(
+      basket.getByText(/You review prices and fees before anything is listed/),
+    ).toBeVisible();
+    expect(reviewButton()).toBeDisabled();
+    expect(
+      basket.queryByRole("button", { name: "Clear" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(tile());
+    expect(reviewButton()).toBeEnabled();
+    fireEvent.click(basket.getByRole("button", { name: "Clear" }));
+    expect(reviewButton()).toBeDisabled();
+    expect(tile()).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(basket.getByRole("button", { name: "Edit pricing rules" }));
+    expect(
+      await screen.findByRole("textbox", { name: "Minimum buyer price" }),
+    ).toBeVisible();
   });
 
   it("reveals cancellation batch actions after selection and restores the compact toolbar when cleared", async () => {
@@ -395,9 +400,8 @@ describe("grouped inventory and batch market tools", () => {
       screen.getByRole("button", { name: "Review pricing rules" }),
     ).toBeVisible();
     showInventory();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
+    fireEvent.click(tile());
+    expect(reviewButton()).toBeDisabled();
     fireEvent.click(
       screen.getByRole("button", { name: "Review pricing rules" }),
     );
@@ -429,67 +433,92 @@ describe("grouped inventory and batch market tools", () => {
     ).toBe(false);
   });
 
-  it("shows active filters while collapsed and restores all cards through reset", async () => {
+  it("filters item types with chips and restores everything with All", async () => {
     renderPanel();
     await screen.findByText("Bee card");
-    const summary = screen.getByText("Filters & sort");
-    fireEvent.click(summary);
-    fireEvent.change(screen.getByRole("combobox", { name: "Item type" }), {
-      target: { value: "foil" },
-    });
-    fireEvent.click(summary);
-    expect(screen.getByText("1 active")).toBeVisible();
-    expect(screen.getByText("Shiny Bee")).toBeVisible();
+    const types = within(screen.getByRole("group", { name: "Item type" }));
+    fireEvent.click(types.getByRole("button", { name: "Foil cards" }));
+    expect(types.getByRole("button", { name: "Foil cards" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(tile("Shiny Bee")).toBeVisible();
     expect(screen.queryByText("Bee card")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Reset filters" }));
-    expect(screen.getByText("Bee card")).toBeVisible();
-    expect(screen.getByText("Hive profile")).toBeVisible();
-    expect(screen.queryByText("1 active")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hive World")).not.toBeInTheDocument();
+    fireEvent.click(types.getByRole("button", { name: "Backgrounds" }));
+    expect(tile("Hive profile")).toBeVisible();
+    expect(screen.queryByText("Shiny Bee")).not.toBeInTheDocument();
+    fireEvent.click(types.getByRole("button", { name: "All" }));
+    expect(tile("Bee card")).toBeVisible();
+    expect(tile("Hive profile")).toBeVisible();
   });
 
-  it("groups real compact artwork by game, falls back on broken art and combines type/game filters", async () => {
+  it("shows each game as a card set with badge progress, missing cards and separate rows", async () => {
     const { container } = renderPanel();
     await screen.findByText("Bee card");
-    expect(screen.getByRole("heading", { name: "Bee Quest" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "Hive World" })).toBeVisible();
+    expect(
+      screen
+        .getAllByRole("article")
+        .map((item) => item.getAttribute("aria-label")),
+    ).toEqual(["Bee Quest", "Hive World"]);
+    const bee = game("Bee Quest");
+    expect(await bee.findByText("1 of 2 cards")).toBeVisible();
+    expect(bee.getByText("Badge level 2")).toBeVisible();
+    expect(bee.getByText("1 drops left")).toBeVisible();
+    expect(
+      bee.getByRole("progressbar", { name: "1 of 2 cards" }),
+    ).toHaveAttribute("value", "1");
+    const set = bee.getByRole("list", {
+      name: "Bee Quest: Card set",
+    });
+    expect(
+      within(set)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      expect.stringContaining("Bee card"),
+      expect.stringContaining("Wasp card"),
+    ]);
+    expect(
+      bee.getByRole("listitem", { name: "Wasp card, missing from the set" }),
+    ).toHaveTextContent("Missing");
+    expect(
+      bee.getByRole("list", {
+        name: "Bee Quest: Foil cards",
+      }),
+    ).toHaveTextContent("Shiny Bee");
+    expect(
+      game("Hive World").getByRole("list", {
+        name: "Hive World: Other items",
+      }),
+    ).toHaveTextContent("Hive profile");
+    expect(
+      vi.mocked(api).mock.calls.filter(([path]) => path.includes("card-sets")),
+    ).toEqual([
+      ["/api/accounts/first/inventory/card-sets/10", expect.anything()],
+    ]);
+
     const art = container.querySelector<HTMLImageElement>(
       'img[src*="economy/image/bee"]',
     )!;
     expect(art).toHaveClass("object-contain");
-    expect(art.parentElement).toHaveClass("h-16");
     const artFrame = art.parentElement!;
     fireEvent.error(art);
     expect(artFrame.querySelector("img")).toBeNull();
     expect(artFrame.querySelector("svg")).not.toBeNull();
-    fireEvent.click(screen.getByText("Filters & sort"));
-    fireEvent.change(screen.getByRole("combobox", { name: "Item type" }), {
-      target: { value: "foil" },
-    });
-    expect(screen.getByText("Shiny Bee")).toBeVisible();
-    expect(screen.queryByText("Bee card")).not.toBeInTheDocument();
-    expect(screen.queryByText("Hive profile")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole("combobox", { name: "Item type" }), {
-      target: { value: "all" },
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "Game" }), {
-      target: { value: "app:20" },
-    });
-    expect(screen.getByText("Hive profile")).toBeVisible();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Tradable only" }));
-    expect(screen.getByText("No items match these filters.")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Only extras" }));
+    expect(screen.queryByText("Wasp card")).not.toBeInTheDocument();
   });
 
-  it("selects a game’s eligible items and reviews totals before any explicit batch submission", async () => {
+  it("adds a game’s extras to the basket and reviews totals before any explicit batch submission", async () => {
     renderPanel();
+    await screen.findByText("Bee card");
     fireEvent.click(
-      await screen.findByRole("checkbox", {
-        name: "Select eligible items: Bee Quest",
-      }),
+      game("Bee Quest").getByRole("button", { name: "Add extras to basket" }),
     );
-    expect(screen.getByText("Selected variants: 2")).toBeVisible();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    );
+    expect(screen.getByText("2 items · 3 copies")).toBeVisible();
+    fireEvent.click(reviewButton());
     const dialog = await screen.findByRole("alertdialog", {
       name: "Review duplicate sales",
     });
@@ -499,7 +528,7 @@ describe("grouped inventory and batch market tools", () => {
         body: JSON.stringify({
           kind: "sale",
           items: [
-            { assetId: "card", quantity: 1 },
+            { assetId: "card", quantity: 2 },
             { assetId: "foil", quantity: 1 },
           ],
         }),
@@ -527,9 +556,7 @@ describe("grouped inventory and batch market tools", () => {
         body: JSON.stringify({ token: "batch-token" }),
       }),
     );
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
+    expect(tile()).toBeDisabled();
     fireEvent.click(
       screen.getByRole("button", { name: "Stop remaining actions" }),
     );
@@ -557,12 +584,11 @@ describe("grouped inventory and batch market tools", () => {
         : undefined,
     );
     renderPanel();
+    await screen.findByText("Bee card");
     fireEvent.click(
-      await screen.findByRole("checkbox", { name: "Select Bee card" }),
+      game("Bee Quest").getByRole("button", { name: "Add extras to basket" }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    );
+    fireEvent.click(reviewButton());
     const dialog = await screen.findByRole("alertdialog");
     expect(
       within(dialog).getByText(
@@ -616,7 +642,7 @@ describe("grouped inventory and batch market tools", () => {
     expect(screen.getByText("Steam confirmation required: 1")).toBeVisible();
     expect(
       screen.getByText(
-        "Complete the confirmation in Steam Mobile or your email before this market action becomes active.",
+        "Confirm this in the Steam Mobile app or by email. SteamBee notices the confirmation automatically.",
       ),
     ).toBeVisible();
     expect(
@@ -638,12 +664,11 @@ describe("grouped inventory and batch market tools", () => {
       return undefined;
     });
     renderPanel();
+    await screen.findByText("Bee card");
     fireEvent.click(
-      await screen.findByRole("checkbox", { name: "Select Bee card" }),
+      game("Bee Quest").getByRole("button", { name: "Add extras to basket" }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    );
+    fireEvent.click(reviewButton());
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Confirm selected sales" }),
@@ -701,8 +726,10 @@ describe("grouped inventory and batch market tools", () => {
     renderPanel();
     await screen.findByText("Bee card");
     fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
-    const mode = await screen.findByRole("combobox", { name: "Price source" });
-    fireEvent.change(mode, { target: { value: "highestBuyOrder" } });
+    expect(
+      await screen.findByRole("radiogroup", { name: "Price source" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: /^Highest buy order/ }));
     fireEvent.change(
       screen.getByRole("textbox", { name: /Buyer-price adjustment/ }),
       { target: { value: "-0,01" } },
@@ -740,6 +767,46 @@ describe("grouped inventory and batch market tools", () => {
     ).toBe(false);
   });
 
+  it("applies a sales strategy to the price source and adjustment", async () => {
+    renderPanel();
+    await screen.findByText("Bee card");
+    fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
+    const strategy = await screen.findByRole("radiogroup", {
+      name: "How fast should cards sell?",
+    });
+    fireEvent.click(
+      within(strategy).getByRole("radio", {
+        name: /Undercut the cheapest listing/,
+      }),
+    );
+    expect(
+      screen.getByRole("radio", { name: /^Lowest sell order/ }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("textbox", { name: /Buyer-price adjustment/ }),
+    ).toHaveValue("-0.01");
+    expect(
+      screen.getByRole("region", { name: "Where your price lands" }),
+    ).toHaveTextContent("Buyer pays $0.16");
+    fireEvent.click(
+      within(strategy).getByRole("radio", { name: /Sell instantly/ }),
+    );
+    expect(
+      screen.getByRole("radio", { name: /^Highest buy order/ }),
+    ).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Save pricing rules" }));
+    await screen.findByText(/Pricing rules saved/);
+    expect(api).toHaveBeenCalledWith(
+      "/api/accounts/first/market/settings",
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining(
+          '"priceMode":"highestBuyOrder","adjustment":0',
+        ),
+      }),
+    );
+  });
+
   it("rejects wallet precision mistakes instead of silently rounding a JPY rule", async () => {
     setup((path) =>
       path.endsWith("/market/listings")
@@ -762,7 +829,7 @@ describe("grouped inventory and batch market tools", () => {
     ).toBe(false);
   });
 
-  it("rejects an oversized filtered selection atomically and preserves selected variants across filters", async () => {
+  it("fills the basket up to 50 Steam actions, keeps it across searches and clears it", async () => {
     setup((path) =>
       path.endsWith("/inventory")
         ? {
@@ -771,6 +838,8 @@ describe("grouped inventory and batch market tools", () => {
               ...inventory.items[0]!,
               assetId: `asset-${index}`,
               name: `Card ${index + 1}`,
+              gameAppId: null,
+              gameName: null,
             })),
           }
         : undefined,
@@ -778,119 +847,58 @@ describe("grouped inventory and batch market tools", () => {
     renderPanel();
     await screen.findByText("Card 1");
     fireEvent.click(
-      screen.getByRole("button", { name: "Select filtered duplicates" }),
+      game("Other Community items").getByRole("button", {
+        name: "Add extras to basket",
+      }),
     );
-    expect(screen.getByText("Selected variants: 0")).toBeVisible();
-    expect(
-      screen.getByText(/This selection needs 61 market actions/),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Preview selected sales" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "At most 50 Steam actions fit in one batch.",
+    );
+    expect(screen.getByText("50 items · 100 copies")).toBeVisible();
+    expect(screen.getByText("50 Steam actions · 10 s apart")).toBeVisible();
     expect(vi.mocked(api).mock.calls.every(([, init]) => !init?.method)).toBe(
       true,
     );
-    const search = screen.getByRole("searchbox", { name: "Search inventory" });
-    for (const query of ["Card 2", "Card 3", "Card 4", "Card 5"]) {
-      fireEvent.change(search, { target: { value: query } });
-      fireEvent.click(
-        screen.getByRole("button", { name: "Select filtered duplicates" }),
-      );
-    }
-    fireEvent.change(search, { target: { value: "Card 6" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Select filtered duplicates" }),
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search inventory" }),
+      { target: { value: "Card 61" } },
     );
-    fireEvent.change(search, { target: { value: "Card 1" } });
-    for (const name of ["Card 1", "Card 10", "Card 11"])
-      fireEvent.click(screen.getByRole("checkbox", { name: `Select ${name}` }));
-    expect(screen.getByText("Selected variants: 50")).toBeVisible();
-    expect(screen.getByText("50 of 50 market actions")).toBeVisible();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select Card 13" }));
-    expect(screen.getByText("Selected variants: 50")).toBeVisible();
-    expect(
-      screen.getByRole("checkbox", { name: "Select Card 13" }),
-    ).not.toBeChecked();
-    fireEvent.change(search, { target: { value: "Card 12" } });
-    expect(
-      screen.getByText(
-        "50 selected variants are hidden by the current filters. They remain in the sale preview.",
-      ),
-    ).toBeVisible();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    );
+    fireEvent.click(tile("Card 61"));
+    expect(tile("Card 61")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("50 items · 100 copies")).toBeVisible();
+    fireEvent.click(reviewButton());
     await screen.findByRole("alertdialog");
     const request = vi
       .mocked(api)
       .mock.calls.find(([path]) => path.endsWith("/batch-preview"));
     expect(JSON.parse(String(request?.[1]?.body)).items).toHaveLength(50);
-    expect(
-      JSON.parse(String(request?.[1]?.body)).items.some(
-        (item: { assetId: string }) => item.assetId === "asset-49",
-      ),
-    ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    fireEvent.click(screen.getByRole("button", { name: "Clear selection" }));
-    expect(screen.getByText("Selected variants: 0")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Preview selected sales" }),
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText("0 items · 0 copies")).toBeVisible();
   });
 
-  it("explains game selection across pages and clears the whole game without selecting another game", async () => {
-    setup((path) =>
-      path.endsWith("/inventory")
-        ? {
-            ...inventory,
-            items: [
-              ...Array.from({ length: 31 }, (_, index) => ({
-                ...inventory.items[0]!,
-                assetId: `bee-${index}`,
-                name: `Bee card ${index + 1}`,
-              })),
-              inventory.items[2]!,
-            ],
-          }
-        : undefined,
-    );
+  it("removes only one game's extras from the basket", async () => {
     renderPanel();
-    const gameSelection = await screen.findByRole("checkbox", {
-      name: "Select eligible items: Bee Quest",
-    });
-    expect(gameSelection).toHaveAccessibleDescription(
-      /Game selection includes all filtered items from this game, including other pages\./,
+    await screen.findByText("Bee card");
+    fireEvent.click(
+      game("Bee Quest").getByRole("button", { name: "Add extras to basket" }),
     );
-    expect(
-      screen.getByText(/^On this page: 25 of 31 matching items\./),
-    ).toBeVisible();
-
-    fireEvent.click(gameSelection);
-    expect(screen.getByText("Selected variants: 31")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    expect(
-      screen.getByText(/^On this page: 6 of 31 matching items\./),
-    ).toBeVisible();
-    const clearGame = screen.getByRole("checkbox", {
-      name: "Clear eligible selection: Bee Quest",
-    });
-    expect(clearGame).toBeChecked();
-    expect(
-      screen.getByRole("checkbox", { name: "Select Hive profile" }),
-    ).not.toBeChecked();
-
-    fireEvent.click(clearGame);
-    expect(screen.getByText("Selected variants: 0")).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Preview selected sales" }),
-    ).not.toBeInTheDocument();
+    fireEvent.click(
+      game("Hive World").getByRole("button", { name: "Add extras to basket" }),
+    );
+    expect(screen.getByText("3 items · 4 copies")).toBeVisible();
+    fireEvent.click(
+      game("Bee Quest").getByRole("button", { name: "Remove from basket" }),
+    );
+    expect(screen.getByText("1 items · 1 copies")).toBeVisible();
+    expect(tile("Hive profile")).toHaveAttribute("aria-pressed", "true");
+    expect(tile("Bee card")).toHaveAttribute("aria-pressed", "false");
     expect(vi.mocked(api).mock.calls.every(([, init]) => !init?.method)).toBe(
       true,
     );
   });
 
-  it("keeps a quantity sort when showing cards grouped across several games", async () => {
+  it("sorts games by most extras", async () => {
     setup((path) =>
       path.endsWith("/inventory")
         ? {
@@ -903,19 +911,16 @@ describe("grouped inventory and batch market tools", () => {
         : undefined,
     );
     renderPanel();
-    const region = await screen.findByRole("region", {
-      name: "Inventory items",
+    await screen.findByText("Bee card");
+    const order = () =>
+      screen
+        .getAllByRole("article")
+        .map((item) => item.getAttribute("aria-label"));
+    expect(order()).toEqual(["Bee Quest", "Hive World"]);
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort games" }), {
+      target: { value: "extras" },
     });
-    expect(
-      within(region).getAllByRole("heading", { level: 4 })[0],
-    ).toHaveTextContent("Bee Quest");
-    fireEvent.click(screen.getByText("Filters & sort"));
-    fireEvent.change(screen.getByRole("combobox", { name: "Sort by" }), {
-      target: { value: "quantity" },
-    });
-    expect(
-      within(region).getAllByRole("heading", { level: 4 })[0],
-    ).toHaveTextContent("Hive World");
+    expect(order()).toEqual(["Hive World", "Bee Quest"]);
   });
 
   it("selects a market listing through its associated label", async () => {
@@ -952,17 +957,13 @@ describe("grouped inventory and batch market tools", () => {
     expect(list).not.toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(
-      screen.getByRole("heading", { name: "Listed card 26" }),
-    ).toBeVisible();
-    expect(screen.queryByRole("heading", { name: "Listed card 1" })).toBeNull();
+    expect(screen.getByText("Listed card 26")).toBeVisible();
+    expect(screen.queryByText("Listed card 1")).toBeNull();
     expect(list).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-    expect(
-      screen.getByRole("heading", { name: "Listed card 1" }),
-    ).toBeVisible();
+    expect(screen.getByText("Listed card 1")).toBeVisible();
     expect(list).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
 
@@ -972,9 +973,7 @@ describe("grouped inventory and batch market tools", () => {
     });
     search.focus();
     fireEvent.change(search, { target: { value: "Listed card 60" } });
-    expect(
-      screen.getByRole("heading", { name: "Listed card 60" }),
-    ).toBeVisible();
+    expect(screen.getByText("Listed card 60")).toBeVisible();
     expect(search).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledTimes(3);
 
@@ -986,7 +985,7 @@ describe("grouped inventory and batch market tools", () => {
     refresh.focus();
     listings = listings.slice(0, 1);
     fireEvent.click(refresh);
-    await screen.findByRole("heading", { name: "Listed card 1" });
+    await screen.findByText("Listed card 1");
     expect(refresh).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledTimes(4);
   });
@@ -1075,12 +1074,11 @@ describe("grouped inventory and batch market tools", () => {
         : undefined,
     );
     const view = renderPanel();
+    await screen.findByText("Bee card");
     fireEvent.click(
-      await screen.findByRole("checkbox", { name: "Select Bee card" }),
+      game("Bee Quest").getByRole("button", { name: "Add extras to basket" }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    );
+    fireEvent.click(reviewButton());
     const request = vi
       .mocked(api)
       .mock.calls.find(([path]) => path.endsWith("/batch-preview"));
@@ -1091,9 +1089,7 @@ describe("grouped inventory and batch market tools", () => {
       finish(preview());
     });
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Preview selected sales" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("0 items · 0 copies")).toBeVisible();
   });
 
   it("lets a failed settings read retry without closing the panel", async () => {
@@ -1110,7 +1106,7 @@ describe("grouped inventory and batch market tools", () => {
       await screen.findByRole("button", { name: "Retry loading rules" }),
     );
     expect(
-      await screen.findByRole("combobox", { name: "Price source" }),
+      await screen.findByRole("radiogroup", { name: "Price source" }),
     ).toBeVisible();
     expect(
       screen.queryByText("Rules temporarily unavailable"),
@@ -1143,9 +1139,8 @@ describe("grouped inventory and batch market tools", () => {
 
   it("blocks new sale quotes while rules are dirty, keeps cancellation usable and discards explicitly", async () => {
     renderPanel();
-    fireEvent.click(
-      await screen.findByRole("checkbox", { name: "Select Bee card" }),
-    );
+    await screen.findByText("Bee card");
+    fireEvent.click(tile());
     fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
     fireEvent.change(
       await screen.findByRole("textbox", { name: "Minimum buyer price" }),
@@ -1158,12 +1153,12 @@ describe("grouped inventory and batch market tools", () => {
         /Save or discard these rules before creating a sale preview/,
       ),
     ).toBeVisible();
+    expect(reviewButton()).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    ).toBeDisabled();
+      within(
+        screen.getByRole("complementary", { name: "Sell basket" }),
+      ).getByText("Save or discard your pricing rules first."),
+    ).toBeVisible();
     showMarket();
     expect(
       screen.getByRole("button", { name: "Cancel listing: Listed card" }),
@@ -1176,12 +1171,7 @@ describe("grouped inventory and batch market tools", () => {
       screen.getByRole("textbox", { name: "Minimum buyer price" }),
     ).toHaveValue("");
     showInventory();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Preview selected sales" }),
-    ).toBeEnabled();
+    expect(reviewButton()).toBeEnabled();
     expect(
       vi.mocked(api).mock.calls.some(([, init]) => init?.method === "PUT"),
     ).toBe(false);
@@ -1198,6 +1188,7 @@ describe("grouped inventory and batch market tools", () => {
     );
     renderPanel();
     await screen.findByText("Bee card");
+    fireEvent.click(tile());
     fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
     fireEvent.change(
       await screen.findByRole("textbox", { name: "Minimum buyer price" }),
@@ -1208,18 +1199,14 @@ describe("grouped inventory and batch market tools", () => {
       screen.getByRole("button", { name: "Discard rule changes" }),
     ).toBeDisabled();
     showInventory();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
+    expect(reviewButton()).toBeDisabled();
     await act(async () => {
       finish({ ...rules, minBuyerPrice: 20, currencyId: 1 });
     });
     fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
     expect(await screen.findByText(/Pricing rules saved/)).toBeVisible();
     showInventory();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeEnabled();
+    expect(reviewButton()).toBeEnabled();
     expect(screen.queryByText("Unsaved rules")).not.toBeInTheDocument();
   });
 
@@ -1234,15 +1221,13 @@ describe("grouped inventory and batch market tools", () => {
     first.unmount();
     const second = renderPanel("second");
     await screen.findByText("Bee card");
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeEnabled();
+    fireEvent.click(tile());
+    expect(reviewButton()).toBeEnabled();
     second.unmount();
     renderPanel();
     await screen.findByText("Bee card");
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
+    fireEvent.click(tile());
+    expect(reviewButton()).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Review pricing rules" }),
     ).toBeVisible();
@@ -1276,7 +1261,7 @@ describe("grouped inventory and batch market tools", () => {
     await screen.findByText("Loading pricing rules…");
     showInventory();
     fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
-    await screen.findByRole("combobox", { name: "Price source" });
+    await screen.findByRole("radiogroup", { name: "Price source" });
     await act(async () => {
       rejectOld(new Error("Obsolete rules error"));
     });
@@ -1297,15 +1282,11 @@ describe("grouped inventory and batch market tools", () => {
       name: "Retry batch status",
     });
     expect(screen.getByText("Status temporarily unavailable")).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeEnabled();
+    expect(tile()).toBeEnabled();
     fireEvent.click(retry);
     expect(
       await screen.findByRole("button", { name: "Stop remaining actions" }),
     ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
+    expect(tile()).toBeDisabled();
   });
 });

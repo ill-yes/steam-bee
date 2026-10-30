@@ -57,7 +57,10 @@ export const inventoryCopy = {
     confirmationHelp:
       "Steam may require confirmation in Steam Mobile or by email before the listing becomes active.",
     confirmationNotice:
-      "Complete the confirmation in Steam Mobile or your email before this market action becomes active.",
+      "Confirm this in the Steam Mobile app or by email. SteamBee notices the confirmation automatically.",
+    listingConfirmed: "Confirmed in Steam. The listing is now active.",
+    listingGone:
+      "A listing that was waiting for confirmation is no longer listed. It was sold right away or declined in Steam.",
     saleSuccess:
       "Listing submitted. Open Market listings to check its current status.",
     cancelSuccess:
@@ -128,7 +131,10 @@ export const inventoryCopy = {
     confirmationHelp:
       "Steam kann eine Bestätigung in Steam Mobile oder per E-Mail verlangen, bevor das Angebot aktiv wird.",
     confirmationNotice:
-      "Bestätige die Aktion in Steam Mobile oder per E-Mail, damit sie auf dem Markt wirksam wird.",
+      "Bestätige das jetzt in der Steam-Mobile-App oder per E-Mail. SteamBee erkennt die Bestätigung automatisch.",
+    listingConfirmed: "In Steam bestätigt. Das Angebot ist jetzt aktiv.",
+    listingGone:
+      "Ein Angebot, das auf Bestätigung wartete, ist nicht mehr gelistet. Es wurde sofort verkauft oder in Steam abgelehnt.",
     saleSuccess:
       "Angebot übermittelt. Den aktuellen Status findest du unter Marktangebote.",
     cancelSuccess:

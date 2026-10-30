@@ -36,6 +36,8 @@ export type BoostAnalytics = {
   openSession: BoostSession | null;
   topGames: Array<{ appId: number; name: string; durationMs: number }>;
   recentSessions: BoostSession[];
+  /** Reported playtime per local day, oldest first, ending with today. */
+  days?: Array<{ startsAt: number; durationMs: number }>;
 };
 
 export type BoostSession = {

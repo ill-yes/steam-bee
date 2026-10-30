@@ -5,6 +5,7 @@ import { Button } from "../../../components/ui/button";
 import { Input, Select } from "../../../components/ui/form";
 import { interpolate, useI18n } from "../../../i18n";
 import type { ResourceLoadState } from "../useAccountController";
+import { automationCopy } from "./automationCopy";
 
 export function GoalsPanel({
   goals,
@@ -18,20 +19,20 @@ export function GoalsPanel({
   loadState?: ResourceLoadState;
   library: SteamApp[];
   busy: boolean;
-  onSave: (appId: number, targetMinutes: number) => void;
+  onSave: (appId: number, targetMinutes: number) => Promise<boolean>;
   onDelete: (goal: PlaytimeGoal) => void;
 }) {
-  const { messages: t, localeInfo } = useI18n();
+  const { messages: t, localeInfo, locale } = useI18n();
   const o = t.operations;
+  const c = automationCopy(locale);
   const [appId, setAppId] = useState("");
   const [targetHours, setTargetHours] = useState("");
+  const targetMinutes = Math.round(Number(targetHours) * 60) || 0;
 
   return (
-    <section className="grid gap-2 border-t border-[var(--line)] pt-3">
+    <section className="grid gap-3">
       <div>
-        <strong className="text-xs text-[var(--muted-strong)]">
-          {o.goalsTitle}
-        </strong>
+        <h3 className="text-sm font-semibold">{o.goalsTitle}</h3>
         <p className="mt-1 text-xs leading-5 text-[var(--muted)]">
           {o.goalsDescription}
         </p>
@@ -59,10 +60,9 @@ export function GoalsPanel({
         />
         <Button
           size="sm"
-          disabled={busy || !appId || Number(targetHours) <= 0}
-          onClick={() => {
-            onSave(Number(appId), Math.round(Number(targetHours) * 60));
-            setTargetHours("");
+          disabled={busy || !appId || targetMinutes < 1}
+          onClick={async () => {
+            if (await onSave(Number(appId), targetMinutes)) setTargetHours("");
           }}
         >
           {o.saveGoal}
@@ -79,35 +79,62 @@ export function GoalsPanel({
           </p>
         ) : null}
         {goals.map((goal) => (
-          <div
-            key={goal.id}
-            className="rounded-md bg-[var(--surface-2)] p-2 text-xs"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate">
-                <strong>{goal.appName}</strong> ·{" "}
-                {Math.round(goal.currentMinutes / 60)} /{" "}
-                {Math.round(goal.targetMinutes / 60)} h
+          <div key={goal.id} className="grid gap-1.5 text-sm">
+            <div className="flex items-center gap-2">
+              <strong className="min-w-0 flex-1 truncate">
+                {goal.appName}
+              </strong>
+              <span
+                className={
+                  goal.reached
+                    ? "shrink-0 text-xs font-bold text-[var(--good)]"
+                    : "shrink-0 text-xs text-[var(--muted)]"
+                }
+              >
+                {goal.reached ? `${c.goalReached} · ` : ""}
+                {interpolate(c.goalProgress, {
+                  current: Math.round(goal.currentMinutes / 60),
+                  target: Math.round(goal.targetMinutes / 60),
+                })}
               </span>
               <Button
-                size="sm"
+                size="icon"
                 variant="ghost"
                 disabled={busy}
                 onClick={() => onDelete(goal)}
                 aria-label={`${o.deleteGoal}: ${goal.appName}`}
               >
-                <Trash2 size={13} />
+                <Trash2 size={13} aria-hidden="true" />
               </Button>
             </div>
-            <progress
-              className="mt-1 h-1.5 w-full"
-              max={100}
-              value={goal.progressPercent}
+            <div
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.min(100, goal.progressPercent)}
               aria-label={`${goal.appName}: ${goal.progressPercent}%`}
+              className="h-2 overflow-hidden rounded-full bg-[var(--surface-2)]"
             >
-              {goal.progressPercent}%
-            </progress>
-            <p className="text-[10px] text-[var(--muted)]">
+              <div
+                className={
+                  goal.reached
+                    ? "h-full rounded-full bg-[var(--good)]"
+                    : "h-full rounded-full bg-[var(--accent)]"
+                }
+                style={{ width: `${Math.min(100, goal.progressPercent)}%` }}
+              />
+            </div>
+            <p className="text-xs text-[var(--muted)]">
+              {goal.reached
+                ? null
+                : `${interpolate(c.goalLeft, {
+                    hours: Math.max(
+                      0,
+                      Math.round(
+                        (goal.targetMinutes - goal.currentMinutes) / 60,
+                      ),
+                    ),
+                  })} · `}
               {goal.snapshotImportedAt
                 ? interpolate(o.snapshotAt, {
                     date: new Intl.DateTimeFormat(localeInfo.dateLocale, {

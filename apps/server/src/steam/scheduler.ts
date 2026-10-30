@@ -91,10 +91,8 @@ export function evaluateScheduleWindow(
 
   const previousWeekday = (parts.weekday + 6) % 7;
   if (weekdays.includes(previousWeekday) && minute < endMinute) {
-    const previousDateKey = zonedDateParts(
-      new Date(now.getTime() - 24 * 60 * 60_000),
-      schedule.timezone,
-    ).dateKey;
+    // Calendar arithmetic: 24 hours back skips a day after a 23-hour DST day.
+    const previousDateKey = addLocalDays(parts.dateKey, -1);
     return {
       active: true,
       windowId: `${schedule.id}:${previousDateKey}:${schedule.startTime}-${schedule.endTime}`,
@@ -164,6 +162,13 @@ function timeToMinute(value: string) {
 
 function inactiveWindow(): ScheduleWindowState {
   return { active: false, windowId: null, windowStartedAt: null };
+}
+
+export function addLocalDays(dateKey: string, days: number) {
+  const [year = 0, month = 1, day = 1] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days))
+    .toISOString()
+    .slice(0, 10);
 }
 
 export function zonedLocalTimeToEpoch(

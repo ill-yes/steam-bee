@@ -30,6 +30,9 @@ export type MarketListing = {
   listingId: string;
   assetId: string;
   name: string;
+  /** Steam item type, e.g. "Some Game Trading Card". */
+  type?: string;
+  iconUrl?: string | null;
   quantity: number;
   buyerPays: number;
   sellerReceives: number;
@@ -185,4 +188,21 @@ export type MarketBatchJob = {
   completedCount: number;
   totalCount: number;
   stopRequested: boolean;
+};
+
+/** One trading card slot of a game's normal (non-foil) badge set. */
+export type CardSetCard = {
+  name: string;
+  imageUrl: string | null;
+  /** Copies Steam counts for the badge page; 0 means missing from the set. */
+  owned: number;
+};
+/** Badge progress from the Steam Community game card page. */
+export type CardSet = {
+  appId: number;
+  badgeLevel: number;
+  /** Null when Steam did not state the remaining drops. */
+  remainingDrops: number | null;
+  cards: CardSetCard[];
+  fetchedAt: number;
 };

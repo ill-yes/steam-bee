@@ -101,6 +101,24 @@ const showMarket = () =>
     screen.getByRole("tab", { name: /^Market listings(?:\s*\d+)?$/ }),
   );
 
+const tileName = (name: string, locale: "en" | "de" = "en") =>
+  new RegExp(
+    `^${name}, \\d+ ${locale === "de" ? "im Inventar" : "in inventory"}`,
+  );
+const tile = (name = "Bee card") =>
+  screen.getByRole("button", { name: tileName(name) });
+const reviewButton = () => screen.getByRole("button", { name: "Review sale" });
+/** Put the item's extra copies in the basket and open the sale review. */
+function reviewSale(name = "Bee card") {
+  if (tile(name).getAttribute("aria-pressed") !== "true")
+    fireEvent.click(tile(name));
+  fireEvent.click(reviewButton());
+}
+async function openSale(name = "Bee card") {
+  await screen.findByRole("button", { name: tileName(name) });
+  reviewSale(name);
+}
+
 function renderPanel(
   accountId = "first",
   view: "inventory" | "listings" = "inventory",
@@ -169,23 +187,19 @@ describe("inventory and explicit market confirmation", () => {
     vi.restoreAllMocks();
   });
 
-  it("only fetches on open and filters duplicates, names and marketable items", async () => {
+  it("only fetches on open and filters extras and names", async () => {
     renderPanel();
     await screen.findByText("Bee card");
     expect(vi.mocked(api).mock.calls.every(([, init]) => !init?.method)).toBe(
       true,
     );
-    expect(
-      screen.getAllByRole("button", { name: /^Preview sale:/ }),
-    ).toHaveLength(1);
-    expect(
-      screen.queryByRole("button", { name: /Preview sale: One badge/ }),
-    ).not.toBeInTheDocument();
+    expect(tile("Bee card")).toBeEnabled();
+    expect(tile("One badge")).toBeDisabled();
+    expect(tile("Locked card")).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "Duplicates only" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Only extras" }));
     expect(screen.queryByText("One badge")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Marketable only" }));
-    expect(screen.queryByText("Locked card")).not.toBeInTheDocument();
+    expect(tile("Locked card")).toBeInTheDocument();
     fireEvent.change(
       screen.getByRole("searchbox", { name: "Search inventory" }),
       { target: { value: "missing" } },
@@ -193,51 +207,27 @@ describe("inventory and explicit market confirmation", () => {
     expect(screen.getByText("No items match these filters.")).toBeVisible();
   });
 
-  it("keeps protected and unmarketable items out of individual actions and game selection", async () => {
+  it("keeps protected and unmarketable items out of the basket and game selection", async () => {
     renderPanel();
-    await screen.findByRole("heading", { name: "Bee card" });
-    const lastCopy = within(screen.getByRole("article", { name: "One badge" }));
-    const unmarketable = within(
-      screen.getByRole("article", { name: "Locked card" }),
+    await screen.findByText("Bee card");
+    expect(tile("One badge")).toHaveAttribute(
+      "aria-description",
+      "Only one copy",
     );
-    expect(
-      lastCopy.getByText("Only copy — stays in your inventory."),
-    ).toBeVisible();
-    expect(
-      unmarketable.getByText(
-        "Steam does not allow these copies to be sold on the Community Market.",
-      ),
-    ).toBeVisible();
-
-    for (const [item, name] of [
-      [lastCopy, "One badge"],
-      [unmarketable, "Locked card"],
-    ] as const) {
-      expect(
-        item.getByRole("checkbox", { name: `Select ${name}` }),
-      ).toBeDisabled();
-      expect(item.queryByRole("spinbutton")).not.toBeInTheDocument();
-      expect(
-        item.queryByRole("button", { name: `Preview sale: ${name}` }),
-      ).not.toBeInTheDocument();
-    }
+    expect(tile("Locked card")).toHaveTextContent("Not marketable");
+    expect(tile("One badge")).not.toHaveAttribute("aria-pressed");
 
     fireEvent.click(
-      screen.getByRole("checkbox", {
-        name: "Select eligible items: Other Community items",
-      }),
+      within(
+        screen.getByRole("article", { name: "Other Community items" }),
+      ).getByRole("button", { name: "Add extras to basket" }),
     );
-
-    expect(screen.getByText("Selected variants: 1")).toBeVisible();
-    expect(
-      screen.getByRole("checkbox", { name: "Select Bee card" }),
-    ).toBeChecked();
-    expect(
-      lastCopy.getByRole("checkbox", { name: "Select One badge" }),
-    ).not.toBeChecked();
-    expect(
-      unmarketable.getByRole("checkbox", { name: "Select Locked card" }),
-    ).not.toBeChecked();
+    const basket = screen.getByRole("complementary", { name: "Sell basket" });
+    expect(within(basket).getByText("1 items · 2 copies")).toBeVisible();
+    expect(within(basket).getByText("Bee card")).toBeVisible();
+    expect(within(basket).queryByText("One badge")).not.toBeInTheDocument();
+    expect(within(basket).queryByText("Locked card")).not.toBeInTheDocument();
+    expect(tile("Bee card")).toHaveAttribute("aria-pressed", "true");
     expect(vi.mocked(api).mock.calls.every(([, init]) => !init?.method)).toBe(
       true,
     );
@@ -255,30 +245,35 @@ describe("inventory and explicit market confirmation", () => {
         : undefined,
     );
     renderPanel();
-    const quantity = await screen.findByRole("spinbutton", {
-      name: "Quantity: Bee card",
-    });
-    fireEvent.change(quantity, { target: { value: "99" } });
-    expect(quantity).toHaveValue(99);
-    expect(screen.getByText("Enter a whole number from 1 to 2.")).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
+      await screen.findByText(/Click cards with extra copies/),
+    ).toBeVisible();
+    expect(reviewButton()).toBeDisabled();
+    fireEvent.click(tile());
+    const basket = screen.getByRole("complementary", { name: "Sell basket" });
+    const quantity = within(basket).getByRole("status", {
+      name: "Quantity for Bee card",
+    });
+    expect(quantity).toHaveTextContent("2");
+    expect(within(basket).getByText("1 stays")).toBeVisible();
+    const more = within(basket).getByRole("button", {
+      name: "Sell one more Bee card",
+    });
+    const less = within(basket).getByRole("button", {
+      name: "Sell one fewer Bee card",
+    });
+    expect(more).toBeDisabled();
+    fireEvent.click(less);
+    expect(quantity).toHaveTextContent("1");
+    expect(less).toBeDisabled();
+    fireEvent.click(more);
+    expect(quantity).toHaveTextContent("2");
     expect(
       vi
         .mocked(api)
         .mock.calls.some(([path]) => path.endsWith("/market/preview")),
     ).toBe(false);
-    fireEvent.change(quantity, { target: { value: "" } });
-    expect(quantity).toHaveValue(null);
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
-    fireEvent.change(quantity, { target: { value: "2" } });
-    expect(quantity).toHaveValue(2);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    fireEvent.click(reviewButton());
     const dialog = await screen.findByRole("alertdialog", {
       name: "Review market sale",
     });
@@ -313,8 +308,115 @@ describe("inventory and explicit market confirmation", () => {
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
     );
     expect(
-      screen.getByText(/Complete the confirmation in Steam Mobile/),
+      screen.getByText(/Confirm this in the Steam Mobile app/),
     ).toBeVisible();
+    expect(within(basket).getByText("0 items · 0 copies")).toBeVisible();
+  });
+
+  it("notices a listing confirmed in Steam without a manual refresh", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // jsdom reports a hidden document; polling pauses in background tabs.
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    let pending = true;
+    setupApi((path) =>
+      path.endsWith("/market/listings")
+        ? {
+            ...market,
+            listings: [
+              { ...market.listings[0]!, pendingConfirmation: pending },
+            ],
+          }
+        : undefined,
+    );
+    renderPanel("first", "listings");
+    expect(
+      await screen.findByText("Steam confirmation required"),
+    ).toBeVisible();
+    const listingCalls = () =>
+      vi
+        .mocked(api)
+        .mock.calls.filter(([path]) => path.endsWith("/market/listings"))
+        .length;
+    // Let the pending listing start the confirmation watch.
+    await act(async () => {});
+    const before = listingCalls();
+    pending = false;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(listingCalls()).toBe(before + 1);
+    expect(
+      screen.getByText("Confirmed in Steam. The listing is now active."),
+    ).toBeVisible();
+    expect(
+      vi.mocked(api).mock.calls.filter(([path]) => path.endsWith("/inventory"))
+        .length,
+    ).toBe(1);
+  });
+
+  it("reloads the inventory when a pending listing disappears", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    let listings = [{ ...market.listings[0]!, pendingConfirmation: true }];
+    setupApi((path) =>
+      path.endsWith("/market/listings") ? { ...market, listings } : undefined,
+    );
+    renderPanel("first", "listings");
+    expect(
+      await screen.findByText("Steam confirmation required"),
+    ).toBeVisible();
+    await act(async () => {});
+    listings = [];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(
+      screen.getByText(/A listing that was waiting for confirmation/),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(api)
+          .mock.calls.filter(([path]) => path.endsWith("/inventory")).length,
+      ).toBe(2),
+    );
+  });
+
+  it("watches a new pending listing after an older one stopped being watched", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+    const older = { ...market.listings[0]!, pendingConfirmation: true };
+    let listings = [older];
+    setupApi((path) =>
+      path.endsWith("/market/listings") ? { ...market, listings } : undefined,
+    );
+    renderPanel("first", "listings");
+    expect(
+      await screen.findByText("Steam confirmation required"),
+    ).toBeVisible();
+    await act(async () => {});
+    // The older listing outlives the ten-minute watch.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10 * 60_000 + 30_000);
+    });
+    const listingCalls = () =>
+      vi
+        .mocked(api)
+        .mock.calls.filter(([path]) => path.endsWith("/market/listings"))
+        .length;
+    const idle = listingCalls();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000);
+    });
+    expect(listingCalls()).toBe(idle);
+    listings = [older, { ...older, listingId: "listing-2", assetId: "card-2" }];
+    fireEvent.click(screen.getByRole("button", { name: /Refresh/ }));
+    await waitFor(() => expect(listingCalls()).toBe(idle + 1));
+    await act(async () => {});
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(listingCalls()).toBe(idle + 2);
   });
 
   it.each([
@@ -329,9 +431,7 @@ describe("inventory and explicit market confirmation", () => {
           : undefined,
       );
       renderPanel();
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Preview sale: Bee card" }),
-      );
+      await openSale();
       const dialog = await screen.findByRole("alertdialog");
       expect(
         within(dialog).getByText(expected.replace(/\s/g, " "), {
@@ -382,9 +482,7 @@ describe("inventory and explicit market confirmation", () => {
         : undefined,
     );
     renderPanel();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    await openSale();
     const dialog = await screen.findByRole("alertdialog");
     expect(
       within(dialog).getByRole("button", { name: "Confirm sale" }),
@@ -403,9 +501,7 @@ describe("inventory and explicit market confirmation", () => {
       path === "/api/accounts/first/market/preview" ? pending : undefined,
     );
     const { rerender } = renderPanel();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    await openSale();
     const firstSignal = vi
       .mocked(api)
       .mock.calls.find(([path]) =>
@@ -450,8 +546,9 @@ describe("inventory and explicit market confirmation", () => {
     window.localStorage.setItem("steam-bee-locale", "de");
     renderPanel();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Verkauf prüfen: Bee card" }),
+      await screen.findByRole("button", { name: tileName("Bee card", "de") }),
     );
+    fireEvent.click(screen.getByRole("button", { name: "Verkauf prüfen" }));
     const dialog = await screen.findByRole("alertdialog", {
       name: "Marktverkauf prüfen",
     });
@@ -463,87 +560,90 @@ describe("inventory and explicit market confirmation", () => {
     ).toBeVisible();
   });
 
-  it("renders at most 25 inventory cards and searches across all pages", async () => {
-    const manyItems = Array.from({ length: 60 }, (_, index) => ({
+  it("shows ten games per page with card set progress and searches across all pages", async () => {
+    const games = Array.from({ length: 12 }, (_, index) => ({
       ...inventory.items[0]!,
       assetId: `card-${index}`,
       name: `Card ${index + 1}`,
+      gameAppId: index + 1,
+      gameName: `Game ${String(index + 1).padStart(2, "0")}`,
     }));
-    setupApi((path) =>
-      path.endsWith("/inventory")
-        ? {
-            ...inventory,
-            items: manyItems,
-            totalQuantity: 180,
-            duplicateQuantity: 120,
-          }
-        : undefined,
-    );
+    setupApi((path) => {
+      if (path.endsWith("/inventory")) return { ...inventory, items: games };
+      const set = /card-sets\/(\d+)$/.exec(path);
+      if (set)
+        return {
+          appId: Number(set[1]),
+          badgeLevel: 1,
+          remainingDrops: 2,
+          fetchedAt: Date.now(),
+          cards: [
+            { name: `Card ${set[1]}`, imageUrl: null, owned: 3 },
+            { name: "Rare card", imageUrl: null, owned: 0 },
+          ],
+        };
+      return undefined;
+    });
     renderPanel();
     await screen.findByText("Card 1");
+    expect(screen.getAllByRole("article")).toHaveLength(10);
+    expect(screen.getByText("1–10 of 12 games")).toBeVisible();
+    const first = within(screen.getByRole("article", { name: "Game 01" }));
+    expect(await first.findByText("1 of 2 cards")).toBeVisible();
+    expect(first.getByText("Badge level 1")).toBeVisible();
+    expect(first.getByText("2 drops left")).toBeVisible();
     expect(
-      screen.getAllByRole("button", { name: /^Preview sale:/ }),
-    ).toHaveLength(25);
-    expect(screen.getByText("Variants 1–25 of 60")).toBeVisible();
-    const scrollRegion = screen.getByRole("region", {
-      name: "Inventory items",
-    });
-    expect(scrollRegion).toHaveAttribute("tabindex", "-1");
-    scrollRegion.focus();
-    expect(scrollRegion).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Variants 26–50 of 60")).toBeVisible();
-    expect(screen.queryByText("Card 1")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+      first.getByRole("listitem", { name: "Rare card, missing from the set" }),
+    ).toBeVisible();
     expect(
-      screen.getAllByRole("button", { name: /^Preview sale:/ }),
+      first.getByRole("list", {
+        name: "Game 01: Card set",
+      }),
+    ).toBeVisible();
+    expect(
+      vi.mocked(api).mock.calls.filter(([path]) => path.includes("card-sets")),
     ).toHaveLength(10);
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("11–12 of 12 games")).toBeVisible();
+    expect(screen.queryByText("Card 1")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
 
     const search = screen.getByRole("searchbox", { name: "Search inventory" });
-    fireEvent.change(search, { target: { value: "Card 2" } });
-    expect(screen.getByText("Card 2")).toBeVisible();
-    expect(screen.getByText("Variants 1–11 of 11")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
-    fireEvent.change(search, { target: { value: "Card 60" } });
-    expect(screen.getByText("Card 60")).toBeVisible();
-    expect(screen.getByText("Variants 1–1 of 1")).toBeVisible();
-    fireEvent.change(search, { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Duplicates only" }));
-    expect(screen.getByText("Variants 1–25 of 60")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    fireEvent.change(search, { target: { value: "Card 3" } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByText("Card 3")).toBeVisible();
+    expect(screen.queryByText("Rare card")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
   });
 
-  it("clamps a later inventory page when a refresh removes items", async () => {
-    let count = 60;
-    setupApi((path) =>
-      path.endsWith("/inventory")
-        ? {
-            ...inventory,
-            items: Array.from({ length: count }, (_, index) => ({
-              ...inventory.items[0]!,
-              assetId: `card-${index}`,
-              name: `Card ${index + 1}`,
-            })),
-          }
-        : undefined,
-    );
+  it("clamps a later game page when a refresh removes items", async () => {
+    let count = 12;
+    setupApi((path) => {
+      if (path.endsWith("/inventory"))
+        return {
+          ...inventory,
+          items: Array.from({ length: count }, (_, index) => ({
+            ...inventory.items[1]!,
+            assetId: `badge-${index}`,
+            name: `Badge ${index + 1}`,
+            gameAppId: index + 1,
+            gameName: `Game ${String(index + 1).padStart(2, "0")}`,
+          })),
+        };
+      return undefined;
+    });
     renderPanel();
-    await screen.findByText("Card 1");
+    await screen.findByText("Badge 1");
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByText("Variants 51–60 of 60")).toBeVisible();
-    count = 10;
+    expect(screen.getByText("11–12 of 12 games")).toBeVisible();
+    count = 3;
     fireEvent.click(
       screen.getByRole("button", { name: "Refresh inventory & listings" }),
     );
-    await screen.findByText("Variants 1–10 of 10");
-    expect(screen.getByText("Card 1")).toBeVisible();
-    expect(
-      screen.getAllByRole("button", { name: /^Preview sale:/ }),
-    ).toHaveLength(10);
-    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    await screen.findByText("Badge 1");
+    expect(screen.getAllByRole("article")).toHaveLength(3);
+    expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
   });
 
   it("shows actionable Steam conflict details instead of a generic conflict message", async () => {
@@ -559,9 +659,7 @@ describe("inventory and explicit market confirmation", () => {
         : undefined,
     );
     renderPanel();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    await openSale();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Refresh the account's Steam login before selling items.",
     );
@@ -585,9 +683,7 @@ describe("inventory and explicit market confirmation", () => {
       return undefined;
     });
     renderPanel();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    await openSale();
     let dialog = await screen.findByRole("alertdialog");
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Confirm sale" }),
@@ -600,9 +696,7 @@ describe("inventory and explicit market confirmation", () => {
       screen.queryByRole("button", { name: "Confirm sale" }),
     ).not.toBeInTheDocument();
     expect(confirmCount).toBe(1);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    reviewSale();
     dialog = await screen.findByRole("alertdialog");
     fireEvent.click(
       within(dialog).getByRole("button", { name: "Confirm sale" }),
@@ -662,9 +756,7 @@ describe("inventory and explicit market confirmation", () => {
     expect(
       screen.queryByText("No active market listings."),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeEnabled();
+    expect(tile()).toBeEnabled();
     await act(async () => {
       finishMarket(market);
     });
@@ -715,9 +807,7 @@ describe("inventory and explicit market confirmation", () => {
     expect(
       screen.getByText(/Showing the previous inventory snapshot/),
     ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeDisabled();
+    expect(tile()).toBeDisabled();
     showMarket();
     expect(
       screen.getByRole("button", { name: "Cancel listing: Listed card" }),
@@ -727,11 +817,7 @@ describe("inventory and explicit market confirmation", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Refresh inventory & listings" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Preview sale: Bee card" }),
-      ).toBeEnabled(),
-    );
+    await waitFor(() => expect(tile()).toBeEnabled());
     expect(
       screen.queryByText(/Showing the previous inventory snapshot/),
     ).not.toBeInTheDocument();
@@ -761,9 +847,7 @@ describe("inventory and explicit market confirmation", () => {
       screen.getByRole("button", { name: "Cancel listing: Listed card" }),
     ).toBeDisabled();
     showInventory();
-    expect(
-      screen.getByRole("button", { name: "Preview sale: Bee card" }),
-    ).toBeEnabled();
+    expect(tile()).toBeEnabled();
   });
 
   it("announces slow sale previews and ignores their result after closing the tool", async () => {
@@ -776,9 +860,7 @@ describe("inventory and explicit market confirmation", () => {
         : undefined,
     );
     const view = renderPanel();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    await openSale();
     expect(
       screen.getByText("Preparing sale preview for Bee card…"),
     ).toBeVisible();
@@ -810,9 +892,7 @@ describe("inventory and explicit market confirmation", () => {
         : undefined,
     );
     renderPanel();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Preview sale: Bee card" }),
-    );
+    await openSale();
     const dialog = await screen.findByRole("alertdialog");
     expect(
       within(dialog).getByText(
@@ -859,9 +939,10 @@ describe("inventory and explicit market confirmation", () => {
 
   it("returns focus to the sale trigger after reviewing and going back", async () => {
     renderPanel();
-    const trigger = await screen.findByRole("button", {
-      name: "Preview sale: Bee card",
-    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: tileName("Bee card") }),
+    );
+    const trigger = reviewButton();
     trigger.focus();
     fireEvent.click(trigger);
     const dialog = await screen.findByRole("alertdialog");
@@ -895,9 +976,10 @@ describe("inventory and explicit market confirmation", () => {
       renderPanel();
     });
     await act(async () => {
-      fireEvent.click(
-        screen.getByRole("button", { name: "Preview sale: Bee card" }),
-      );
+      fireEvent.click(tile());
+    });
+    await act(async () => {
+      fireEvent.click(reviewButton());
     });
     const dialog = screen.getByRole("alertdialog");
     expect(within(dialog).getByText(/Expires in 60 s/)).toBeVisible();

@@ -454,6 +454,7 @@ const messages = {
     tagPrompt: "Pisahkan tag dengan koma",
     saveTags: "Simpan tag",
     selectionTitle: "Tingkatkan pilihan",
+    manualSelectionTitle: "Pilihan game manual",
     expandSelection: "Perluas pilihan peningkatan",
     collapseSelection: "Ciutkan peningkatan pilihan",
     noSelectedGames: "Belum ada permainan yang dipilih.",
@@ -463,6 +464,7 @@ const messages = {
     applySelection: "Terapkan pilihan",
     noOpenChanges: "Tidak ada perubahan terbuka.",
     activeDraft: "Aktif: {active} · Draf: {draft}",
+    savedDraft: "{active} tersimpan · {draft} draf",
     overLimit:
       "Steam judul aktif: kurangi pilihan menjadi {limit} game sebelum menerapkannya.",
     chooseFromLibrary: "Pilih dari perpustakaan atau tambahkan AppID.",

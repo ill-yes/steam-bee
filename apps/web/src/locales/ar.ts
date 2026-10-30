@@ -448,6 +448,7 @@ const messages = {
     tagPrompt: "علامات منفصلة بفواصل",
     saveTags: "حفظ العلامات",
     selectionTitle: "تعزيز الاختيار",
+    manualSelectionTitle: "اختيار الألعاب يدويًا",
     expandSelection: "قم بتوسيع اختيار التعزيز",
     collapseSelection: "طي اختيار التعزيز",
     noSelectedGames: "لم يتم تحديد أي ألعاب حتى الآن.",
@@ -457,6 +458,7 @@ const messages = {
     applySelection: "تطبيق التحديد",
     noOpenChanges: "لا توجد تغييرات مفتوحة.",
     activeDraft: "نشط: {active} · المسودة: {draft}",
+    savedDraft: "المحفوظ: {active} · المسودة: {draft}",
     overLimit:
       "Steam عنوان نشط: قم بتقليل التحديد إلى {limit} لعبة قبل تطبيقه.",
     chooseFromLibrary: "اختر من المكتبة أو أضف AppID.",

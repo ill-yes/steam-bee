@@ -198,7 +198,25 @@ function AccountFreeGamesPanel({ accountId }: { accountId: string }) {
           />
         }
       />
-      <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-xs leading-5 text-[var(--muted)]">
+      <ol
+        aria-label={copy.howTitle}
+        className="grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 sm:grid-cols-3"
+      >
+        {[copy.howCheck, copy.howOwned, copy.howClaim].map((step, index) => (
+          <li key={step} className="flex min-w-0 items-start gap-2.5">
+            <span
+              aria-hidden="true"
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[var(--primary)] text-xs font-bold text-[var(--primary-fg)]"
+            >
+              {index + 1}
+            </span>
+            <span className="text-xs leading-5 text-[var(--muted-strong)]">
+              {step}
+            </span>
+          </li>
+        ))}
+      </ol>
+      <div className="order-last flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-xs leading-5 text-[var(--muted)]">
         <span className="inline-flex items-center gap-1.5 font-medium text-[var(--ink)]">
           <Globe2 size={14} aria-hidden="true" />
           {copy.regionLabel}
@@ -271,45 +289,38 @@ function AccountFreeGamesPanel({ accountId }: { accountId: string }) {
         </div>
       )}
       {data && data.offers.length > 0 && (
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="grid min-w-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)]">
           {data.offers.map((offer) => (
-            <article
+            <li
               key={offer.appId}
-              className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-2)]"
+              className="flex min-w-0 flex-wrap items-center gap-4 border-t border-[var(--line)] p-3 first:border-t-0"
             >
-              <div className="relative">
-                <SteamAppArtwork
-                  appId={offer.appId}
-                  name={offer.name}
-                  size="large"
-                />
-                <span className="absolute left-3 top-3 rounded-md border border-[var(--good-line)] bg-[var(--surface)] px-2.5 py-1 text-xs font-bold text-[var(--good)]">
-                  −100%
-                </span>
+              <SteamAppArtwork
+                appId={offer.appId}
+                name={offer.name}
+                size="row"
+              />
+              <div className="min-w-0 flex-[1_1_200px]">
+                <h3 className="break-words text-base font-semibold leading-6">
+                  {offer.name}
+                </h3>
+                <p className="text-xs font-semibold text-[var(--good)]">
+                  {copy.offerLabel}
+                </p>
               </div>
-              <div className="flex flex-1 flex-col gap-3 p-4">
-                <div>
-                  <p className="text-xs font-medium text-[var(--good)]">
-                    {copy.offerLabel}
-                  </p>
-                  <h3 className="mt-1 break-words text-base font-semibold leading-6">
-                    {offer.name}
-                  </h3>
-                </div>
-                <a
-                  href={offer.storeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`${copy.openStore}: ${offer.name}`}
-                  className="mt-auto inline-flex min-h-11 items-center justify-between gap-2 rounded-md border border-[var(--line-strong)] bg-[var(--surface)] px-3 py-2 text-sm font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--surface-3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
-                >
-                  {copy.openStore}
-                  <ExternalLink size={15} aria-hidden="true" />
-                </a>
-              </div>
-            </article>
+              <a
+                href={offer.storeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${copy.openStore}: ${offer.name}`}
+                className="inline-flex min-h-11 items-center gap-2 rounded-md border border-[var(--primary)] bg-[var(--primary)] px-4 py-2 text-sm font-semibold text-[var(--primary-fg)] transition-colors hover:bg-[var(--primary-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
+              >
+                {copy.openStore}
+                <ExternalLink size={15} aria-hidden="true" />
+              </a>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       <details className="group min-w-0 text-xs text-[var(--muted)]">
         <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] [&::-webkit-details-marker]:hidden">

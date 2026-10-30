@@ -1,26 +1,44 @@
 import { Alert } from "../../components/ui/alert";
 import { Dialog } from "../../components/ui/dialog";
 import { SegmentedControl } from "../../components/ui/segmented-control";
-import { useI18n } from "../../i18n";
+import { interpolate, useI18n } from "../../i18n";
+import { hubCopy } from "./detail/hubCopy";
 import { CredentialsLoginForm } from "./CredentialsLoginForm";
 import { LoginProgress } from "./LoginProgress";
 import { QrLoginPanel } from "./QrLoginPanel";
-import { useAddAccountFlow } from "./useAddAccountFlow";
+import { useAddAccountFlow, type LoginMode } from "./useAddAccountFlow";
 
 export function AddAccountModal({
   onClose,
   onDone,
+  initialMode,
+  reloginAccountName,
 }: {
   onClose: () => void;
   onDone: () => Promise<void>;
+  initialMode?: LoginMode | undefined;
+  /** Set when an existing account renews its Steam login. */
+  reloginAccountName?: string | undefined;
 }) {
-  const { messages: t } = useI18n();
-  const flow = useAddAccountFlow({ onClose, onDone });
+  const { locale, messages: t } = useI18n();
+  const copy = hubCopy(locale);
+  const flow = useAddAccountFlow({
+    onClose,
+    onDone,
+    initialMode,
+    initialAccountName: reloginAccountName,
+  });
 
   return (
     <Dialog
-      title={t.addAccount.title}
-      description={t.addAccount.description}
+      title={
+        reloginAccountName
+          ? interpolate(copy.reloginTitle, { name: reloginAccountName })
+          : t.addAccount.title
+      }
+      description={
+        reloginAccountName ? copy.reloginDescription : t.addAccount.description
+      }
       onClose={onClose}
     >
       <div className="grid gap-4">

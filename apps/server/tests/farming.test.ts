@@ -44,6 +44,7 @@ function setup(games: FarmingGame[], gameLimit = 32) {
       expect(shouldApply()).toBe(true);
     }),
     end: vi.fn(async () => undefined),
+    remember: vi.fn(),
   };
   const controller = new FarmingController(adapter);
   return { adapter, controller };
@@ -106,6 +107,29 @@ describe("card farming lifecycle", () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+  });
+
+  it("applies new settings to a running worker without stopping it", async () => {
+    const { adapter, controller } = setup([game(10, 30), game(20, 30)]);
+    await controller.start(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      skipRefundable: false,
+    });
+    expect(controller.snapshot(accountId).activeAppIds).toEqual([10, 20]);
+    const result = controller.reconfigure(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      skipRefundable: false,
+      blacklist: [20],
+    });
+    expect(result.phase).toBe("warming");
+    expect(result.games.find((entry) => entry.appId === 20)?.skipReason).toBe(
+      "blacklisted",
+    );
+    await vi.waitFor(() =>
+      expect(controller.snapshot(accountId).activeAppIds).toEqual([10]),
+    );
+    expect(adapter.end).not.toHaveBeenCalled();
+    await controller.stop(accountId);
   });
 
   it("protects unknown and recent purchases below two hours by default", async () => {
@@ -177,6 +201,120 @@ describe("card farming lifecycle", () => {
       [1],
       expect.any(Function),
     );
+  });
+
+  it("orders games by strategy and farms a pulled-forward game alone first", async () => {
+    const games = [
+      { ...game(1, 300, oldPurchase), remainingDrops: 1 },
+      { ...game(2, 300, oldPurchase), remainingDrops: 5 },
+      { ...game(3, 30, oldPurchase), remainingDrops: 2 },
+    ];
+    const { controller, adapter } = setup(games);
+    const started = await controller.start(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "drops_desc",
+    });
+    expect(started.games.map((entry) => entry.appId)).toEqual([2, 3, 1]);
+    // Warm-up still comes first without a pinned game.
+    expect(adapter.apply).toHaveBeenLastCalledWith(
+      accountId,
+      [3],
+      expect.any(Function),
+    );
+
+    const pinned = controller.reconfigure(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "drops_desc",
+      priority: [1],
+    });
+    expect(pinned.games.map((entry) => entry.appId)).toEqual([1, 2, 3]);
+    await vi.waitFor(() =>
+      expect(controller.snapshot(accountId).activeAppIds).toEqual([1]),
+    );
+    expect(controller.snapshot(accountId).phase).toBe("farming");
+
+    const byName = controller.reconfigure(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "default",
+    });
+    expect(byName.games.map((entry) => entry.appId)).toEqual([1, 2, 3]);
+    await controller.stop(accountId);
+  });
+
+  it("looks up card values in the background and orders by them", async () => {
+    const { controller, adapter } = setup([
+      game(1, 300, oldPurchase),
+      game(2, 300, oldPurchase),
+    ]);
+    adapter.cardValues = vi.fn(
+      async () =>
+        new Map([
+          [1, { average: 0.05, text: "0,05€" }],
+          [2, { average: 0.4, text: "0,40€" }],
+        ]),
+    );
+    await controller.scan(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "card_value",
+    });
+    await vi.waitFor(() =>
+      expect(
+        controller.snapshot(accountId).games.map((entry) => entry.appId),
+      ).toEqual([2, 1]),
+    );
+    expect(controller.snapshot(accountId).games[0]?.cardValue).toEqual({
+      average: 0.4,
+      text: "0,40€",
+    });
+    expect(adapter.cardValues).toHaveBeenCalledOnce();
+    controller.snapshot(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "card_value",
+    });
+    expect(adapter.cardValues).toHaveBeenCalledOnce();
+  });
+
+  it("remembers games without card prices instead of searching on every read", async () => {
+    const { controller, adapter } = setup([
+      game(1, 300, oldPurchase),
+      game(2, 300, oldPurchase),
+    ]);
+    adapter.cardValues = vi.fn(
+      async () =>
+        new Map([
+          [1, { average: 0.05, text: "0,05€" }],
+          [2, null],
+        ]),
+    );
+    const config = { ...DEFAULT_FARMING_CONFIG, order: "card_value" as const };
+    const scanned = await controller.scan(accountId, config);
+    expect(scanned.pricing).toBe(true);
+    await vi.waitFor(() =>
+      expect(controller.snapshot(accountId).pricing).toBe(false),
+    );
+    controller.snapshot(accountId, config);
+    expect(adapter.cardValues).toHaveBeenCalledOnce();
+    expect(
+      controller.snapshot(accountId).games.map((entry) => entry.cardValue),
+    ).toEqual([{ average: 0.05, text: "0,05€" }, null]);
+  });
+
+  it("keeps the resume request through interruptions and clears it on a stop", async () => {
+    const { controller, adapter } = setup([game(1, 119, oldPurchase)]);
+    await controller.start(accountId, DEFAULT_FARMING_CONFIG);
+    expect(adapter.remember).toHaveBeenLastCalledWith(accountId, true);
+    controller.halt(accountId, "reconnecting");
+    expect(adapter.remember).toHaveBeenCalledTimes(1);
+    expect(controller.snapshot(accountId).reason).toBe("reconnecting");
+    const resumed = await controller.start(
+      accountId,
+      DEFAULT_FARMING_CONFIG,
+      undefined,
+      true,
+    );
+    expect(resumed.reason).toBe("resumed");
+    controller.halt(accountId, "stopped");
+    expect(adapter.remember).toHaveBeenLastCalledWith(accountId, false);
   });
 
   it("honors the existing game cap, whitelist and blacklist precedence", async () => {

@@ -96,7 +96,7 @@ describe("responsive game library", () => {
     expect(within(list).getAllByRole("checkbox")).toHaveLength(2);
     expect(screen.getByText(name)).toHaveClass("break-words");
     expect(screen.getByText(name)).not.toHaveClass("truncate");
-    expect(screen.getByText("AppID: 400")).toBeVisible();
+    expect(screen.getByText(/AppID: 400$/)).toBeVisible();
     const checkbox = screen.getByRole("checkbox", { name: `Select ${name}` });
     expect(checkbox).toBeChecked();
     expect(checkbox).toBeEnabled();

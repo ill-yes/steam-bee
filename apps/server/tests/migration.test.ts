@@ -21,8 +21,8 @@ describe("database migrations", () => {
     migrate();
 
     expect(getMigrationState()).toMatchObject({
-      current: "014_library_import_marker",
-      latest: "014_library_import_marker",
+      current: "015_card_farming_resume",
+      latest: "015_card_farming_resume",
       pending: [],
     });
     expect(tableColumns("steam_account")).toContain("active_preset_id");
@@ -109,11 +109,15 @@ describe("database migrations", () => {
       );
     // Recreate the immediately previous schema, including its recorded migration history.
     sqlite.exec(
-      "DROP TABLE account_market_price_settings; ALTER TABLE steam_account DROP COLUMN library_imported_at;",
+      "DROP TABLE account_farming_resume; DROP TABLE account_market_price_settings; ALTER TABLE steam_account DROP COLUMN library_imported_at;",
     );
     sqlite
-      .prepare("DELETE FROM app_migration WHERE id IN (?, ?)")
-      .run("013_market_price_settings", "014_library_import_marker");
+      .prepare("DELETE FROM app_migration WHERE id IN (?, ?, ?)")
+      .run(
+        "013_market_price_settings",
+        "014_library_import_marker",
+        "015_card_farming_resume",
+      );
     expect(getMigrationState().current).toBe("012_card_farming_settings");
     migrate();
     migrate();
@@ -158,7 +162,9 @@ describe("database migrations", () => {
     migrate();
     sqlite.exec(`
       ALTER TABLE steam_account DROP COLUMN library_imported_at;
-      DELETE FROM app_migration WHERE id = '014_library_import_marker';
+      DROP TABLE account_farming_resume;
+      DELETE FROM app_migration
+      WHERE id IN ('014_library_import_marker', '015_card_farming_resume');
       INSERT INTO steam_account (id, account_name, created_at, updated_at)
       VALUES ('never-imported', 'never.imported', ${baseTimestamp}, ${baseTimestamp});
       INSERT INTO steam_app_cache (app_id, name, source, updated_at)
@@ -182,7 +188,7 @@ describe("database migrations", () => {
       { id: "never-imported", library_imported_at: null },
     ]);
     expect(getMigrationState()).toMatchObject({
-      current: "014_library_import_marker",
+      current: "015_card_farming_resume",
       pending: [],
     });
     expect(
@@ -326,7 +332,7 @@ describe("database migrations", () => {
     expect(() => migrate()).toThrow(UnsupportedDatabaseSchemaError);
     expect(getMigrationState()).toMatchObject({
       current: "999_future_schema",
-      latest: "014_library_import_marker",
+      latest: "015_card_farming_resume",
       unsupported: [
         {
           id: "999_future_schema",

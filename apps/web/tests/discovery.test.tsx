@@ -102,7 +102,7 @@ describe("free games panel", () => {
       wrapper: I18nProvider,
     });
     const link = await screen.findByRole("link", {
-      name: "Open in Steam: Game 42",
+      name: "Claim in store: Game 42",
     });
     expect(link).toHaveAttribute(
       "href",
@@ -368,7 +368,7 @@ describe("free games panel", () => {
         .mockRejectedValueOnce(new Error("Store request failed")),
     );
     render(<FreeGamesPanel accountId="a" />, { wrapper: I18nProvider });
-    await screen.findByRole("link", { name: "Open in Steam: Game 42" });
+    await screen.findByRole("link", { name: "Claim in store: Game 42" });
     expect(screen.getAllByRole("alert")).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
@@ -383,7 +383,7 @@ describe("free games panel", () => {
       screen.queryByText(/This refresh could not verify/),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Open in Steam: Game 42" }),
+      screen.getByRole("link", { name: "Claim in store: Game 42" }),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Refresh" })).not.toBeDisabled();
   });
@@ -401,7 +401,7 @@ describe("free games panel", () => {
       "Steam offers unavailable",
     );
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-    await screen.findByRole("link", { name: "Open in Steam: Game 42" });
+    await screen.findByRole("link", { name: "Claim in store: Game 42" });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -423,7 +423,7 @@ describe("free games panel", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      screen.getByRole("link", { name: "Open in Steam: Game 43" }),
+      screen.getByRole("link", { name: "Claim in store: Game 43" }),
     ).toHaveClass("min-h-11");
     const ownership = screen.getByText(
       /Owned games excluded using the library imported on/,
@@ -474,7 +474,7 @@ describe("free games panel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     expect(
-      await screen.findByRole("link", { name: "Open in Steam: Game 42" }),
+      await screen.findByRole("link", { name: "Claim in store: Game 42" }),
     ).toBeVisible();
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(requestPermission).not.toHaveBeenCalled();

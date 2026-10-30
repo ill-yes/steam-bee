@@ -54,6 +54,7 @@ vi.mock("steam-user", () => {
 
 import { db, migrate, sqlite } from "../src/db/client.js";
 import {
+  accountFarmingResume,
   accountHealthState,
   boostPreset,
   boostSchedule,
@@ -110,6 +111,34 @@ describe("SteamWorker", () => {
       await worker.shutdown();
     },
   );
+
+  it("dates each app by its earliest license and caches package contents", async () => {
+    const account = await credentialAccount();
+    const worker = new SteamWorker(account);
+    const client = steamMock.instances.at(-1)!;
+    client.licenses = [
+      { package_id: 10, time_created: 1_700_000_000 },
+      { package_id: 11, time_created: 1_600_000_000 },
+      { package_id: 12, time_created: 1_650_000_000 },
+      { package_id: 0, time_created: 1_500_000_000 },
+    ];
+    client.getProductInfo = vi.fn(async () => ({
+      packages: {
+        10: { packageinfo: { appids: [440, 570] } },
+        11: { packageinfo: { appids: [570] } },
+        12: { packageinfo: { appids: [730] } },
+      },
+    }));
+    const times = await worker.acquisitionTimes([440, 570, 999]);
+    expect([...times]).toEqual([
+      [440, 1_700_000_000_000],
+      [570, 1_600_000_000_000],
+    ]);
+    expect(client.getProductInfo).toHaveBeenCalledWith([], [10, 11, 12], true);
+    await worker.acquisitionTimes([730]);
+    expect(client.getProductInfo).toHaveBeenCalledTimes(1);
+    await worker.shutdown();
+  });
 
   it("does not overwrite a newer QR credential, even between read and update", async () => {
     const account = await credentialAccount();
@@ -2123,6 +2152,51 @@ describe("SteamWorker", () => {
       }
     });
 
+    it("keeps farming accounts running through a Steam drop and holds manual games until farming resumes", async () => {
+      const account = await farmingAccount();
+      const worker = new SteamWorker(account, {
+        farmingResumesAfterShutdown: () => true,
+      });
+      const client = steamMock.instances.at(-1)!;
+      try {
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        await worker.applyFarmingSelection([570]);
+
+        client.emit(
+          "error",
+          Object.assign(new Error("Connection lost"), { eresult: 2 }),
+        );
+        await flushWorkerEvents(worker);
+        expect(
+          (
+            await db
+              .select()
+              .from(steamAccount)
+              .where(eq(steamAccount.id, account.id))
+          )[0]?.desiredState,
+        ).toBe("running");
+
+        // A status-driven halt drops the games but keeps the reservation.
+        worker.clearFarmingSelection(true);
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "idle",
+          activeAppIds: [],
+        });
+
+        await worker.applyFarmingSelection([570]);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "farming",
+          activeAppIds: [570],
+        });
+      } finally {
+        await worker.shutdown();
+      }
+    });
+
     it("reports effective games and emits farming target changes while the status stays boosting", async () => {
       const account = await farmingAccount();
       const worker = new SteamWorker(account);
@@ -2563,6 +2637,25 @@ describe("SteamWorker", () => {
       expect(client.gamesPlayed).toHaveBeenLastCalledWith([440, 730]);
     });
 
+    it("resumes a manual pause for farming without replaying the boost games", async () => {
+      const account = await farmingAccount();
+      const client = await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      await steamManager.endFarming(account.id);
+      expect(
+        await steamManager.getFarmingAvailability(account.id),
+      ).toMatchObject({ allowed: false, reason: "manual", resumable: true });
+
+      await expect(
+        steamManager.resumeForFarming(account.id),
+      ).resolves.toMatchObject({ allowed: true });
+
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+      expect((await getAccountSafetyPolicy(account.id)).holdReason).toBeNull();
+      await steamManager.applyFarmingGames(account.id, [570]);
+      expect(client.gamesPlayed).toHaveBeenLastCalledWith([570]);
+    });
+
     it.each(["hold-write", "recovery-write", "pause-command"] as const)(
       "force-disconnects active farming when stopping fails at %s",
       async (failure) => {
@@ -2748,6 +2841,26 @@ describe("SteamWorker", () => {
       expect(selectedGames(account.id).map((game) => game.appId)).toEqual([
         440, 570, 730,
       ]);
+    });
+
+    it("keeps the account running through shutdown when farming will resume", async () => {
+      const account = await farmingAccount();
+      await connectManagedFarmingAccount(account.id);
+      await steamManager.applyFarmingGames(account.id, [570]);
+      await db
+        .insert(accountFarmingResume)
+        .values({ accountId: account.id, requestedAt: Date.now() });
+
+      await steamManager.shutdown();
+
+      expect(
+        (
+          await db
+            .select()
+            .from(steamAccount)
+            .where(eq(steamAccount.id, account.id))
+        )[0]?.desiredState,
+      ).toBe("running");
     });
   });
 });

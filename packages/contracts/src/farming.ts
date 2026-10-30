@@ -7,11 +7,28 @@ export type FarmingPhase =
   | "blocked"
   | "error";
 
+export const FARMING_ORDERS = [
+  "default",
+  "card_value",
+  "drops_desc",
+  "drops_asc",
+  "hours_desc",
+  "acquired_asc",
+  "name",
+] as const;
+/** How games without a manual priority are ordered after the pinned ones. */
+export type FarmingOrder = (typeof FARMING_ORDERS)[number];
+
 export type FarmingConfig = {
   maxConcurrentGames: number;
   skipRefundable: boolean;
   whitelist: number[];
   blacklist: number[];
+  /** Restart farming after a SteamBee restart or a brief Steam disconnect. */
+  autoResume: boolean;
+  order: FarmingOrder;
+  /** Games pulled to the front, farmed one at a time in this order. */
+  priority: number[];
 };
 
 export type FarmingSkipReason =
@@ -24,6 +41,8 @@ export type FarmingGame = {
   playtimeMinutes: number | null;
   acquiredAt: number | null;
   skipReason: FarmingSkipReason | null;
+  /** Average market price of one normal card; null while unknown. */
+  cardValue?: { average: number; text: string } | null;
 };
 
 export type FarmingSnapshot = {
@@ -39,6 +58,8 @@ export type FarmingSnapshot = {
   reason: string | null;
   canStart: boolean;
   gameLimit: number;
+  /** True while card prices are looked up for the card value order. */
+  pricing?: boolean;
 };
 
 export const DEFAULT_FARMING_CONFIG: FarmingConfig = {
@@ -46,4 +67,7 @@ export const DEFAULT_FARMING_CONFIG: FarmingConfig = {
   skipRefundable: true,
   whitelist: [],
   blacklist: [],
+  autoResume: true,
+  order: "default",
+  priority: [],
 };

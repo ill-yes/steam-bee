@@ -1,86 +1,43 @@
 import type { LocaleCode } from "../../i18n";
 
 const en = {
-  title: "Trading card farming",
+  title: "Card farming",
   description:
     "Collect remaining Steam trading card drops and track the games being farmed.",
-  overview: "Overview",
-  selectionSettings: "Selection & settings",
-  tabsLabel: "Card farming views",
   reviewDraft: "Review & save changes",
   pendingChanges: "Unsaved farming changes",
-  savedRules: "Saved farming rules",
   savedState: "Your saved farming settings are shown.",
-  editSettings: "Edit selection & settings",
   protectionOn: "Refund protection on",
   protectionOff: "Refund protection off",
   parallelSummary: "Up to {count} warm-up games",
   whitelistSummary: "Only {count} allowed games",
   excludedSummary: "{count} excluded",
   activeGames: "Active farming games",
-  eligibleGames: "Ready games",
-  queue: "Badge games & farming queue",
-  queueHint:
-    "Active games appear first. Active playtime is estimated; Steam controls drop counts and timing.",
-  dropCount: "{count} drops",
   hours: "Hours",
   scan: "Find card drops",
+  switchCta: "Switch to card farming",
+  switchHintManualTitle: "Boosting playtime is running right now",
+  switchHintManual:
+    "Switching stops playtime for your boost games. Your boost selection stays saved and you can switch back in the header at any time.",
+  switchHintIdleTitle: "Card farming is not running",
+  switchHintIdle:
+    "This account reports no game to Steam right now. Switching starts farming the games below.",
   start: "Start farming",
-  stop: "Stop farming",
   refresh: "Refresh",
   lastScan: "Card drops last checked",
   neverScanned: "Card drops have not been checked yet.",
-  scanRefreshHint:
-    "“Refresh” loads the status. “Find card drops” checks Steam again.",
   save: "Save settings",
   discard: "Discard changes",
   discarded: "Draft discarded. Your saved settings are shown.",
   settings: "Farming settings",
   chooseGames: "Choose farming games",
-  searchGames: "Search games or AppID",
-  filterGames: "Filter farming games",
-  allGames: "All games",
-  withDrops: "With card drops",
-  allowed: "Allowed",
   excluded: "Excluded",
-  neutral: "Default",
   unknownGame: "App {appId}",
-  preferenceFor: "Farming preference for {name}",
-  selectionHint:
-    "Allow games to farm only those, or leave the allowed list empty to consider all games. Exclusions take priority. Refund protection still applies.",
   considerAll: "All games considered",
-  allowedCount: "{count} games allowed only",
-  excludedCount: "{count} excluded",
   gamesPage: "{from}–{to} of {total} games",
-  previousGames: "Previous games",
-  nextGames: "Next games",
-  clearGameFilters: "Reset farming selection",
-  selectionLimit:
-    "Each list can contain up to 500 games. Remove a game before adding another.",
-  filtersOnly:
-    "These choices filter card farming. Save them before searching or starting; choosing a game never starts it.",
-  libraryLoading: "Loading your imported game library…",
-  libraryFailed:
-    "Your imported library could not be loaded. Badge results and saved choices are still available.",
-  retryLibrary: "Retry library",
   libraryEmpty:
-    "No imported games yet. Import your library in Games & playtime, find card drops, or use the advanced AppID fields below.",
-  noGameMatches: "No games match this search and filter.",
-  fixManualIds:
-    "Fix the AppIDs in advanced options before changing the visual game selection.",
+    "No imported games yet. Import your library in Boost playtime, find card drops, or use the advanced AppID fields below.",
   advancedIds: "Advanced: enter AppIDs manually",
-  activity: "This account is currently using",
-  modeManual: "Manual playtime",
-  modeFarming: "Card farming + playtime",
-  modeIdle: "No active card farming",
-  modeHintCompact:
-    "Farming adds playtime and temporarily replaces the manual game list. Your selection stays saved.",
-  modeHint:
-    "Farming also adds playtime to its games. SteamBee uses one mode per account: starting farming temporarily replaces the saved manual game list, rather than running a second list alongside it.",
-  workflow:
-    "Adjust and save your settings, then find card drops or start farming. Starting always checks the badges again.",
-  table: "Games with remaining trading card drops",
-  tableHint: "Scroll horizontally to see all game details.",
   noDrops: "No drops left",
   limitHint:
     "This account can warm up at most {limit} games at once. Higher saved limits are capped automatically.",
@@ -88,7 +45,6 @@ const en = {
   updated: "Farming status updated.",
   refreshFailed:
     "The latest status could not be confirmed. The last known result is shown. Refresh to try again.",
-  configLocked: "Stop farming to change these settings.",
   invalidLimit: "Enter a whole number from 1 to 32.",
   invalidIds: "Enter up to 500 positive AppIDs, separated by commas or spaces.",
   scanningEmpty: "Checking Steam badges for remaining card drops…",
@@ -128,6 +84,21 @@ const en = {
       "This Steam account is being used elsewhere. Finish that session, then resume the account explicitly.",
     login_required:
       "The Steam login needs attention. Sign in again before farming.",
+    resumed:
+      "Farming resumed automatically after an interruption. Card drops were checked again.",
+    shutdown:
+      "SteamBee restarted while farming. Farming resumes once the account is online, unless you turned that off.",
+    connecting:
+      "The Steam connection was interrupted. Farming resumes when the account is online again.",
+    reconnecting:
+      "The Steam connection was interrupted. Farming resumes when the account is online again.",
+    disconnected:
+      "The Steam connection was lost. Farming resumes when the account is online again.",
+    error:
+      "The Steam connection failed. Farming resumes when the account is online again.",
+    paused: "You paused the account, so farming stopped.",
+    paused_manual: "You paused the account, so farming stopped.",
+    "preset-applied": "A preset was applied, so farming stopped.",
   },
   loading: "Loading card farming…",
   failed: "Card farming could not be loaded.",
@@ -136,16 +107,15 @@ const en = {
   blacklist: "Exclude these AppIDs",
   idsHint: "Separate AppIDs with commas or spaces. Exclusions take priority.",
   protect: "Protect refundable games",
+  autoResume: "Resume farming after a SteamBee restart",
   protection:
     "Games below two hours are skipped during the first 14 days after acquisition. Unknown purchase dates are also skipped. Disable this only if you accept that additional playtime can affect refunds.",
   unavailable:
     "Farming requires an active Steam session without safety holds. Start or resume the account first.",
   dirty:
     "Save your changes before searching or starting. Your draft is kept in this tab until you save or discard it.",
-  invalid: "Enter valid positive AppIDs and a parallel limit from 1 to 32.",
   empty: "Find card drops to see eligible games.",
   noGames: "No remaining card drops were found.",
-  drops: "remaining drops",
   game: "Game",
   playtime: "Hours (estimated while active)",
   state: "State",
@@ -153,7 +123,6 @@ const en = {
   active: "Active",
   partial:
     "The badge scan reached its limit. More games may exist; this is a partial result.",
-  stopped: "Farming stopped. It will only restart when you start it again.",
   sessionStopped:
     "Farming halted because the account state, session, selection, or safety policy changed. Start it again explicitly when ready.",
   noEligible:
@@ -172,96 +141,100 @@ const en = {
     blocked: "Halted",
     error: "Failed",
   },
-  skip: {
-    blacklisted: "Excluded",
-    not_whitelisted: "Outside allowed list",
-    refund_window: "Within refund window",
+  statusRunning: "Running for {duration}",
+  dropsOpen: "{count} drops left",
+  dropsOpenOne: "1 drop left",
+  boardLabel: "Card farming by state",
+  colRunning: "Farming now",
+  colNext: "Up next",
+  order: "Order",
+  orders: {
+    default: "As on Steam's badge page",
+    card_value: "Highest card value first",
+    drops_desc: "Most drops first",
+    drops_asc: "Fewest drops first",
+    hours_desc: "Most playtime first",
+    acquired_asc: "Longest owned first",
+    name: "Name A–Z",
+  },
+  pinned: "Pulled forward",
+  autoAfter: "Then automatically",
+  pin: "Pull forward",
+  pinGame: "Pull {name} forward",
+  unpin: "Release",
+  unpinGame: "Release {name}",
+  moveUp: "Move {name} up",
+  moveDown: "Move {name} down",
+  dragGame: "Drag {name} to change the order",
+  dropHint: "Drag games here to farm them first, one at a time.",
+  valueLoading: "Price loading…",
+  valuePerCard: "≈ {value} per card",
+  colSkipped: "Skipped",
+  emptyRunning: "Nothing is being farmed right now.",
+  emptyNext: "No other games are waiting.",
+  emptySkipped: "No games are skipped.",
+  exclude: "Exclude",
+  excludeGame: "Exclude {name}",
+  allowAgain: "Allow again",
+  allowAgainGame: "Allow {name} again",
+  allowGame: "Allow",
+  allowGameNamed: "Allow {name}",
+  adjustProtection: "Change protection",
+  showAll: "Show all {count}",
+  showFewer: "Show fewer",
+  rules: "Rules",
+  editRules: "Edit rules",
+  rulesDescription:
+    "Changes apply right away, even while farming. Exclude or allow single games directly on their cards.",
+  autoResumeOn: "Resumes after a restart",
+  autoResumeOff: "No automatic resume",
+  skipDetail: {
+    blacklisted: "Excluded by you",
+    not_whitelisted: "Not in your selection",
+    refund_window: "Still refundable",
     purchase_date_unknown: "Purchase date unknown",
   },
 };
 
 const de: typeof en = {
-  title: "Sammelkarten-Farming",
+  title: "Karten farmen",
   description:
     "Sammle verbleibende Steam-Kartendrops und behalte die gefarmten Spiele im Blick.",
-  overview: "Übersicht",
-  selectionSettings: "Auswahl & Einstellungen",
-  tabsLabel: "Karten-Farming-Ansichten",
   reviewDraft: "Änderungen prüfen & speichern",
   pendingChanges: "Ungespeicherte Farming-Änderungen",
-  savedRules: "Gespeicherte Farming-Regeln",
   savedState: "Deine gespeicherten Farming-Einstellungen werden angezeigt.",
-  editSettings: "Auswahl & Einstellungen bearbeiten",
   protectionOn: "Erstattungsschutz an",
   protectionOff: "Erstattungsschutz aus",
   parallelSummary: "Bis zu {count} Spiele aufwärmen",
   whitelistSummary: "Nur {count} zugelassene Spiele",
   excludedSummary: "{count} ausgeschlossen",
   activeGames: "Aktive Farming-Spiele",
-  eligibleGames: "Geeignete Spiele",
-  queue: "Abzeichenspiele & Farming-Warteschlange",
-  queueHint:
-    "Aktive Spiele stehen zuerst. Die laufende Spielzeit ist geschätzt; Steam bestimmt Anzahl und Zeitpunkt der Drops.",
-  dropCount: "{count} Drops",
   hours: "Stunden",
   scan: "Kartendrops suchen",
+  switchCta: "Zu Karten farmen wechseln",
+  switchHintManualTitle: "Gerade läuft „Spielzeit boosten“",
+  switchHintManual:
+    "Beim Wechsel stoppt die Spielzeit für deine Boost-Spiele. Die Boost-Auswahl bleibt gespeichert, oben im Kopf kannst du jederzeit zurückwechseln.",
+  switchHintIdleTitle: "Karten-Farming läuft gerade nicht",
+  switchHintIdle:
+    "Dieses Konto meldet gerade kein Spiel an Steam. Beim Wechsel werden die Spiele unten gefarmt.",
   start: "Farming starten",
-  stop: "Farming stoppen",
   refresh: "Aktualisieren",
   lastScan: "Kartendrops zuletzt geprüft",
   neverScanned: "Kartendrops wurden noch nicht geprüft.",
-  scanRefreshHint:
-    "„Aktualisieren“ lädt den Status. „Kartendrops suchen“ prüft Steam erneut.",
   save: "Einstellungen speichern",
   discard: "Änderungen verwerfen",
   discarded:
     "Entwurf verworfen. Deine gespeicherten Einstellungen werden angezeigt.",
   settings: "Farming-Einstellungen",
   chooseGames: "Spiele fürs Farming auswählen",
-  searchGames: "Spiele oder AppID suchen",
-  filterGames: "Farming-Spiele filtern",
-  allGames: "Alle Spiele",
-  withDrops: "Mit Kartendrops",
-  allowed: "Zulassen",
   excluded: "Ausschließen",
-  neutral: "Standard",
   unknownGame: "App {appId}",
-  preferenceFor: "Farming-Auswahl für {name}",
-  selectionHint:
-    "Lasse Spiele zu, um nur diese zu farmen. Ohne Freigabeliste werden alle Spiele berücksichtigt. Ausschlüsse haben Vorrang. Der Erstattungsschutz gilt weiterhin.",
   considerAll: "Alle Spiele werden berücksichtigt",
-  allowedCount: "Nur {count} Spiele zugelassen",
-  excludedCount: "{count} ausgeschlossen",
   gamesPage: "{from}–{to} von {total} Spielen",
-  previousGames: "Vorherige Spiele",
-  nextGames: "Nächste Spiele",
-  clearGameFilters: "Farming-Auswahl zurücksetzen",
-  selectionLimit:
-    "Jede Liste darf höchstens 500 Spiele enthalten. Entferne ein Spiel, bevor du ein weiteres hinzufügst.",
-  filtersOnly:
-    "Diese Auswahl filtert das Karten-Farming. Speichere sie vor der Suche oder dem Start. Die Auswahl eines Spiels startet es nicht.",
-  libraryLoading: "Deine importierte Spielebibliothek wird geladen…",
-  libraryFailed:
-    "Deine importierte Bibliothek konnte nicht geladen werden. Abzeichenergebnisse und gespeicherte Auswahlen bleiben verfügbar.",
-  retryLibrary: "Bibliothek erneut laden",
   libraryEmpty:
-    "Noch keine Spiele importiert. Importiere deine Bibliothek unter Spiele & Spielzeit, suche Kartendrops oder nutze unten die erweiterten AppID-Felder.",
-  noGameMatches: "Keine Spiele passen zu dieser Suche und diesem Filter.",
-  fixManualIds:
-    "Korrigiere die AppIDs in den erweiterten Optionen, bevor du die visuelle Spielauswahl änderst.",
+    "Noch keine Spiele importiert. Importiere deine Bibliothek unter Spielzeit boosten, suche Kartendrops oder nutze unten die erweiterten AppID-Felder.",
   advancedIds: "Erweitert: AppIDs manuell eingeben",
-  activity: "Dieses Konto verwendet gerade",
-  modeManual: "Manuelle Spielzeit",
-  modeFarming: "Karten-Farming + Spielzeit",
-  modeIdle: "Kein aktives Karten-Farming",
-  modeHintCompact:
-    "Farming sammelt Spielzeit und ersetzt vorübergehend die manuelle Spielliste. Deine Auswahl bleibt gespeichert.",
-  modeHint:
-    "Farming sammelt zugleich Spielzeit für die gefarmten Spiele. SteamBee verwendet einen Modus pro Konto: Beim Farming ersetzt die Farming-Auswahl vorübergehend die gespeicherte manuelle Spielliste; beide Listen laufen nicht unabhängig nebeneinander.",
-  workflow:
-    "Passe die Einstellungen an und speichere sie. Suche danach Kartendrops oder starte das Farming. Beim Start werden die Abzeichen erneut geprüft.",
-  table: "Spiele mit verbleibenden Sammelkartendrops",
-  tableHint: "Scrolle seitlich, um alle Spieldetails zu sehen.",
   noDrops: "Keine Drops übrig",
   limitHint:
     "Dieses Konto kann höchstens {limit} Spiele gleichzeitig aufwärmen. Höhere gespeicherte Limits werden automatisch begrenzt.",
@@ -269,7 +242,6 @@ const de: typeof en = {
   updated: "Farming-Status aktualisiert.",
   refreshFailed:
     "Der neueste Status konnte nicht bestätigt werden. Das zuletzt bekannte Ergebnis wird angezeigt. Versuche es mit Aktualisieren erneut.",
-  configLocked: "Stoppe das Farming, um diese Einstellungen zu ändern.",
   invalidLimit: "Gib eine ganze Zahl zwischen 1 und 32 ein.",
   invalidIds:
     "Gib höchstens 500 positive AppIDs ein, getrennt durch Kommas oder Leerzeichen.",
@@ -311,6 +283,23 @@ const de: typeof en = {
       "Dieses Steam-Konto wird woanders verwendet. Beende die andere Sitzung und setze das Konto danach ausdrücklich fort.",
     login_required:
       "Die Steam-Anmeldung benötigt deine Aufmerksamkeit. Melde dich vor dem Farming erneut an.",
+    resumed:
+      "Das Farming wurde nach einer Unterbrechung automatisch fortgesetzt. Die Kartendrops wurden neu geprüft.",
+    shutdown:
+      "SteamBee wurde während des Farmings neu gestartet. Das Farming geht weiter, sobald das Konto online ist, außer du hast das abgeschaltet.",
+    connecting:
+      "Die Verbindung zu Steam wurde unterbrochen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    reconnecting:
+      "Die Verbindung zu Steam wurde unterbrochen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    disconnected:
+      "Die Verbindung zu Steam ist abgerissen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    error:
+      "Die Verbindung zu Steam ist fehlgeschlagen. Das Farming geht weiter, sobald das Konto wieder online ist.",
+    paused: "Du hast das Konto pausiert, deshalb wurde das Farming gestoppt.",
+    paused_manual:
+      "Du hast das Konto pausiert, deshalb wurde das Farming gestoppt.",
+    "preset-applied":
+      "Ein Preset wurde angewendet, deshalb wurde das Farming gestoppt.",
   },
   loading: "Sammelkarten werden geladen…",
   failed: "Sammelkarten konnten nicht geladen werden.",
@@ -320,17 +309,15 @@ const de: typeof en = {
   idsHint:
     "AppIDs durch Kommas oder Leerzeichen trennen. Ausschlüsse haben Vorrang.",
   protect: "Erstattungsfähige Spiele schützen",
+  autoResume: "Nach einem Neustart von SteamBee automatisch weiterfarmen",
   protection:
     "Spiele unter zwei Stunden werden in den ersten 14 Tagen nach Erwerb übersprungen. Bei unbekanntem Kaufdatum werden sie ebenfalls übersprungen. Deaktiviere dies nur, wenn du Auswirkungen zusätzlicher Spielzeit auf Erstattungen akzeptierst.",
   unavailable:
     "Farming benötigt eine aktive Steam-Sitzung ohne Sicherheitssperre. Starte das Konto oder setze es zuerst fort.",
   dirty:
     "Speichere Änderungen vor der Suche oder dem Start. Dein Entwurf bleibt in diesem Tab erhalten, bis du ihn speicherst oder verwirfst.",
-  invalid:
-    "Gib gültige positive AppIDs und ein paralleles Limit zwischen 1 und 32 ein.",
   empty: "Suche Kartendrops, um geeignete Spiele anzuzeigen.",
   noGames: "Keine verbleibenden Kartendrops gefunden.",
-  drops: "verbleibende Drops",
   game: "Spiel",
   playtime: "Stunden (bei Aktivität geschätzt)",
   state: "Status",
@@ -338,8 +325,6 @@ const de: typeof en = {
   active: "Aktiv",
   partial:
     "Die Abzeichensuche hat ihr Limit erreicht. Weitere Spiele sind möglich; dies ist ein Teilergebnis.",
-  stopped:
-    "Farming gestoppt. Ein neuer Start erfolgt ausschließlich durch dich.",
   sessionStopped:
     "Farming wurde wegen eines geänderten Konto-, Sitzungs-, Auswahl- oder Sicherheitsstatus angehalten. Starte es bei Bedarf ausdrücklich erneut.",
   noEligible:
@@ -358,10 +343,57 @@ const de: typeof en = {
     blocked: "Angehalten",
     error: "Fehlgeschlagen",
   },
-  skip: {
-    blacklisted: "Ausgeschlossen",
-    not_whitelisted: "Nicht auf der Freigabeliste",
-    refund_window: "Im Erstattungszeitraum",
+  statusRunning: "Läuft seit {duration}",
+  dropsOpen: "{count} Drops offen",
+  dropsOpenOne: "1 Drop offen",
+  boardLabel: "Karten-Farming nach Zustand",
+  colRunning: "Läuft jetzt",
+  colNext: "Als Nächstes",
+  order: "Reihenfolge",
+  orders: {
+    default: "Wie auf der Steam-Abzeichenseite",
+    card_value: "Höchster Kartenwert zuerst",
+    drops_desc: "Meiste offene Drops zuerst",
+    drops_asc: "Wenigste offene Drops zuerst",
+    hours_desc: "Meiste Spielzeit zuerst",
+    acquired_asc: "Am längsten im Konto zuerst",
+    name: "Name A–Z",
+  },
+  pinned: "Vorgezogen",
+  autoAfter: "Danach automatisch",
+  pin: "Vorziehen",
+  pinGame: "{name} vorziehen",
+  unpin: "Lösen",
+  unpinGame: "{name} lösen",
+  moveUp: "{name} nach oben",
+  moveDown: "{name} nach unten",
+  dragGame: "{name} ziehen, um die Reihenfolge zu ändern",
+  dropHint: "Zieh Spiele hierher, um sie zuerst und einzeln zu farmen.",
+  valueLoading: "Preis lädt …",
+  valuePerCard: "≈ {value} pro Karte",
+  colSkipped: "Übersprungen",
+  emptyRunning: "Gerade wird nichts gefarmt.",
+  emptyNext: "Keine weiteren Spiele in der Warteschlange.",
+  emptySkipped: "Kein Spiel wird übersprungen.",
+  exclude: "Ausschließen",
+  excludeGame: "{name} ausschließen",
+  allowAgain: "Wieder zulassen",
+  allowAgainGame: "{name} wieder zulassen",
+  allowGame: "Zulassen",
+  allowGameNamed: "{name} zulassen",
+  adjustProtection: "Schutz anpassen",
+  showAll: "Alle {count} anzeigen",
+  showFewer: "Weniger anzeigen",
+  rules: "Regeln",
+  editRules: "Regeln bearbeiten",
+  rulesDescription:
+    "Änderungen gelten sofort, auch während des Farmings. Einzelne Spiele schließt du direkt auf ihrer Karte aus oder lässt sie zu.",
+  autoResumeOn: "Nach Neustart weiter",
+  autoResumeOff: "Kein automatischer Neustart",
+  skipDetail: {
+    blacklisted: "Von dir ausgeschlossen",
+    not_whitelisted: "Nicht in deiner Auswahl",
+    refund_window: "Noch erstattbar",
     purchase_date_unknown: "Kaufdatum unbekannt",
   },
 };

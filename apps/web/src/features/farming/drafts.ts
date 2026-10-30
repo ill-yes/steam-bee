@@ -3,6 +3,7 @@ import { MAX_STEAM_APP_ID, type FarmingConfig } from "@steam-bee/contracts";
 export type FarmingDraft = {
   maxConcurrentGames: string;
   skipRefundable: boolean;
+  autoResume: boolean;
   whitelist: string;
   blacklist: string;
 };
@@ -15,6 +16,7 @@ export function configDraft(config: FarmingConfig): FarmingDraft {
   return {
     maxConcurrentGames: String(config.maxConcurrentGames),
     skipRefundable: config.skipRefundable,
+    autoResume: config.autoResume,
     whitelist: config.whitelist.join(", "),
     blacklist: config.blacklist.join(", "),
   };
@@ -32,12 +34,14 @@ export function readFarmingDraft(accountId: string): FarmingDraft | null {
         typeof value.maxConcurrentGames === "string" &&
         "skipRefundable" in value &&
         typeof value.skipRefundable === "boolean" &&
+        (!("autoResume" in value) || typeof value.autoResume === "boolean") &&
         "whitelist" in value &&
         typeof value.whitelist === "string" &&
         "blacklist" in value &&
         typeof value.blacklist === "string"
       )
-        return value as FarmingDraft;
+        // Drafts saved before auto-resume existed keep its default.
+        return { autoResume: true, ...value } as FarmingDraft;
     }
   } catch {
     // The in-memory draft also survives navigation when storage is blocked.
@@ -65,7 +69,7 @@ export function clearFarmingDraft(accountId: string) {
 
 export function parseDraftIds(value: string): number[] | null {
   if (!value.trim()) return [];
-  const values = value.trim().split(/[\s,]+/);
+  const values = value.split(/[\s,]+/).filter(Boolean);
   if (
     values.length > 500 ||
     values.some(

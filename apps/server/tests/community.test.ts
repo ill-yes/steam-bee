@@ -133,6 +133,152 @@ describe("Steam Community HTTP transport", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  it("discards the cached web session when Steam sends it to sign in", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const discard = vi.fn();
+    const request = createCommunityRequest(
+      async () => SESSION,
+      fetcher,
+      Date.now,
+      discard,
+    );
+    fetcher.mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://steamcommunity.com/login/home/" },
+      }),
+    );
+    await expect(request("account-one", "/market/")).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(discard).toHaveBeenCalledWith("account-one", SESSION.sessionId);
+  });
+
+  it("follows a same-host redirect to the profile's custom URL", async () => {
+    const { fetcher, request } = harness();
+    fetcher
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: {
+            location:
+              "https://steamcommunity.com/id/custom-name/gamecards/730?l=english",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("badge page"));
+    const response = await request(
+      "account-one",
+      "/profiles/76561198000000001/gamecards/730/?l=english",
+    );
+    expect(await response.text()).toBe("badge page");
+    expect(String(fetcher.mock.calls[1]?.[0])).toBe(
+      "https://steamcommunity.com/id/custom-name/gamecards/730?l=english",
+    );
+    expect(fetcher.mock.calls[1]?.[1]?.redirect).toBe("manual");
+  });
+
+  it.each(["https://steamcommunity.com/login/home/?goto=market", "/market/"])(
+    "treats a redirect to %j as an expired sign-in",
+    async (location) => {
+      const { fetcher, request } = harness();
+      fetcher.mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location } }),
+      );
+      await expect(
+        request("account-one", "/profiles/76561198000000001/badges/"),
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("passes the market eligibility check and reuses its cookie", async () => {
+    const { fetcher, request } = harness();
+    const check = new Headers({
+      location: "https://steamcommunity.com/market/",
+    });
+    check.append(
+      "set-cookie",
+      "webTradeEligibility=%7B%22allowed%22%3A1%7D; Max-Age=600; path=/; HttpOnly",
+    );
+    check.append("set-cookie", "sessionid=attacker-session; Path=/");
+    fetcher
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: "/market/eligibilitycheck/?goto=%2Fmarket%2F" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: check }),
+      )
+      .mockResolvedValueOnce(new Response("market"))
+      .mockResolvedValueOnce(new Response("market again"));
+    const response = await request("account-one", "/market/?l=english");
+    expect(await response.text()).toBe("market");
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    const cookieOf = (call: number) =>
+      new Headers(fetcher.mock.calls[call]?.[1]?.headers).get("cookie");
+    expect(cookieOf(2)).toBe(
+      [...SESSION.cookies, "webTradeEligibility=%7B%22allowed%22%3A1%7D"].join(
+        "; ",
+      ),
+    );
+    await request("account-one", "/market/?l=english");
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(cookieOf(3)).toBe(cookieOf(2));
+  });
+
+  it("does not leave the market check for a non-market path", async () => {
+    const { fetcher, request } = harness();
+    fetcher
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: "/market/eligibilitycheck/" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: "/login/home/" },
+        }),
+      );
+    await expect(request("account-one", "/market/")).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after three profile redirects", async () => {
+    const { fetcher, request } = harness();
+    fetcher.mockImplementation(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: "/id/loop/badges/" },
+        }),
+    );
+    await expect(
+      request("account-one", "/profiles/76561198000000001/badges/"),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not replay a POST across a redirect", async () => {
+    const { fetcher, request } = harness();
+    fetcher.mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "/id/custom-name/badges/" },
+      }),
+    );
+    await expect(
+      request("account-one", "/market/sellitem/", { method: "POST" }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("always uses the broker's session ID when submitting form data", async () => {
     const { fetcher, request } = harness();
     fetcher.mockResolvedValueOnce(new Response("ok"));

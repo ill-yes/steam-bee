@@ -28,8 +28,9 @@ function FarmingPanel(props: ComponentProps<typeof ActualFarmingPanel>) {
 }
 
 async function openSettings() {
-  const tab = await screen.findByRole("tab", { name: "Selection & settings" });
-  if (tab.getAttribute("aria-selected") !== "true") fireEvent.click(tab);
+  if (screen.queryByRole("dialog", { name: "Edit rules" })) return;
+  fireEvent.click(await screen.findByRole("button", { name: "Edit rules" }));
+  await screen.findByRole("dialog", { name: "Edit rules" });
 }
 
 async function openAdvancedIds() {
@@ -113,10 +114,10 @@ describe("card farming controls", () => {
     expect(protection).toBeChecked();
     fireEvent.click(protection);
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toHaveAccessibleDescription(
       /Save your changes before searching or starting/,
     );
@@ -138,41 +139,9 @@ describe("card farming controls", () => {
     );
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Start farming" }),
+        screen.getByRole("button", { name: "Switch to card farming" }),
       ).toBeEnabled(),
     );
-  });
-
-  it("keeps stop available while start is pending and ignores the late start response", async () => {
-    const pending = deferred<FarmingSnapshot>();
-    vi.mocked(api).mockImplementation(async (path) =>
-      path.endsWith("/start") ? pending.promise : snapshot(),
-    );
-    render(
-      <I18nProvider>
-        <FarmingPanel accountId="first" />
-      </I18nProvider>,
-    );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Start farming" }),
-    );
-    const stop = screen.getByRole("button", { name: "Stop farming" });
-    expect(stop).toBeEnabled();
-    fireEvent.click(stop);
-    await waitFor(() =>
-      expect(api).toHaveBeenCalledWith("/api/accounts/first/farming/stop", {
-        method: "POST",
-      }),
-    );
-    await act(async () => {
-      pending.resolve(snapshot("first", "farming"));
-    });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Start farming" }),
-      ).toBeEnabled(),
-    );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
   });
 
   it("does not show another account's delayed badge results", async () => {
@@ -190,7 +159,7 @@ describe("card farming controls", () => {
         <FarmingPanel accountId="second" />
       </I18nProvider>,
     );
-    await screen.findByRole("button", { name: "Start farming" });
+    await screen.findByRole("button", { name: "Switch to card farming" });
     await act(async () => {
       pending.resolve({
         ...snapshot("first"),
@@ -261,19 +230,25 @@ describe("card farming controls", () => {
       ).toHaveValue("730, unfinished"),
     );
     expect(screen.getByRole("spinbutton")).toHaveValue(null);
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("checkbox", { name: "Protect refundable games" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
 
     expect(screen.getByRole("spinbutton")).toHaveValue(32);
-    expect(screen.getByRole("checkbox")).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Protect refundable games" }),
+    ).toBeChecked();
     expect(
       window.sessionStorage.getItem("steam-bee-farming-draft:first"),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "Start farming" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Switch to card farming" }),
+    ).toBeEnabled();
   });
 
   it("keeps a draft on navigation when session storage is blocked", async () => {
@@ -351,7 +326,7 @@ describe("card farming controls", () => {
       screen.getByRole("button", { name: "Find card drops" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
   });
 
@@ -378,42 +353,16 @@ describe("card farming controls", () => {
     });
     render(<FarmingPanel accountId="first" />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Start farming" }),
+      await screen.findByRole("button", { name: "Switch to card farming" }),
     );
 
     expect(await screen.findByText("Farming cards")).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The latest status could not be confirmed",
     );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
-  });
-
-  it("keeps a successful stop visible and restart blocked if the subsequent status read fails", async () => {
-    let reads = 0;
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) return snapshot();
-      if (++reads === 1) return snapshot("first", "farming");
-      throw new Error("Latest status unavailable");
-    });
-    render(<FarmingPanel accountId="first" />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Stop farming" }),
-    );
-
-    expect(await screen.findByText("Stopped")).toBeInTheDocument();
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "The latest status could not be confirmed",
-    );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText(/The account is paused or stopped/),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Switch to card farming" }),
+    ).not.toBeInTheDocument();
   });
 
   it("commits a successful save and retains known availability when the status follow-up fails", async () => {
@@ -438,36 +387,27 @@ describe("card farming controls", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The latest status could not be confirmed",
     );
-    expect(screen.getByRole("checkbox")).not.toBeChecked();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Edit rules" }),
+      ).not.toBeInTheDocument(),
+    );
+    await openSettings();
     expect(
-      screen.queryByRole("button", { name: "Save settings" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start farming" })).toBeEnabled();
+      screen.getByRole("checkbox", { name: "Protect refundable games" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "Save settings" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Switch to card farming" }),
+    ).toBeEnabled();
     expect(
       screen.getByText(/This account can warm up at most 31 games/),
     ).toBeInTheDocument();
     expect(
       window.sessionStorage.getItem("steam-bee-farming-draft:first"),
     ).toBeNull();
-  });
-
-  it("keeps stop available for retry after a stop request fails", async () => {
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) throw new Error("Stop request unavailable");
-      return snapshot("first", "farming");
-    });
-    render(<FarmingPanel accountId="first" />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Stop farming" }),
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Stop request unavailable",
-    );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
   });
 
   it("recovers a failed status poll without losing the active farming state", async () => {
@@ -484,7 +424,7 @@ describe("card farming controls", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Temporary read failure",
     );
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
+    expect(screen.getByText("Farming cards")).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
@@ -492,44 +432,6 @@ describe("card farming controls", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("Farming cards")).toBeInTheDocument();
     expect(vi.mocked(api)).toHaveBeenCalledTimes(3);
-  });
-
-  it("serializes polling requests and ignores a late poll after stop", async () => {
-    vi.useFakeTimers();
-    const pending = deferred<FarmingSnapshot>();
-    let reads = 0;
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) return snapshot();
-      reads += 1;
-      return reads === 1
-        ? snapshot("first", "farming")
-        : reads === 2
-          ? pending.promise
-          : snapshot();
-    });
-    render(<FarmingPanel accountId="first" />);
-    await act(async () => {});
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
-    });
-    expect(reads).toBe(2);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-    expect(reads).toBe(2);
-    fireEvent.click(screen.getByRole("button", { name: "Stop farming" }));
-    await act(async () => {});
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
-    await act(async () => {
-      pending.resolve(snapshot("first", "farming"));
-    });
-
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(reads).toBe(3);
   });
 
   it("explains a concrete safety hold and keeps refund details associated with the checkbox", async () => {
@@ -547,7 +449,9 @@ describe("card farming controls", () => {
     expect(checkbox).toHaveAccessibleDescription(
       /Unknown purchase dates are also skipped/,
     );
-    const start = screen.getByRole("button", { name: "Start farming" });
+    const start = screen.getByRole("button", {
+      name: "Switch to card farming",
+    });
     expect(start).toBeDisabled();
     expect(start).toHaveAccessibleDescription(
       /The daily playtime limit is reached/,
@@ -572,7 +476,7 @@ describe("card farming controls", () => {
     await openSettings();
     const limit = await screen.findByRole("spinbutton");
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
     fireEvent.change(limit, { target: { value: "4" } });
 
@@ -594,7 +498,9 @@ describe("card farming controls", () => {
       screen.queryByText(/The account is paused or stopped/),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(screen.getByRole("button", { name: "Start farming" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Switch to card farming" }),
+    ).toBeEnabled();
     expect(
       vi
         .mocked(api)
@@ -602,75 +508,182 @@ describe("card farming controls", () => {
     ).toBe(true);
   });
 
-  it("ignores an availability refresh that returns after farming is stopped", async () => {
-    const pending = deferred<FarmingSnapshot>();
-    let reads = 0;
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/stop")) return snapshot();
-      reads += 1;
-      return reads === 1
-        ? snapshot("first", "farming")
-        : reads === 2
-          ? pending.promise
-          : snapshot();
-    });
-    const view = render(
-      <FarmingPanel
-        accountId="first"
-        accountStatus="boosting"
-        activityMode="farming"
-      />,
-    );
-    await screen.findByText("Farming cards");
-    view.rerender(
-      <FarmingPanel
-        accountId="first"
-        accountStatus="paused_manual"
-        activityMode="idle"
-      />,
-    );
-    await waitFor(() => expect(reads).toBe(2));
-    fireEvent.click(screen.getByRole("button", { name: "Stop farming" }));
-    await waitFor(() => expect(reads).toBe(3));
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
-    await act(async () => pending.resolve(snapshot("first", "farming")));
-
-    expect(screen.getByText("Stopped")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeDisabled();
-  });
-
-  it("shows badge artwork, drops and playtime in the overview before opening settings", async () => {
+  it("sorts badge games into running, waiting and skipped columns", async () => {
     vi.mocked(api).mockResolvedValue({
-      ...snapshot(),
+      ...snapshot("first", "farming"),
       scannedAt: 0,
+      activeAppIds: [730],
+      config: { ...DEFAULT_FARMING_CONFIG, blacklist: [570] },
       games: [
         {
           appId: 730,
           name: "A very long game name",
-          remainingDrops: 0,
+          remainingDrops: 2,
           playtimeMinutes: 150,
           acquiredAt: null,
           skipReason: null,
+        },
+        {
+          appId: 440,
+          name: "Waiting game",
+          remainingDrops: 1,
+          playtimeMinutes: 200,
+          acquiredAt: null,
+          skipReason: null,
+        },
+        {
+          appId: 570,
+          name: "Excluded game",
+          remainingDrops: 3,
+          playtimeMinutes: null,
+          acquiredAt: null,
+          skipReason: "blacklisted",
+        },
+        {
+          appId: 620,
+          name: "New purchase",
+          remainingDrops: 4,
+          playtimeMinutes: 10,
+          acquiredAt: null,
+          skipReason: "refund_window",
         },
       ],
     });
     render(<FarmingPanel accountId="first" />);
 
-    const list = await screen.findByRole("list", {
-      name: "Badge games & farming queue",
-    });
+    const running = await screen.findByRole("list", { name: "Farming now" });
     expect(
-      within(list).getByRole("heading", { name: "A very long game name" }),
+      within(running).getByRole("heading", { name: "A very long game name" }),
     ).toBeInTheDocument();
-    expect(within(list).getByText("No drops left")).toBeInTheDocument();
-    expect(within(list).getByText("0 drops")).toBeInTheDocument();
-    expect(within(list).getByText("Hours: 2.5")).toBeInTheDocument();
-    expect(list.querySelector('img[src*="/730/header.jpg"]')).not.toBeNull();
+    expect(within(running).getByText(/2 drops left/)).toBeInTheDocument();
+    expect(within(running).getByText(/2\.5 h/)).toBeInTheDocument();
+    expect(running.querySelector('img[src*="/730/"]')).not.toBeNull();
+    const waiting = screen.getByRole("list", { name: "Then automatically" });
+    expect(within(waiting).getByText(/1 drop left/)).toBeInTheDocument();
+    const skipped = screen.getByRole("list", { name: "Skipped" });
+    expect(within(skipped).getByText("Excluded by you")).toBeInTheDocument();
+    expect(within(skipped).getByText("Still refundable")).toBeInTheDocument();
+    expect(
+      within(skipped).getByRole("button", { name: "Change protection" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
-      "aria-selected",
-      "true",
+  });
+
+  it("excludes and re-allows single games while farming keeps running", async () => {
+    let config = { ...DEFAULT_FARMING_CONFIG, blacklist: [570] };
+    const farming = () => ({
+      ...snapshot("first", "farming"),
+      scannedAt: 0,
+      activeAppIds: [730],
+      config,
+      games: [
+        {
+          appId: 730,
+          name: "Running game",
+          remainingDrops: 2,
+          playtimeMinutes: 150,
+          acquiredAt: null,
+          skipReason: null,
+        },
+        {
+          appId: 570,
+          name: "Excluded game",
+          remainingDrops: 3,
+          playtimeMinutes: 150,
+          acquiredAt: null,
+          skipReason: config.blacklist.includes(570) ? "blacklisted" : null,
+        },
+      ],
+    });
+    vi.mocked(api).mockImplementation(async (path, init) => {
+      if (path.endsWith("/config"))
+        config = JSON.parse(String(init?.body)) as typeof config;
+      return farming();
+    });
+    render(<FarmingPanel accountId="first" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Exclude Running game" }),
     );
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        "/api/accounts/first/farming/config",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            ...DEFAULT_FARMING_CONFIG,
+            blacklist: [570, 730],
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Allow Excluded game again" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Allow Excluded game again" }),
+    );
+    await waitFor(() =>
+      expect(api).toHaveBeenLastCalledWith("/api/accounts/first/farming"),
+    );
+    expect(config.blacklist).toEqual([730]);
+    expect(
+      vi.mocked(api).mock.calls.some(([path]) => path.endsWith("/stop")),
+    ).toBe(false);
+  });
+
+  it("pulls games forward and changes the automatic order", async () => {
+    let config = { ...DEFAULT_FARMING_CONFIG };
+    const farming = () => ({
+      ...snapshot("first", "farming"),
+      scannedAt: 0,
+      activeAppIds: [730],
+      config,
+      games: [730, 440, 570].map((appId) => ({
+        appId,
+        name: `Game ${appId}`,
+        remainingDrops: 2,
+        playtimeMinutes: 150,
+        acquiredAt: null,
+        skipReason: null,
+        cardValue: appId === 440 ? { average: 0.2, text: "$0.20" } : null,
+      })),
+    });
+    vi.mocked(api).mockImplementation(async (path, init) => {
+      if (path.endsWith("/config"))
+        config = JSON.parse(String(init?.body)) as typeof config;
+      return farming();
+    });
+    render(<FarmingPanel accountId="first" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull Game 570 forward" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([570]));
+    const pinned = await screen.findByRole("list", { name: "Pulled forward" });
+    await waitFor(() =>
+      expect(within(pinned).getByText("Game 570")).toBeInTheDocument(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pull Game 440 forward" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([570, 440]));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Move Game 440 up" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([440, 570]));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Order" }), {
+      target: { value: "card_value" },
+    });
+    await waitFor(() => expect(config.order).toBe("card_value"));
+    expect(await screen.findByText("≈ $0.20 per card")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Release Game 570" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([440]));
   });
 
   it.each([
@@ -681,7 +694,6 @@ describe("card farming controls", () => {
       scan: "Find card drops",
       refresh: "Refresh",
       refreshed: "Farming status updated.",
-      hint: "“Refresh” loads the status. “Find card drops” checks Steam again.",
     },
     {
       locale: "de",
@@ -690,19 +702,10 @@ describe("card farming controls", () => {
       scan: "Kartendrops suchen",
       refresh: "Aktualisieren",
       refreshed: "Farming-Status aktualisiert.",
-      hint: "„Aktualisieren“ lädt den Status. „Kartendrops suchen“ prüft Steam erneut.",
     },
   ])(
     "shows the badge check time in $locale without treating a status refresh as a new scan",
-    async ({
-      locale,
-      dateLocale,
-      unscanned,
-      scan,
-      refresh,
-      refreshed,
-      hint,
-    }) => {
+    async ({ locale, dateLocale, unscanned, scan, refresh, refreshed }) => {
       window.localStorage.setItem("steam-bee-locale", locale);
       let scannedAt: number | null = null;
       vi.mocked(api).mockImplementation(async (path) => {
@@ -715,7 +718,6 @@ describe("card farming controls", () => {
         </I18nProvider>,
       );
       expect(await screen.findByText(unscanned)).toBeInTheDocument();
-      expect(screen.getByText(hint)).toBeInTheDocument();
       expect(view.container.querySelector("time")).toBeNull();
 
       fireEvent.click(screen.getByRole("button", { name: scan }));
@@ -752,290 +754,7 @@ describe("card farming controls", () => {
     },
   );
 
-  it("edits game filters visually, makes exclusions win, and saves without starting games", async () => {
-    let config = {
-      ...DEFAULT_FARMING_CONFIG,
-      whitelist: [730],
-      blacklist: [730],
-    };
-    vi.mocked(api).mockImplementation(async (path, options) => {
-      if (path.endsWith("/config")) config = JSON.parse(String(options?.body));
-      return { ...snapshot(), config };
-    });
-    render(
-      <FarmingPanel
-        accountId="first"
-        library={[
-          { appId: 730, name: "Counter-Strike 2" },
-          { appId: 440, name: "Team Fortress 2" },
-        ]}
-        activityMode="manual"
-      />,
-    );
-    await openSettings();
-    const controls = await screen.findByRole("group", {
-      name: "Farming preference for Counter-Strike 2",
-    });
-    expect(
-      within(controls).getByRole("radio", { name: "Excluded" }),
-    ).toBeChecked();
-    expect(
-      screen.getByText(/temporarily replaces the manual game list/),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Manual playtime")).toBeInTheDocument();
-    fireEvent.click(within(controls).getByRole("radio", { name: "Allowed" }));
-    expect(
-      within(controls).getByRole("radio", { name: "Allowed" }),
-    ).toBeChecked();
-    expect(
-      screen.getByText(/1 games allowed only · 0 excluded/),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
-
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Start farming" }),
-      ).toBeEnabled(),
-    );
-    expect(config.whitelist).toEqual([730]);
-    expect(config.blacklist).toEqual([]);
-    expect(
-      vi.mocked(api).mock.calls.some(([path]) => path.endsWith("/start")),
-    ).toBe(false);
-    expect(
-      document.querySelector('img[src*="/730/header.jpg"]'),
-    ).not.toBeNull();
-  });
-
-  it("restores visual game preferences across navigation while keeping accounts isolated", async () => {
-    vi.mocked(api).mockImplementation(async (path) =>
-      snapshot(path.includes("/second/") ? "second" : "first"),
-    );
-    const library = [{ appId: 10, name: "Counter-Strike" }];
-    const first = render(<FarmingPanel accountId="first" library={library} />);
-    await openSettings();
-    const firstControls = await screen.findByRole("group", {
-      name: "Farming preference for Counter-Strike",
-    });
-    fireEvent.click(
-      within(firstControls).getByRole("radio", { name: "Excluded" }),
-    );
-    first.unmount();
-    const second = render(
-      <FarmingPanel accountId="second" library={library} />,
-    );
-    await openSettings();
-    expect(
-      within(
-        await screen.findByRole("group", {
-          name: "Farming preference for Counter-Strike",
-        }),
-      ).getByRole("radio", { name: "Default" }),
-    ).toBeChecked();
-    second.rerender(<FarmingPanel accountId="first" library={library} />);
-    await openSettings();
-    await waitFor(() =>
-      expect(
-        within(
-          screen.getByRole("group", {
-            name: "Farming preference for Counter-Strike",
-          }),
-        ).getByRole("radio", { name: "Excluded" }),
-      ).toBeChecked(),
-    );
-    expect(screen.getByRole("button", { name: "Save settings" })).toBeEnabled();
-  });
-
-  it("paginates long libraries and searches names and AppIDs without losing off-page choices", async () => {
-    const library = Array.from({ length: 250 }, (_, index) => ({
-      appId: index + 1,
-      name: `Game ${String(index + 1).padStart(3, "0")}`,
-    }));
-    render(<FarmingPanel accountId="first" library={library} />);
-    await openSettings();
-    const list = await screen.findByRole("list", {
-      name: "Choose farming games",
-    });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(12);
-    fireEvent.click(screen.getByRole("button", { name: "Next games" }));
-    expect(screen.getByText("13–24 of 250 games")).toBeInTheDocument();
-    fireEvent.change(
-      screen.getByRole("searchbox", { name: "Search games or AppID" }),
-      { target: { value: "Game 249" } },
-    );
-    const selected = screen.getByRole("group", {
-      name: "Farming preference for Game 249",
-    });
-    fireEvent.click(within(selected).getByRole("radio", { name: "Allowed" }));
-    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
-    fireEvent.change(
-      screen.getByRole("combobox", { name: "Filter farming games" }),
-      { target: { value: "allowed" } },
-    );
-    expect(
-      within(
-        screen.getByRole("list", { name: "Choose farming games" }),
-      ).getAllByRole("listitem"),
-    ).toHaveLength(1);
-    expect(screen.getByRole("radio", { name: "Allowed" })).toBeChecked();
-    fireEvent.change(screen.getByRole("searchbox"), {
-      target: { value: "nothing matches" },
-    });
-    expect(
-      screen.getByText("No games match this search and filter."),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/1 games allowed only/)).toBeInTheDocument();
-  });
-
-  it("merges imported and discovered games and preserves choices without known metadata", async () => {
-    vi.mocked(api).mockResolvedValue({
-      ...snapshot(),
-      config: { ...DEFAULT_FARMING_CONFIG, blacklist: [999] },
-      games: [
-        {
-          appId: 730,
-          name: "Badge name",
-          remainingDrops: 3,
-          playtimeMinutes: 180,
-          acquiredAt: null,
-          skipReason: null,
-        },
-        {
-          appId: 570,
-          name: "Dota 2",
-          remainingDrops: 2,
-          playtimeMinutes: 180,
-          acquiredAt: null,
-          skipReason: null,
-        },
-      ],
-    });
-    render(
-      <FarmingPanel
-        accountId="first"
-        library={[{ appId: 730, name: "Counter-Strike 2" }]}
-      />,
-    );
-    await openSettings();
-    expect(
-      await screen.findByRole("group", {
-        name: "Farming preference for Counter-Strike 2",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("group", { name: "Farming preference for Dota 2" }),
-    ).toBeInTheDocument();
-    expect(
-      within(
-        screen.getByRole("group", { name: "Farming preference for App 999" }),
-      ).getByRole("radio", { name: "Excluded" }),
-    ).toBeChecked();
-    expect(
-      screen
-        .getByRole("list", { name: "Choose farming games" })
-        .querySelectorAll("li"),
-    ).toHaveLength(3);
-  });
-
-  it("locks game preference changes during farming while leaving search and stop usable", async () => {
-    vi.mocked(api).mockResolvedValue(snapshot("first", "farming"));
-    render(
-      <FarmingPanel
-        accountId="first"
-        library={[{ appId: 730, name: "Counter-Strike 2" }]}
-        activityMode="farming"
-      />,
-    );
-    await openSettings();
-    const controls = await screen.findByRole("group", {
-      name: "Farming preference for Counter-Strike 2",
-    });
-    expect(
-      within(controls).getByRole("radio", { name: "Allowed" }),
-    ).toBeDisabled();
-    expect(screen.getByRole("searchbox")).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Start farming" }),
-    ).toBeDisabled();
-    expect(screen.getByText("Card farming + playtime")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Save settings" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("ignores an old account's delayed library response", async () => {
-    const pending = deferred<{ appId: number; name: string }[]>();
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/library"))
-        return path.includes("/first/")
-          ? pending.promise
-          : [{ appId: 2, name: "Second account game" }];
-      return snapshot(path.includes("/second/") ? "second" : "first");
-    });
-    const view = render(<ActualFarmingPanel accountId="first" />);
-    await openSettings();
-    await screen.findByRole("searchbox");
-    view.rerender(<ActualFarmingPanel accountId="second" />);
-    await openSettings();
-    expect(
-      await screen.findByRole("group", {
-        name: "Farming preference for Second account game",
-      }),
-    ).toBeInTheDocument();
-    await act(async () => {
-      pending.resolve([{ appId: 1, name: "Private first account game" }]);
-    });
-    expect(
-      screen.queryByText("Private first account game"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("can retry a failed imported-library lookup without losing badge results", async () => {
-    let reads = 0;
-    vi.mocked(api).mockImplementation(async (path) => {
-      if (path.endsWith("/library")) {
-        if (++reads === 1) throw new Error("Library temporarily unavailable");
-        return [{ appId: 10, name: "Counter-Strike" }];
-      }
-      return {
-        ...snapshot(),
-        games: [
-          {
-            appId: 570,
-            name: "Dota 2",
-            remainingDrops: 2,
-            playtimeMinutes: 180,
-            acquiredAt: null,
-            skipReason: null,
-          },
-        ],
-      };
-    });
-    render(<ActualFarmingPanel accountId="first" />);
-    await openSettings();
-    expect(
-      await screen.findByRole("group", {
-        name: "Farming preference for Dota 2",
-      }),
-    ).toBeInTheDocument();
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Retry library" }),
-    );
-    expect(
-      await screen.findByRole("group", {
-        name: "Farming preference for Counter-Strike",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("Library temporarily unavailable"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("makes a restored settings draft reviewable from the overview without starting any game", async () => {
+  it("makes a restored settings draft reviewable without starting any game", async () => {
     const first = render(<FarmingPanel accountId="first" />);
     await openSettings();
     fireEvent.change(screen.getByRole("spinbutton"), {
@@ -1047,56 +766,16 @@ describe("card farming controls", () => {
     const review = await screen.findByRole("button", {
       name: "Review & save changes",
     });
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Start farming" }),
+      screen.getByRole("button", { name: "Switch to card farming" }),
     ).toBeDisabled();
     fireEvent.click(review);
 
-    expect(
-      screen.getByRole("tab", { name: "Selection & settings" }),
-    ).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("spinbutton")).toHaveValue(4);
     expect(screen.getByRole("button", { name: "Save settings" })).toBeEnabled();
     expect(
       vi.mocked(api).mock.calls.every(([, options]) => !options?.method),
     ).toBe(true);
-  });
-
-  it("shows active games first and keeps long badge queues navigable without loading settings", async () => {
-    vi.mocked(api).mockResolvedValue({
-      ...snapshot("first", "farming"),
-      activeAppIds: [20],
-      scannedAt: 1,
-      remainingDrops: 60,
-      games: Array.from({ length: 20 }, (_, index) => ({
-        appId: index + 1,
-        name: `Badge game ${index + 1}`,
-        remainingDrops: 3,
-        playtimeMinutes: 180,
-        acquiredAt: null,
-        skipReason: null,
-      })),
-    });
-    render(<ActualFarmingPanel accountId="first" />);
-    const queue = await screen.findByRole("list", {
-      name: "Badge games & farming queue",
-    });
-    const rows = within(queue).getAllByRole("listitem");
-    expect(rows).toHaveLength(12);
-    expect(rows[0]).toHaveTextContent("Badge game 20");
-    expect(within(rows[0]!).getByText("Active")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Next games" }));
-    expect(within(queue).getAllByRole("listitem")).toHaveLength(8);
-    expect(screen.getByText("13–20 of 20 games")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stop farming" })).toBeEnabled();
-    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
-    expect(
-      vi.mocked(api).mock.calls.some(([path]) => path.endsWith("/library")),
-    ).toBe(false);
   });
 });

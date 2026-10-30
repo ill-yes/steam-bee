@@ -25,9 +25,11 @@ export async function registerFarmingRoutes(app: FastifyInstance) {
       const snapshot = farmingController.snapshot(id, settings);
       return {
         ...snapshot,
-        canStart: availability.allowed,
+        canStart: availability.allowed || availability.resumable,
         gameLimit: availability.gameLimit,
-        reason: snapshot.reason ?? availability.reason,
+        reason:
+          snapshot.reason ??
+          (availability.resumable ? null : availability.reason),
       };
     },
   );
@@ -39,15 +41,8 @@ export async function registerFarmingRoutes(app: FastifyInstance) {
       const { id } = accountIdParams.parse(request.params);
       const settings = farmingConfigSchema.parse(request.body);
       await getAccountOrThrow(id);
-      if (
-        ["scanning", "warming", "farming"].includes(
-          farmingController.snapshot(id).phase,
-        )
-      ) {
-        throw appError("Stop card farming before changing its settings.", 409);
-      }
       await saveFarmingConfig(id, settings);
-      return farmingController.snapshot(id, settings);
+      return farmingController.reconfigure(id, settings);
     },
   );
 
@@ -84,9 +79,14 @@ export async function registerFarmingRoutes(app: FastifyInstance) {
     },
     async (request) => {
       const { id } = accountIdParams.parse(request.params);
-      const intent = farmingController.captureIntent(id);
       await getAccountOrThrow(id);
-      const availability = await steamManager.getFarmingAvailability(id);
+      let availability = await steamManager.getFarmingAvailability(id);
+      if (!availability.allowed && availability.resumable)
+        availability = await steamManager.resumeForFarming(id, {
+          source: "manual",
+          action: "farming-start",
+        });
+      const intent = farmingController.captureIntent(id);
       if (!availability.allowed)
         throw appError(
           "Start the Steam session and clear its safety holds before card farming.",

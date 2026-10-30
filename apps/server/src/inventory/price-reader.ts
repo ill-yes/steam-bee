@@ -1,4 +1,5 @@
 import { integer, parseWallet, type Wallet } from "./money.js";
+import { parseListingOrderBook, type ListingOrderBook } from "./order-book.js";
 
 export type ReadPriceError =
   "NO_ORDERS" | "STEAM_UNAVAILABLE" | "RATE_LIMITED" | "UNSUPPORTED_PRICE";
@@ -117,7 +118,10 @@ export class MarketPriceReader {
     string,
     { value: string; until: number }
   >();
-  private readonly itemIdFlights = new Map<string, Promise<string>>();
+  private readonly itemIdFlights = new Map<
+    string,
+    Promise<string | ListingOrderBook>
+  >();
   private readonly observations = new Map<string, Observation>();
   private readonly observationFlights = new Map<string, Promise<Observation>>();
   private readonly waiting: Array<() => void> = [];
@@ -286,13 +290,18 @@ export class MarketPriceReader {
       return cached.value;
     }
     if (cached) this.itemIds.delete(marketHashName);
-    const current = this.itemIdFlights.get(marketHashName);
+    // The listing page embeds an order book in the requesting account's currency; never share it.
+    const flightKey = JSON.stringify([accountId, marketHashName]);
+    const current = this.itemIdFlights.get(flightKey);
     if (current) return current;
     const pending = (async () => {
       const html = await this.read(
         accountId,
         `/market/listings/753/${encodeURIComponent(marketHashName)}?l=english`,
       );
+      // Embedded order books are prices, not IDs; the observation cache keeps them.
+      const book = parseListingOrderBook(html);
+      if (book) return book;
       const match = html.match(
         /Market_LoadOrderSpread\(\s*([1-9]\d{0,24})\s*\)/,
       );
@@ -304,9 +313,45 @@ export class MarketPriceReader {
         maxPublicEntries,
       );
       return match[1]!;
-    })().finally(() => this.itemIdFlights.delete(marketHashName));
-    this.itemIdFlights.set(marketHashName, pending);
+    })().finally(() => this.itemIdFlights.delete(flightKey));
+    this.itemIdFlights.set(flightKey, pending);
     return pending;
+  }
+
+  private async orderBook(
+    accountId: string,
+    marketHashName: string,
+    wallet: Wallet,
+  ): Promise<Record<string, unknown>> {
+    const itemId = await this.itemId(accountId, marketHashName);
+    if (typeof itemId !== "string") {
+      if (itemId.currencyId !== wallet.currency.id)
+        throw new PriceReadError("UNSUPPORTED_PRICE");
+      return {
+        lowest_sell_order: itemId.lowestSellOrder,
+        highest_buy_order: itemId.highestBuyOrder,
+      };
+    }
+    const query = new URLSearchParams({
+      country: wallet.country,
+      language: "english",
+      currency: String(wallet.currency.id),
+      item_nameid: itemId,
+      two_factor: "0",
+    });
+    const body = await this.read(
+      accountId,
+      `/market/itemordershistogram?${query}`,
+    );
+    let data: Record<string, unknown>;
+    try {
+      data = object(JSON.parse(body));
+    } catch {
+      throw new PriceReadError("UNSUPPORTED_PRICE");
+    }
+    if (![true, 1, "1"].includes(data.success as boolean | number | string))
+      throw new PriceReadError("STEAM_UNAVAILABLE");
+    return data;
   }
 
   async observation(
@@ -339,26 +384,7 @@ export class MarketPriceReader {
     if (current) return { ...(await current) };
     const pending = (async () => {
       try {
-        const itemId = await this.itemId(accountId, marketHashName);
-        const query = new URLSearchParams({
-          country: wallet.country,
-          language: "english",
-          currency: String(wallet.currency.id),
-          item_nameid: itemId,
-          two_factor: "0",
-        });
-        const body = await this.read(
-          accountId,
-          `/market/itemordershistogram?${query}`,
-        );
-        let data: Record<string, unknown>;
-        try {
-          data = object(JSON.parse(body));
-        } catch {
-          throw new PriceReadError("UNSUPPORTED_PRICE");
-        }
-        if (![true, 1, "1"].includes(data.success as boolean | number | string))
-          throw new PriceReadError("STEAM_UNAVAILABLE");
+        const data = await this.orderBook(accountId, marketHashName, wallet);
         const observedAt = this.now();
         const value: Observation = {
           lowestSellOrder: orderPrice(data.lowest_sell_order),

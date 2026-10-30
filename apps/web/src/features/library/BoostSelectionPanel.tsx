@@ -32,7 +32,7 @@ export function BoostSelectionPanel({
   onToggleCollapsed: () => void;
   selection: BoostSelectionModel;
 }) {
-  const { locale, messages: t, localeInfo } = useI18n();
+  const { messages: t, localeInfo } = useI18n();
 
   return (
     <aside className="min-w-0 rounded-lg border border-[var(--line)] bg-[var(--surface)]">
@@ -42,9 +42,7 @@ export function BoostSelectionPanel({
           <div className="min-w-0">
             <strong className="block truncate text-sm">
               {activityMode === "farming"
-                ? locale === "de"
-                  ? "Manuelle Spielauswahl"
-                  : "Manual game selection"
+                ? t.library.manualSelectionTitle
                 : t.library.selectionTitle}
             </strong>
             <span className="block truncate text-xs text-[var(--muted)]">
@@ -130,15 +128,10 @@ export function BoostSelectionPanel({
             {appliedAppIds.length !== draftAppIds.length || selectionDirty ? (
               <p className="text-xs leading-5 text-[var(--muted)]">
                 {activityMode === "farming"
-                  ? interpolate(
-                      locale === "de"
-                        ? "{active} gespeichert · {draft} im Entwurf"
-                        : "{active} saved · {draft} draft",
-                      {
-                        active: appliedAppIds.length,
-                        draft: draftAppIds.length,
-                      },
-                    )
+                  ? interpolate(t.library.savedDraft, {
+                      active: appliedAppIds.length,
+                      draft: draftAppIds.length,
+                    })
                   : interpolate(t.library.activeDraft, {
                       active: appliedAppIds.length,
                       draft: draftAppIds.length,

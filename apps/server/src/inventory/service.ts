@@ -30,6 +30,7 @@ import {
   toMinorUnits,
   type Wallet,
 } from "./money.js";
+import { parseListingOrderBook } from "./order-book.js";
 
 type Json = Record<string, unknown>;
 type RequestInit = {
@@ -322,10 +323,7 @@ export class InventoryMarketService {
             ? description.market_hash_name.slice(0, 500)
             : null,
         type: text(description.type, ""),
-        iconUrl:
-          typeof icon === "string" && /^[A-Za-z0-9_\/-]+$/.test(icon)
-            ? `https://community.akamai.steamstatic.com/economy/image/${icon}/96fx96f`
-            : null,
+        iconUrl: economyIconUrl(icon),
         quantity,
         duplicateQuantity,
         marketable: success(description.marketable),
@@ -450,6 +448,8 @@ export class InventoryMarketService {
           listingId,
           assetId,
           name: text(details.name ?? details.market_hash_name),
+          type: text(details.type, ""),
+          iconUrl: economyIconUrl(details.icon_url),
           quantity: integer(asset.amount ?? 1, 1_000_000),
           sellerReceives: toMinorUnits(base, wallet.currency),
           buyerPays: toMinorUnits(base + fees, wallet.currency),
@@ -518,6 +518,39 @@ export class InventoryMarketService {
       this.settingsWrites.delete(accountId);
     }
   }
+  private async listingOrderBook(
+    accountId: string,
+    html: string,
+    wallet: Wallet,
+  ): Promise<Json> {
+    const book = parseListingOrderBook(html);
+    if (book) {
+      if (book.currencyId !== wallet.currency.id)
+        throw appError(
+          "Steam returned prices in another currency. No sale was submitted.",
+          409,
+        );
+      return {
+        success: 1,
+        lowest_sell_order: book.lowestSellOrder,
+        highest_buy_order: book.highestBuyOrder,
+      };
+    }
+    const match = html.match(/Market_LoadOrderSpread\(\s*(\d+)\s*\)/);
+    if (!match)
+      throw appError(
+        "Steam did not provide an authoritative order book for this item.",
+        409,
+      );
+    const query = new URLSearchParams({
+      country: wallet.country,
+      language: "english",
+      currency: String(wallet.currency.id),
+      item_nameid: match[1]!,
+      two_factor: "0",
+    });
+    return this.json(accountId, `/market/itemordershistogram?${query}`);
+  }
   private async quote(
     accountId: string,
     item: Item,
@@ -533,23 +566,7 @@ export class InventoryMarketService {
       accountId,
       `/market/listings/753/${encodeURIComponent(item.marketHashName)}?l=english`,
     );
-    const match = html.match(/Market_LoadOrderSpread\(\s*(\d+)\s*\)/);
-    if (!match)
-      throw appError(
-        "Steam did not provide an authoritative order book for this item.",
-        409,
-      );
-    const query = new URLSearchParams({
-      country: wallet.country,
-      language: "english",
-      currency: String(wallet.currency.id),
-      item_nameid: match[1]!,
-      two_factor: "0",
-    });
-    const data = await this.json(
-      accountId,
-      `/market/itemordershistogram?${query}`,
-    );
+    const data = await this.listingOrderBook(accountId, html, wallet);
     const reference =
       settings.priceMode === "highestBuyOrder"
         ? data.highest_buy_order
@@ -808,11 +825,14 @@ export class InventoryMarketService {
         }
         throw uncertainSubmission();
       }
-      if (!success(data.success))
+      if (!success(data.success)) {
+        // A definite rejection created no listing, so the asset may be retried after fixing the cause.
+        submitted.delete(assetId);
         throw appError(
           "Steam rejected the listing. Check market eligibility, trade holds, and Steam Guard in Steam before retrying.",
           409,
         );
+      }
       const pendingConfirmation =
         success(data.needs_mobile_confirmation) ||
         success(data.needs_email_confirmation);
@@ -988,8 +1008,11 @@ export class InventoryMarketService {
             listingId,
             name: listing?.name ?? `Listing ${listingId}`,
             quantity: listing?.quantity ?? 1,
-            buyerPays: listing?.buyerPays ?? null,
-            sellerReceives: listing?.sellerReceives ?? null,
+            // Listings carry unit prices; preview rows carry row totals.
+            buyerPays: listing ? listing.buyerPays * listing.quantity : null,
+            sellerReceives: listing
+              ? listing.sellerReceives * listing.quantity
+              : null,
             steamFee: null,
             publisherFee: null,
             status: listing ? ("ready" as const) : ("unavailable" as const),
@@ -1206,4 +1229,10 @@ export class InventoryMarketService {
       );
     return this.batches.confirm(accountId, actor, token);
   }
+}
+
+function economyIconUrl(icon: unknown) {
+  return typeof icon === "string" && /^[A-Za-z0-9_\/-]+$/.test(icon)
+    ? `https://community.akamai.steamstatic.com/economy/image/${icon}/96fx96f`
+    : null;
 }

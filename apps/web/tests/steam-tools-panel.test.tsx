@@ -20,8 +20,16 @@ vi.mock("../src/features/discovery/FreeGamesPanel", () => ({
   ),
 }));
 vi.mock("../src/features/inventory/InventoryPanel", () => ({
-  InventoryPanel: ({ accountId }: { accountId: string }) => (
-    <p>Inventory for {accountId}</p>
+  InventoryPanel: ({
+    accountId,
+    view,
+  }: {
+    accountId: string;
+    view?: string;
+  }) => (
+    <p>
+      Inventory for {accountId}: {view}
+    </p>
   ),
 }));
 vi.mock("../src/features/farming/FarmingPanel", () => ({
@@ -59,82 +67,117 @@ describe("account workspace navigation", () => {
   });
   afterEach(cleanup);
 
-  it("starts on games with five valid tab and panel relationships", () => {
+  const nav = () =>
+    within(screen.getByRole("navigation", { name: "Account sections" }));
+  const item = (name: string) =>
+    nav().getByRole("button", { name: new RegExp(`^${name}`) });
+
+  it("starts on games with grouped sections and one current page", () => {
     render(
       <SteamToolsPanel
         accountId="first"
         libraryPanel={<p>Saved games</p>}
+        automationPanels={{
+          presets: <p>Presets</p>,
+          schedules: <p>Schedules</p>,
+          analytics: <p>Statistics</p>,
+        }}
         accountPanel={<p>Account settings</p>}
       />,
       { wrapper: I18nProvider },
     );
-    const tabs = within(
-      screen.getByRole("tablist", { name: "Account workspace" }),
-    ).getAllByRole("tab");
-    expect(tabs).toHaveLength(5);
-    for (const [index, tab] of tabs.entries()) {
-      expect(tab).toHaveAttribute("aria-selected", String(index === 0));
-      expect(tab).toHaveAttribute("tabindex", index === 0 ? "0" : "-1");
-      const panel = document.getElementById(
-        tab.getAttribute("aria-controls")!,
-      )!;
-      expect(panel).toHaveAttribute("aria-labelledby", tab.id);
-      expect(panel.hidden).toBe(index !== 0);
-    }
+    const groups = nav().getAllByRole("group");
     expect(
-      screen.getByRole("tabpanel", { name: "Games & playtime" }),
+      groups.map((group) => group.getAttribute("aria-labelledby")),
+    ).toHaveLength(5);
+    expect(
+      within(nav().getByRole("group", { name: "Items" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Inventory", "Market listings", "Pricing rules"]);
+    expect(
+      within(nav().getByRole("group", { name: "Automation" }))
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Presets", "Schedules", "Statistics"]);
+    expect(nav().getAllByRole("button")).toHaveLength(10);
+    expect(
+      nav()
+        .getAllByRole("button")
+        .filter((button) => button.getAttribute("aria-current") === "page"),
+    ).toEqual([item("Boost playtime")]);
+    expect(
+      screen.getByRole("region", { name: "Boost playtime" }),
     ).toHaveTextContent("Saved games");
     expect(screen.getByTestId("watcher")).toHaveTextContent("first");
   });
 
-  it("switches full panels without collapsing the active tab or removing the watcher", async () => {
+  it("switches full panels and keeps one inventory panel for its three views", async () => {
     render(
       <SteamToolsPanel accountId="first" libraryPanel={<p>Saved games</p>} />,
       { wrapper: I18nProvider },
     );
-    const inventory = screen.getByRole("tab", { name: "Inventory & market" });
-    fireEvent.click(inventory);
-    expect(await screen.findByText("Inventory for first")).toBeInTheDocument();
-    expect(screen.queryByText("Saved games")).not.toBeInTheDocument();
-    fireEvent.click(inventory);
-    expect(inventory).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(item("Inventory"));
     expect(
-      screen.getByRole("tabpanel", { name: "Inventory & market" }),
+      await screen.findByText("Inventory for first: inventory"),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Card farming" }));
+    expect(screen.queryByText("Saved games")).not.toBeInTheDocument();
+    fireEvent.click(item("Market listings"));
+    expect(
+      await screen.findByText("Inventory for first: listings"),
+    ).toBeInTheDocument();
+    expect(item("Market listings")).toHaveAttribute("aria-current", "page");
+    expect(item("Inventory")).not.toHaveAttribute("aria-current");
+    fireEvent.click(item("Card farming"));
     expect(await screen.findByText("Farming for first")).toBeInTheDocument();
-    expect(screen.queryByText("Inventory for first")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Inventory for first/)).not.toBeInTheDocument();
     expect(screen.getByTestId("watcher")).toBeInTheDocument();
   });
 
-  it("supports arrow, Home and End navigation with one tab stop", async () => {
+  it("offers every section in one mobile section picker", async () => {
     render(
       <SteamToolsPanel
         accountId="first"
-        accountPanel={<p>Account settings</p>}
+        remainingDrops={3}
+        libraryPanel={<p>Saved games</p>}
+        automationPanels={{
+          presets: <p>Presets</p>,
+          schedules: <p>Schedules</p>,
+          analytics: <p>Statistics</p>,
+        }}
       />,
       { wrapper: I18nProvider },
     );
-    const library = screen.getByRole("tab", { name: "Games & playtime" });
-    library.focus();
-    fireEvent.keyDown(library, { key: "ArrowRight" });
-    const inventory = screen.getByRole("tab", { name: "Inventory & market" });
-    expect(inventory).toHaveFocus();
-    expect(inventory).toHaveAttribute("aria-selected", "true");
-    await screen.findByText("Inventory for first");
-    fireEvent.keyDown(inventory, { key: "End" });
-    const account = screen.getByRole("tab", { name: "Account & safety" });
-    expect(account).toHaveFocus();
+    const picker = screen.getByRole("combobox", { name: /Section/ });
     expect(
-      screen.getByRole("tabpanel", { name: "Account & safety" }),
-    ).toHaveTextContent("Account settings");
-    fireEvent.keyDown(account, { key: "Home" });
-    expect(library).toHaveFocus();
-    expect(
-      screen.getAllByRole("tab").filter((tab) => tab.tabIndex === 0),
-    ).toEqual([library]);
-    fireEvent.keyDown(library, { key: "ArrowLeft" });
-    expect(account).toHaveFocus();
+      within(picker)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "Boost playtime",
+      "Card farming (3 drops)",
+      "Inventory",
+      "Market listings",
+      "Pricing rules",
+      "Free to keep",
+      "Presets",
+      "Schedules",
+      "Statistics",
+      "Account & safety",
+    ]);
+    fireEvent.change(picker, { target: { value: "schedules" } });
+    expect(item("Schedules")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("region", { name: "Schedules" })).toHaveTextContent(
+      "Schedules",
+    );
+  });
+
+  it("shows remaining card drops in the navigation and hides automation without panels", () => {
+    render(<SteamToolsPanel accountId="first" remainingDrops={37} />, {
+      wrapper: I18nProvider,
+    });
+    expect(item("Card farming")).toHaveTextContent("37 drops");
+    expect(nav().queryByRole("button", { name: /^Presets/ })).toBeNull();
   });
 
   it("clears selected panels and private content when switching accounts", async () => {
@@ -142,21 +185,19 @@ describe("account workspace navigation", () => {
       <SteamToolsPanel accountId="first" libraryPanel={<p>First library</p>} />,
       { wrapper: I18nProvider },
     );
-    fireEvent.click(screen.getByRole("tab", { name: "Inventory & market" }));
-    await screen.findByText("Inventory for first");
+    fireEvent.click(item("Inventory"));
+    await screen.findByText("Inventory for first: inventory");
     view.rerender(
       <SteamToolsPanel
         accountId="second"
         libraryPanel={<p>Second library</p>}
       />,
     );
-    expect(screen.queryByText("Inventory for first")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Inventory for first/)).not.toBeInTheDocument();
     expect(screen.queryByText("First library")).not.toBeInTheDocument();
+    expect(item("Boost playtime")).toHaveAttribute("aria-current", "page");
     expect(
-      screen.getByRole("tab", { name: "Games & playtime" }),
-    ).toHaveAttribute("aria-selected", "true");
-    expect(
-      screen.getByRole("tabpanel", { name: "Games & playtime" }),
+      screen.getByRole("region", { name: "Boost playtime" }),
     ).toHaveTextContent("Second library");
     expect(screen.getByTestId("watcher")).toHaveTextContent("second");
   });
@@ -174,18 +215,21 @@ describe("account workspace navigation", () => {
       </>,
       { wrapper: I18nProvider },
     );
-    const tabs = screen.getAllByRole("tab", { name: "Card farming" });
-    expect(tabs[0]!.getAttribute("aria-controls")).not.toBe(
-      tabs[1]!.getAttribute("aria-controls"),
+    const [first, second] = screen.getAllByRole("navigation", {
+      name: "Account sections",
+    });
+    fireEvent.click(
+      within(first!).getByRole("button", { name: /^Card farming/ }),
     );
-    fireEvent.click(tabs[0]!);
-    const panel = await screen.findByRole("tabpanel", { name: "Card farming" });
+    const panel = await screen.findByRole("region", { name: "Card farming" });
     expect(
       await within(panel).findByText("Farming for first"),
     ).toBeInTheDocument();
     expect(within(panel).getByText("Counter-Strike 2")).toBeInTheDocument();
     expect(within(panel).getByText("farming")).toBeInTheDocument();
     expect(within(panel).getByText("boosting")).toBeInTheDocument();
-    expect(tabs[1]).toHaveAttribute("aria-selected", "false");
+    expect(
+      within(second!).getByRole("button", { name: /^Card farming/ }),
+    ).not.toHaveAttribute("aria-current");
   });
 });
