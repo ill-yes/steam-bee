@@ -44,6 +44,26 @@ describe("schedule evaluator", () => {
     });
   });
 
+  it("keeps an overnight window on its start day after the spring DST change", () => {
+    // 00:30 CEST on Monday 2026-03-30, after the 23-hour Sunday.
+    const state = evaluateScheduleWindow(
+      {
+        id: "schedule-dst",
+        weekdaysJson: JSON.stringify([0]),
+        startTime: "22:00",
+        endTime: "02:00",
+        timezone: "Europe/Berlin",
+      },
+      new Date(Date.UTC(2026, 2, 29, 22, 30)),
+    );
+
+    expect(state).toEqual({
+      active: true,
+      windowId: "schedule-dst:2026-03-29:22:00-02:00",
+      windowStartedAt: Date.UTC(2026, 2, 29, 20, 0),
+    });
+  });
+
   it("returns inactive outside the configured weekday window", () => {
     const state = evaluateScheduleWindow(
       {
