@@ -678,9 +678,13 @@ class SteamManager {
     });
   }
 
-  private haltFarming(accountId: string, reason: string) {
+  private haltFarming(
+    accountId: string,
+    reason: string,
+    keepAwaitingFarming = false,
+  ) {
     farmingController.halt(accountId, reason);
-    this.workers.get(accountId)?.clearFarmingSelection();
+    this.workers.get(accountId)?.clearFarmingSelection(keepAwaitingFarming);
   }
 
   private runFarmingInterruption<T>(
@@ -836,7 +840,8 @@ class SteamManager {
         payload.status === "paused_manual" &&
         this.farmingCleanupAccounts.has(accountId)
       )) {
-        this.haltFarming(accountId, payload.status);
+        // A reconnect keeps manual games off until interrupted farming resumes.
+        this.haltFarming(accountId, payload.status, true);
       }
       stopAccountBatches(accountId);
     }

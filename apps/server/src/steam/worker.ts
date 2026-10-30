@@ -68,6 +68,11 @@ export class SteamWorker extends EventEmitter {
   private readonly client: LifecycleSteamUser;
   private readonly communitySession: CommunitySessionBroker;
   private farmingAppIds: number[] | null = null;
+  /**
+   * Set while card farming is about to (re)start after a reconnect. Manual
+   * boost games stay off until farming applies its own selection.
+   */
+  private awaitingFarming = false;
   private readonly packageApps = new Map<number, number[]>();
   private farmingInterruptedByShutdown = false;
   private reportedAppIds: number[] = [];
@@ -232,8 +237,23 @@ export class SteamWorker extends EventEmitter {
     return times;
   }
 
-  clearFarmingSelection() {
+  /** A status-driven halt keeps the reservation for an interrupted farm. */
+  clearFarmingSelection(keepAwaitingFarming = false) {
     this.farmingAppIds = null;
+    if (!keepAwaitingFarming) this.awaitingFarming = false;
+  }
+
+  /**
+   * Whether an interrupted farm resumes after a reconnect instead of pausing
+   * the account. Logins replaced elsewhere and terminal failures still pause.
+   */
+  private keepsRunningForFarming(decision: RetryDecision) {
+    return (
+      !decision.terminal &&
+      decision.errorClass !== "session_replaced" &&
+      this.handledConflictLoginAttemptId !== this.loginAttemptId &&
+      this.farmingResumesAfterShutdown()
+    );
   }
 
   async applyFarmingSelection(
@@ -252,6 +272,7 @@ export class SteamWorker extends EventEmitter {
       }
       enforceGameLimit(appIds, this.account.customTitle);
       this.farmingAppIds = [...appIds];
+      this.awaitingFarming = false;
       if (!shouldApply()) {
         this.clearFarmingSelection();
         return;
@@ -462,6 +483,7 @@ export class SteamWorker extends EventEmitter {
   private async resumeNow() {
     this.logger.info("Resuming Steam worker");
     this.manuallyPaused = false;
+    this.awaitingFarming = false;
     await this.setDesiredState("running");
     if (!this.connected) {
       await this.startNow();
@@ -479,6 +501,8 @@ export class SteamWorker extends EventEmitter {
       this.logger.info("Resuming Steam worker for card farming");
       this.manuallyPaused = false;
       this.farmingAppIds = [];
+      // A login emits "connecting" first, which clears the empty selection.
+      this.awaitingFarming = true;
       await this.setDesiredState("running");
       if (!this.connected) {
         await this.startNow();
@@ -643,16 +667,18 @@ export class SteamWorker extends EventEmitter {
       "disconnected",
       async (eresult?: number, message?: string) => {
         const wasFarming = this.farmingAppIds !== null;
+        const decision = classifySteamFailure(eresult);
+        const resumeFarming = wasFarming && this.keepsRunningForFarming(decision);
         this.clearFarmingSelection();
         this.communitySession.invalidate();
-        if (wasFarming) {
+        if (resumeFarming) this.awaitingFarming = true;
+        else if (wasFarming) {
           this.manuallyPaused = true;
           await this.setDesiredState("paused");
         }
         this.connected = false;
         if (eresult !== undefined) await touchSteamContact(this.accountId);
         if (this.handledConflictLoginAttemptId === this.loginAttemptId) return;
-        const decision = classifySteamFailure(eresult);
         if (decision.errorClass === "session_replaced") {
           await this.handleLoginSessionConflict(decision);
           return;
@@ -677,12 +703,15 @@ export class SteamWorker extends EventEmitter {
 
     this.onClientEvent("error", async (error: unknown) => {
       const wasFarming = this.farmingAppIds !== null;
+      const resumeFarming =
+        wasFarming && this.keepsRunningForFarming(classifySteamFailure(error));
       this.clearFarmingSelection();
       // steam-user may disconnect silently and emit only error. Do not keep
       // reporting the old games or admit Community requests until loggedOn.
       this.connected = false;
       this.communitySession.invalidate();
-      if (wasFarming) {
+      if (resumeFarming) this.awaitingFarming = true;
+      else if (wasFarming) {
         this.manuallyPaused = true;
         await this.setDesiredState("paused");
       }
@@ -806,6 +835,7 @@ export class SteamWorker extends EventEmitter {
       enforceGameLimit(this.farmingAppIds, this.account.customTitle);
       return [...this.farmingAppIds];
     }
+    if (this.awaitingFarming) return [];
     const games = await db
       .select()
       .from(steamAccountGame)
