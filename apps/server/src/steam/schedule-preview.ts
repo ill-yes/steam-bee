@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { boostPreset, boostSchedule, scheduleException } from "../db/schema.js";
 import {
+  addLocalDays,
   parseWeekdays,
   zonedDateParts,
   zonedLocalTimeToEpoch,
@@ -142,11 +143,4 @@ function localDateKeys(timezone: string, from: number, through: number) {
     values.add(zonedDateParts(new Date(cursor), timezone).dateKey);
   }
   return [...values].sort();
-}
-
-function addLocalDays(dateKey: string, days: number) {
-  const [year = 0, month = 1, day = 1] = dateKey.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day + days))
-    .toISOString()
-    .slice(0, 10);
 }
