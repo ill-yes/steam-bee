@@ -6,7 +6,7 @@ import {
   type BoostSchedule,
   type BoostSession,
 } from "@steam-bee/contracts";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../../db/client.js";
 import {
   boostPreset,
@@ -16,6 +16,12 @@ import {
   steamAppCache,
 } from "../../db/schema.js";
 import { parseIntegerArray } from "../../util/json.js";
+import {
+  addLocalDays,
+  isValidTimeZone,
+  zonedDateParts,
+  zonedLocalTimeToEpoch,
+} from "../../steam/scheduler.js";
 import { appError } from "../errors.js";
 
 export async function getAccountPresets(
@@ -56,13 +62,28 @@ export async function getAccountSchedule(
   return schedule;
 }
 
+/**
+ * Days follow the viewer's time zone; the server's own zone is often UTC in
+ * a container. Unknown zones fall back to the server's.
+ */
 export async function getAccountAnalytics(
   accountId: string,
   now = Date.now(),
+  timezone?: string,
 ): Promise<BoostAnalytics> {
-  const startOfToday = new Date(now);
-  startOfToday.setHours(0, 0, 0, 0);
+  const zone =
+    timezone && isValidTimeZone(timezone)
+      ? timezone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = zonedDateParts(new Date(now), zone).dateKey;
+  const startOfDay = (dateKey: string) =>
+    zonedLocalTimeToEpoch(dateKey, "00:00", zone);
+  const startOfToday = startOfDay(today);
   const last7Days = now - 7 * 24 * 60 * 60_000;
+  const [{ total = 0 } = {}] = await db
+    .select({ total: count() })
+    .from(boostSession)
+    .where(eq(boostSession.accountId, accountId));
 
   const storedSessions = await db
     .select({
@@ -88,11 +109,12 @@ export async function getAccountAnalytics(
   ]);
 
   const days = Array.from({ length: 7 }, (_, index) => {
-    const start = new Date(startOfToday);
-    start.setDate(start.getDate() - 6 + index);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
-    return { startsAt: start.getTime(), endsAt: end.getTime(), durationMs: 0 };
+    const dateKey = addLocalDays(today, index - 6);
+    return {
+      startsAt: startOfDay(dateKey),
+      endsAt: startOfDay(addLocalDays(dateKey, 1)),
+      durationMs: 0,
+    };
   });
   let todayMs = 0;
   let last7DaysMs = 0;
@@ -101,11 +123,11 @@ export async function getAccountAnalytics(
   for (const session of sessions) {
     const endedAt = session.endedAt ?? now;
     const durationMs = Math.max(0, endedAt - session.startedAt);
-    if (endedAt >= startOfToday.getTime()) {
+    if (endedAt >= startOfToday) {
       todayMs += overlappingDurationMs(
         session.startedAt,
         endedAt,
-        startOfToday.getTime(),
+        startOfToday,
         now,
       );
     }
@@ -147,7 +169,8 @@ export async function getAccountAnalytics(
   return {
     todayMs,
     last7DaysMs,
-    totalSessions: sessions.length,
+    // The session list is capped; the count is not.
+    totalSessions: total,
     openSession:
       presentedSessions.find((session) => session.endedAt === null) ?? null,
     topGames: [...gameDurations.entries()]

@@ -62,7 +62,12 @@ export function useAccountResources() {
           api<SteamApp[]>(`/api/accounts/${accountId}/library`, request),
           api<BoostPreset[]>(`/api/accounts/${accountId}/presets`, request),
           api<BoostSchedule[]>(`/api/accounts/${accountId}/schedules`, request),
-          api<BoostAnalytics>(`/api/accounts/${accountId}/analytics`, request),
+          api<BoostAnalytics>(
+            `/api/accounts/${accountId}/analytics?tz=${encodeURIComponent(
+              Intl.DateTimeFormat().resolvedOptions().timeZone,
+            )}`,
+            request,
+          ),
         ]);
       const [nextSafety, nextPreview, nextGoals] = await Promise.allSettled([
         api<AccountSafetyPolicy>(`/api/accounts/${accountId}/safety`, request),
