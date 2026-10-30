@@ -211,7 +211,10 @@ function AccountWorkspace({
   }, [account.id]);
 
   async function reloadAll() {
-    await Promise.all([onReload(), loadAccountData(account.id)]);
+    await Promise.all([
+      onReload(),
+      loadAccountData(account.id, { silent: true }),
+    ]);
   }
 
   async function runBusyAction(
@@ -313,7 +316,7 @@ function AccountWorkspace({
         { method: "POST" },
       );
       setLibrary(imported);
-      await loadAccountData(account.id);
+      await loadAccountData(account.id, { silent: true });
       toast.success(
         interpolate(t.accountDetail.gamesImported, { count: imported.length }),
       );
@@ -396,7 +399,7 @@ function AccountWorkspace({
           }),
         });
         setPresetName("");
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.presetCreated,
     );
@@ -450,7 +453,7 @@ function AccountWorkspace({
         await api(`/api/accounts/${account.id}/presets/${preset.id}`, {
           method: "DELETE",
         });
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.presetDeleted,
     );
@@ -484,7 +487,7 @@ function AccountWorkspace({
           }),
         });
         setScheduleName("");
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.scheduleCreated,
     );
@@ -496,7 +499,7 @@ function AccountWorkspace({
         method: "PUT",
         body: JSON.stringify({ enabled: !schedule.enabled }),
       });
-      await loadAccountData(account.id);
+      await loadAccountData(account.id, { silent: true });
     });
   }
 
@@ -518,7 +521,7 @@ function AccountWorkspace({
         await api(`/api/accounts/${account.id}/schedules/${schedule.id}`, {
           method: "DELETE",
         });
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.scheduleDeleted,
     );
@@ -544,7 +547,7 @@ function AccountWorkspace({
           `/api/accounts/${account.id}/schedules/${schedule.id}/skip-next`,
           { method: "POST" },
         );
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       o.saved,
     );
@@ -723,9 +726,7 @@ function AccountWorkspace({
           library={library}
           busy={Boolean(busyAction)}
           goalsState={optionalStates.goals}
-          onSaveGoal={(appId, targetMinutes) =>
-            void saveGoal(appId, targetMinutes)
-          }
+          onSaveGoal={(appId, targetMinutes) => saveGoal(appId, targetMinutes)}
           onDeleteGoal={(goal) => void deleteGoal(goal)}
         />,
       )}

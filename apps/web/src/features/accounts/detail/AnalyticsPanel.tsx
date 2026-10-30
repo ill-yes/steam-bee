@@ -22,7 +22,7 @@ export function AnalyticsPanel({
   library: SteamApp[];
   busy: boolean;
   goalsState: ResourceLoadState;
-  onSaveGoal: (appId: number, targetMinutes: number) => void;
+  onSaveGoal: (appId: number, targetMinutes: number) => Promise<boolean>;
   onDeleteGoal: (goal: PlaytimeGoal) => void;
 }) {
   const { messages: t, localeInfo, locale } = useI18n();

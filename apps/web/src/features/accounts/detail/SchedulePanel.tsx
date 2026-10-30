@@ -500,6 +500,7 @@ export function SchedulePanel({
                 type="button"
                 variant="ghost"
                 size="sm"
+                disabled={busyAction === "schedule-create"}
                 onClick={() => setCreating(false)}
               >
                 {c.cancel}
@@ -509,7 +510,10 @@ export function SchedulePanel({
                 variant="primary"
                 size="sm"
                 disabled={
-                  busy || !schedulePresetId || scheduleWeekdays.length === 0
+                  busy ||
+                  !schedulePresetId ||
+                  scheduleWeekdays.length === 0 ||
+                  scheduleStart === scheduleEnd
                 }
               >
                 <CalendarClock size={15} aria-hidden="true" />

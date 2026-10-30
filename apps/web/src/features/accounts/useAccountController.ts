@@ -43,82 +43,100 @@ export function useAccountResources() {
     [],
   );
 
-  const loadAccountData = useCallback(async (accountId: string) => {
-    const nextGeneration = generation.current + 1;
-    generation.current = nextGeneration;
-    controller.current?.abort();
-    const nextController = new AbortController();
-    controller.current = nextController;
-    const request = { signal: nextController.signal } satisfies RequestInit;
-    setLoadState("loading");
-    setOptionalStates({
-      safety: "loading",
-      schedulePreview: "loading",
-      goals: "loading",
-    });
-    try {
-      const [nextLibrary, nextPresets, nextSchedules, nextAnalytics] =
-        await Promise.all([
-          api<SteamApp[]>(`/api/accounts/${accountId}/library`, request),
-          api<BoostPreset[]>(`/api/accounts/${accountId}/presets`, request),
-          api<BoostSchedule[]>(`/api/accounts/${accountId}/schedules`, request),
-          api<BoostAnalytics>(
-            `/api/accounts/${accountId}/analytics?tz=${encodeURIComponent(
-              Intl.DateTimeFormat().resolvedOptions().timeZone,
-            )}`,
-            request,
-          ),
-        ]);
-      const [nextSafety, nextPreview, nextGoals] = await Promise.allSettled([
-        api<AccountSafetyPolicy>(`/api/accounts/${accountId}/safety`, request),
-        api<SchedulePreview>(
-          `/api/accounts/${accountId}/schedules/preview?days=7`,
-          request,
-        ),
-        api<PlaytimeGoal[]>(`/api/accounts/${accountId}/goals`, request),
-      ]);
-      if (nextGeneration !== generation.current) return;
-
-      setLibrary(nextLibrary);
-      setPresets(nextPresets);
-      setSchedules(nextSchedules);
-      setAnalytics(nextAnalytics);
-      setSafety(nextSafety.status === "fulfilled" ? nextSafety.value : null);
-      setSchedulePreview(
-        nextPreview.status === "fulfilled" ? nextPreview.value : null,
-      );
-      setGoals(nextGoals.status === "fulfilled" ? nextGoals.value : []);
-      setOptionalStates({
-        safety: nextSafety.status === "fulfilled" ? "ready" : "error",
-        schedulePreview: nextPreview.status === "fulfilled" ? "ready" : "error",
-        goals: nextGoals.status === "fulfilled" ? "ready" : "error",
-      });
-      setLoadState("ready");
-      setSchedulePresetId((current) =>
-        current && nextPresets.some((preset) => preset.id === current)
-          ? current
-          : (nextPresets[0]?.id ?? ""),
-      );
-      return { presets: nextPresets };
-    } catch (error) {
-      if (nextGeneration === generation.current) {
-        setLibrary([]);
-        setPresets([]);
-        setSchedules([]);
-        setAnalytics(null);
-        setSafety(null);
-        setSchedulePreview(null);
-        setGoals([]);
-        setLoadState("error");
+  /**
+   * Loads every hub resource. A silent load keeps the panels mounted and the
+   * current data on failure, for refreshes after a successful change.
+   */
+  const loadAccountData = useCallback(
+    async (
+      accountId: string,
+      { silent = false }: { silent?: boolean } = {},
+    ) => {
+      const nextGeneration = generation.current + 1;
+      generation.current = nextGeneration;
+      controller.current?.abort();
+      const nextController = new AbortController();
+      controller.current = nextController;
+      const request = { signal: nextController.signal } satisfies RequestInit;
+      if (!silent) {
+        setLoadState("loading");
         setOptionalStates({
-          safety: "error",
-          schedulePreview: "error",
-          goals: "error",
+          safety: "loading",
+          schedulePreview: "loading",
+          goals: "loading",
         });
       }
-      throw error;
-    }
-  }, []);
+      try {
+        const [nextLibrary, nextPresets, nextSchedules, nextAnalytics] =
+          await Promise.all([
+            api<SteamApp[]>(`/api/accounts/${accountId}/library`, request),
+            api<BoostPreset[]>(`/api/accounts/${accountId}/presets`, request),
+            api<BoostSchedule[]>(
+              `/api/accounts/${accountId}/schedules`,
+              request,
+            ),
+            api<BoostAnalytics>(
+              `/api/accounts/${accountId}/analytics?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`,
+              request,
+            ),
+          ]);
+        const [nextSafety, nextPreview, nextGoals] = await Promise.allSettled([
+          api<AccountSafetyPolicy>(
+            `/api/accounts/${accountId}/safety`,
+            request,
+          ),
+          api<SchedulePreview>(
+            `/api/accounts/${accountId}/schedules/preview?days=7`,
+            request,
+          ),
+          api<PlaytimeGoal[]>(`/api/accounts/${accountId}/goals`, request),
+        ]);
+        if (nextGeneration !== generation.current) return;
+
+        setLibrary(nextLibrary);
+        setPresets(nextPresets);
+        setSchedules(nextSchedules);
+        setAnalytics(nextAnalytics);
+        setSafety(nextSafety.status === "fulfilled" ? nextSafety.value : null);
+        setSchedulePreview(
+          nextPreview.status === "fulfilled" ? nextPreview.value : null,
+        );
+        setGoals(nextGoals.status === "fulfilled" ? nextGoals.value : []);
+        setOptionalStates({
+          safety: nextSafety.status === "fulfilled" ? "ready" : "error",
+          schedulePreview:
+            nextPreview.status === "fulfilled" ? "ready" : "error",
+          goals: nextGoals.status === "fulfilled" ? "ready" : "error",
+        });
+        setLoadState("ready");
+        setSchedulePresetId((current) =>
+          current && nextPresets.some((preset) => preset.id === current)
+            ? current
+            : (nextPresets[0]?.id ?? ""),
+        );
+        return { presets: nextPresets };
+      } catch (error) {
+        if (silent) return null;
+        if (nextGeneration === generation.current) {
+          setLibrary([]);
+          setPresets([]);
+          setSchedules([]);
+          setAnalytics(null);
+          setSafety(null);
+          setSchedulePreview(null);
+          setGoals([]);
+          setLoadState("error");
+          setOptionalStates({
+            safety: "error",
+            schedulePreview: "error",
+            goals: "error",
+          });
+        }
+        throw error;
+      }
+    },
+    [],
+  );
 
   useEffect(
     () => () => {

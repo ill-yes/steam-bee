@@ -4,7 +4,7 @@ const en = {
   presetsDescription:
     "Saved game selections with online status and Steam title. One click loads one, and schedules use them automatically.",
   saveCurrent: "Save current selection",
-  saveCurrentHint: "{count} games · {persona}{title}",
+  saveCurrentHint: "{games} · {persona}{title}",
   noTitle: " · no title",
   withTitle: " · title “{title}”",
   runningNow: "Running now",
@@ -55,7 +55,7 @@ const de: Copy = {
   presetsDescription:
     "Gespeicherte Spielauswahl mit Online-Status und Titel. Ein Klick lädt sie, Zeitpläne nutzen sie automatisch.",
   saveCurrent: "Aktuelle Auswahl speichern",
-  saveCurrentHint: "{count} Spiele · {persona}{title}",
+  saveCurrentHint: "{games} · {persona}{title}",
   noTitle: " · kein Titel",
   withTitle: " · Titel „{title}“",
   runningNow: "Läuft gerade",

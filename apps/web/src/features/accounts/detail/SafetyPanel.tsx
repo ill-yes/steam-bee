@@ -30,12 +30,17 @@ export function SafetyPanel({
   const [dailyLimit, setDailyLimit] = useState("");
   const [weeklyLimit, setWeeklyLimit] = useState("");
 
+  // Sync on the saved limits only, so a pause or a background reload does
+  // not wipe limits that are being typed.
+  const savedSession = policy?.maxSessionMinutes;
+  const savedDaily = policy?.maxDailyMinutes;
+  const savedWeekly = policy?.maxWeeklyMinutes;
   useEffect(() => {
-    if (!policy) return;
-    setSessionLimit(stringLimit(policy.maxSessionMinutes));
-    setDailyLimit(stringLimit(policy.maxDailyMinutes));
-    setWeeklyLimit(stringLimit(policy.maxWeeklyMinutes));
-  }, [policy]);
+    if (savedSession === undefined) return;
+    setSessionLimit(stringLimit(savedSession));
+    setDailyLimit(stringLimit(savedDaily ?? null));
+    setWeeklyLimit(stringLimit(savedWeekly ?? null));
+  }, [savedSession, savedDaily, savedWeekly]);
 
   const maxSessionMinutes = parseLimit(sessionLimit);
   const maxDailyMinutes = parseLimit(dailyLimit);
