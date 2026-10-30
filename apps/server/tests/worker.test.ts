@@ -2152,6 +2152,51 @@ describe("SteamWorker", () => {
       }
     });
 
+    it("keeps farming accounts running through a Steam drop and holds manual games until farming resumes", async () => {
+      const account = await farmingAccount();
+      const worker = new SteamWorker(account, {
+        farmingResumesAfterShutdown: () => true,
+      });
+      const client = steamMock.instances.at(-1)!;
+      try {
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        await worker.applyFarmingSelection([570]);
+
+        client.emit(
+          "error",
+          Object.assign(new Error("Connection lost"), { eresult: 2 }),
+        );
+        await flushWorkerEvents(worker);
+        expect(
+          (
+            await db
+              .select()
+              .from(steamAccount)
+              .where(eq(steamAccount.id, account.id))
+          )[0]?.desiredState,
+        ).toBe("running");
+
+        // A status-driven halt drops the games but keeps the reservation.
+        worker.clearFarmingSelection(true);
+        client.emit("loggedOn");
+        await flushWorkerEvents(worker);
+        expect(client.gamesPlayed).toHaveBeenLastCalledWith([]);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "idle",
+          activeAppIds: [],
+        });
+
+        await worker.applyFarmingSelection([570]);
+        expect(worker.getActivity()).toEqual({
+          activityMode: "farming",
+          activeAppIds: [570],
+        });
+      } finally {
+        await worker.shutdown();
+      }
+    });
+
     it("reports effective games and emits farming target changes while the status stays boosting", async () => {
       const account = await farmingAccount();
       const worker = new SteamWorker(account);
