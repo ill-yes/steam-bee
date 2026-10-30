@@ -66,7 +66,7 @@ function mergeJob(
 export function useBatchMarket(
   accountId: string,
   errorMessage: (error: unknown) => string,
-  onUpdated: () => void,
+  onUpdated: (job: MarketBatchJob) => void,
 ) {
   const [preview, setPreview] = useState<MarketBatchPreview | null>(null);
   const [job, setJob] = useState<MarketBatchJob | null>(null);
@@ -113,7 +113,7 @@ export function useBatchMarket(
     setJob(next);
     setPollError(false);
     if (isFinished(next) && (previous?.id !== next.id || !isFinished(previous)))
-      updated.current();
+      updated.current(next);
   }
 
   async function recoverActive(operation: number) {
@@ -182,8 +182,17 @@ export function useBatchMarket(
         )
           updateJob(value, operation);
       } catch (cause) {
-        if (!cancelled && isCurrent(operation) && !isAbortError(cause))
-          setPollError(true);
+        if (cancelled || !isCurrent(operation) || isAbortError(cause)) return;
+        if (cause instanceof ApiError && cause.status === 404) {
+          // Jobs live in server memory; after a restart or re-login the job
+          // is gone and must not keep the inventory locked.
+          currentJob.current = null;
+          setJob(null);
+          setPollError(false);
+          void recoverActive(operation);
+          return;
+        }
+        setPollError(true);
       } finally {
         pending = false;
       }

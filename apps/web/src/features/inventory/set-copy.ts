@@ -52,6 +52,7 @@ const en = {
   partialPrices:
     "Some prices are still missing; totals cover {count} of {total} items.",
   actions: "{count} Steam actions · {delay} s apart",
+  basketStale: "Review the basket against the current inventory.",
   actionLimit:
     "At most 50 Steam actions fit in one batch. Reduce quantities or items.",
   ruleLowest: "Lowest sell order",
@@ -118,6 +119,7 @@ const de: typeof en = {
   partialPrices:
     "Einige Preise fehlen noch; die Summe umfasst {count} von {total} Gegenständen.",
   actions: "{count} Steam-Aktionen · alle {delay} s",
+  basketStale: "Prüfe den Korb anhand des aktuellen Inventars.",
   actionLimit:
     "Höchstens 50 Steam-Aktionen passen in einen Durchlauf. Reduziere Mengen oder Gegenstände.",
   ruleLowest: "Niedrigstes Verkaufsangebot",

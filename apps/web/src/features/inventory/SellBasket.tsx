@@ -82,7 +82,12 @@ export function SellBasketPanel({
           </p>
         </div>
         {entries.length > 0 && (
-          <Button size="sm" variant="ghost" onClick={onClear}>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={disabled}
+            onClick={onClear}
+          >
             <Trash2 size={14} aria-hidden="true" />
             {s.clear}
           </Button>

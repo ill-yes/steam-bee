@@ -49,7 +49,10 @@ export function priceExample({
 
 export function sellerReceives(buyerPays: number) {
   for (
-    let seller = Math.ceil(buyerPays / (1 + steamFeeRate + publisherFeeRate));
+    // Each fee floors away less than one cent, so no valid amount lies above.
+    let seller = Math.floor(
+      (buyerPays + 2) / (1 + steamFeeRate + publisherFeeRate),
+    );
     seller > 0;
     seller -= 1
   ) {

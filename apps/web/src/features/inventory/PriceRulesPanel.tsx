@@ -351,11 +351,7 @@ export function PriceRulesPanel({
                 <Alert tone="warning">{a.draftCurrencyMismatch}</Alert>
               ) : (
                 mismatch && (
-                  <Alert tone="warning">
-                    {locale === "de"
-                      ? "Die gespeicherten Preisbeträge gehören zu einer anderen Wallet-Währung. Die Beträge wurden im Formular geleert; prüfe sie vor dem Speichern neu."
-                      : "Saved price amounts use a different wallet currency. Amounts were reset in this form; review them before saving."}
-                  </Alert>
+                  <Alert tone="warning">{a.savedCurrencyMismatch}</Alert>
                 )
               )}
               <StrategyPicker

@@ -11,6 +11,10 @@ describe("price rule example", () => {
     expect(sellerReceives(115)).toBe(100);
   });
 
+  it("finds the largest amount when rounded fees leave room above 1.15", () => {
+    expect(sellerReceives(40)).toBe(36);
+  });
+
   it("applies the adjustment and the minimum and maximum limits", () => {
     expect(
       priceExample({
