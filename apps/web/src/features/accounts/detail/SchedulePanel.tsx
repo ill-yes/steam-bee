@@ -1,12 +1,63 @@
-import { CalendarClock, RefreshCw, SkipForward, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  CalendarClock,
+  Plus,
+  RefreshCw,
+  SkipForward,
+  Trash2,
+} from "lucide-react";
 import type { BoostPreset, BoostSchedule, SchedulePreview } from "../../../api";
-import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Dialog } from "../../../components/ui/dialog";
 import { Input, Select } from "../../../components/ui/form";
-import { weekdayLabels } from "../../../lib/format";
+import { formatWeekdays, weekdayLabels } from "../../../lib/format";
 import { cn } from "../../../lib/utils";
-import { useI18n } from "../../../i18n";
+import { interpolate, useI18n } from "../../../i18n";
 import type { ResourceLoadState } from "../useAccountController";
+import { automationCopy } from "./automationCopy";
+
+/** One fill and one dashed outline per schedule, repeated after five schedules. */
+const palette = [
+  { fill: "bg-[#2563a8]", line: "border-[#2563a8] text-[#2563a8]" },
+  { fill: "bg-[#c2410c]", line: "border-[#c2410c] text-[#c2410c]" },
+  { fill: "bg-[#6b4fa0]", line: "border-[#6b4fa0] text-[#6b4fa0]" },
+  { fill: "bg-[#0f766e]", line: "border-[#0f766e] text-[#0f766e]" },
+  { fill: "bg-[#a16207]", line: "border-[#a16207] text-[#a16207]" },
+];
+const dayMinutes = 24 * 60;
+const weekOrder = [1, 2, 3, 4, 5, 6, 0];
+
+type Block = {
+  schedule: BoostSchedule;
+  color: (typeof palette)[number];
+  start: number;
+  end: number;
+};
+
+function minutes(time: string) {
+  const [hours, mins] = time.split(":").map(Number);
+  return (hours ?? 0) * 60 + (mins ?? 0);
+}
+
+/** Splits each schedule window into per-weekday blocks; overnight windows continue on the next day. */
+export function weekBlocks(schedules: BoostSchedule[]) {
+  const days = new Map<number, Block[]>(weekOrder.map((day) => [day, []]));
+  schedules.forEach((schedule, index) => {
+    const color = palette[index % palette.length]!;
+    const start = minutes(schedule.startTime);
+    const end = minutes(schedule.endTime);
+    for (const day of schedule.weekdays) {
+      if (end > start) {
+        days.get(day)?.push({ schedule, color, start, end });
+      } else {
+        days.get(day)?.push({ schedule, color, start, end: dayMinutes });
+        if (end > 0)
+          days.get((day + 1) % 7)?.push({ schedule, color, start: 0, end });
+      }
+    }
+  });
+  return days;
+}
 
 export function SchedulePanel({
   schedules,
@@ -45,7 +96,8 @@ export function SchedulePanel({
   onScheduleStartChange: (value: string) => void;
   onScheduleEndChange: (value: string) => void;
   onToggleWeekday: (day: number) => void;
-  onCreateSchedule: () => void;
+  /** Resolves true once the schedule is stored. */
+  onCreateSchedule: () => Promise<boolean> | void;
   onToggleSchedule: (schedule: BoostSchedule) => void;
   onDeleteSchedule: (schedule: BoostSchedule) => void;
   preview: SchedulePreview | null;
@@ -53,107 +105,278 @@ export function SchedulePanel({
   onRefreshPreview: () => void;
   onSkipNext: (schedule: BoostSchedule) => void;
 }) {
-  const { messages: t, localeInfo } = useI18n();
+  const { messages: t, localeInfo, locale } = useI18n();
   const o = t.operations;
+  const c = automationCopy(locale);
+  const busy = Boolean(busyAction);
+  const [creating, setCreating] = useState(false);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const previewItems = Array.isArray(preview?.items) ? preview.items : [];
+  const blocks = weekBlocks(schedules);
+  const labels = new Map(
+    weekdayLabels(localeInfo.dateLocale).map((day) => [day.value, day.label]),
+  );
+  const longLabels = new Map(
+    weekOrder.map((day) => [
+      day,
+      new Intl.DateTimeFormat(localeInfo.dateLocale, {
+        weekday: "long",
+      }).format(new Date(2024, 0, day === 0 ? 7 : day)),
+    ]),
+  );
+  const today = new Date(now);
+  const nowPercent =
+    ((today.getHours() * 60 + today.getMinutes()) / dayMinutes) * 100;
+  const startFormat = new Intl.DateTimeFormat(localeInfo.dateLocale, {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  function nextStart(schedule: BoostSchedule) {
+    const next = previewItems.find(
+      (item) => item.scheduleId === schedule.id && item.startsAt >= now,
+    );
+    if (!next) return c.noNextStart;
+    if (next.skipped) return c.skippedNext;
+    return interpolate(c.nextStart, {
+      time: startFormat.format(next.startsAt),
+    });
+  }
+  function daysText(days: number[]) {
+    const sorted = [...days].sort();
+    if (sorted.length === 7) return c.everyDay;
+    if (sorted.join() === "1,2,3,4,5") return c.weekdaysShort;
+    return formatWeekdays(
+      weekOrder.filter((day) => days.includes(day)),
+      localeInfo.dateLocale,
+    );
+  }
+  async function create() {
+    if ((await onCreateSchedule()) !== false) setCreating(false);
+  }
 
   return (
-    <section className="grid gap-3">
-      <div>
-        <h3 className="text-sm font-semibold">{t.tools.schedules}</h3>
-        <p className="mt-0.5 text-xs text-[var(--muted)]">
-          {t.tools.schedulesDescription}
+    <section className="grid min-w-0 gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-[var(--muted)]">
+          {c.timezone}: {timezone}
         </p>
-      </div>
-      <div className="grid gap-2">
-        <Input
-          value={scheduleName}
-          onChange={(event) => onScheduleNameChange(event.target.value)}
-          placeholder={t.tools.scheduleNamePlaceholder}
-          aria-label={t.tools.scheduleNameAria}
-        />
-        <Select
-          value={schedulePresetId}
-          onChange={(event) => onSchedulePresetChange(event.target.value)}
-          aria-label={t.tools.schedulePresetAria}
-        >
-          <option value="">{t.tools.choosePreset}</option>
-          {presets.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.name}
-            </option>
-          ))}
-        </Select>
-        <div className="grid grid-cols-2 gap-2">
-          <Input
-            type="time"
-            value={scheduleStart}
-            onChange={(event) => onScheduleStartChange(event.target.value)}
-            aria-label={t.tools.startTime}
-          />
-          <Input
-            type="time"
-            value={scheduleEnd}
-            onChange={(event) => onScheduleEndChange(event.target.value)}
-            aria-label={t.tools.endTime}
-          />
-        </div>
-        <fieldset className="flex flex-wrap gap-1">
-          <legend className="sr-only">{t.tools.weekdaysAria}</legend>
-          {weekdayLabels(localeInfo.dateLocale).map((day) => (
-            <button
-              key={day.value}
-              type="button"
-              onClick={() => onToggleWeekday(day.value)}
-              aria-pressed={scheduleWeekdays.includes(day.value)}
-              className={cn(
-                "h-7 min-w-8 rounded-md border px-2 text-xs font-semibold max-sm:h-11",
-                scheduleWeekdays.includes(day.value)
-                  ? "border-[var(--accent-line)] bg-[var(--accent-soft)] text-[var(--accent-ink)]"
-                  : "border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted-strong)]",
-              )}
-            >
-              {day.label}
-            </button>
-          ))}
-        </fieldset>
         <Button
           variant="primary"
           size="sm"
-          disabled={
-            Boolean(busyAction) ||
-            !schedulePresetId ||
-            scheduleWeekdays.length === 0
-          }
-          onClick={onCreateSchedule}
+          disabled={busy}
+          onClick={() => setCreating(true)}
         >
-          <CalendarClock size={15} />
-          {t.tools.createSchedule}
+          <Plus size={15} aria-hidden="true" />
+          {c.newSchedule}
         </Button>
-        <p className="text-[11px] text-[var(--muted)]">{timezone}</p>
       </div>
-      <div className="grid gap-2 border-y border-[var(--line)] py-3">
-        <div className="flex items-start justify-between gap-2">
+
+      <figure className="m-0 grid min-w-0 gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+        <figcaption className="mb-1 text-sm font-semibold">
+          {c.thisWeek}
+        </figcaption>
+        <div
+          aria-hidden="true"
+          className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 text-[11px] text-[var(--muted)]"
+        >
+          <span />
+          <div className="flex justify-between">
+            <span>0:00</span>
+            <span>6:00</span>
+            <span>12:00</span>
+            <span>18:00</span>
+            <span>24:00</span>
+          </div>
+        </div>
+        <ul className="grid gap-1" aria-label={c.weekLabel}>
+          {weekOrder.map((day) => {
+            const isToday = today.getDay() === day;
+            const dayBlocks = blocks.get(day) ?? [];
+            return (
+              <li
+                key={day}
+                className="grid min-h-8 grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2"
+              >
+                <span
+                  className={cn(
+                    "truncate text-sm",
+                    isToday && "font-bold text-[var(--good)]",
+                  )}
+                >
+                  {longLabels.get(day)}
+                </span>
+                <div
+                  className={cn(
+                    "relative h-6 rounded-md bg-[repeating-linear-gradient(90deg,var(--surface-2)_0_calc(25%-1px),var(--line)_calc(25%-1px)_25%)]",
+                    isToday && "outline outline-2 outline-[var(--good)]",
+                  )}
+                >
+                  {dayBlocks.map((block, index) => (
+                    <span
+                      key={`${block.schedule.id}-${index}`}
+                      title={`${block.schedule.name} · ${block.schedule.startTime}–${block.schedule.endTime}`}
+                      className={cn(
+                        "absolute inset-y-0 overflow-hidden whitespace-nowrap rounded px-1.5 text-[11px] font-semibold leading-6",
+                        block.schedule.enabled
+                          ? `${block.color.fill} text-white`
+                          : `border-2 border-dashed bg-[var(--surface)] leading-5 ${block.color.line}`,
+                      )}
+                      style={{
+                        left: `${(block.start / dayMinutes) * 100}%`,
+                        width: `${((block.end - block.start) / dayMinutes) * 100}%`,
+                      }}
+                    >
+                      {block.schedule.name}
+                      {block.schedule.enabled ? "" : ` (${c.offSuffix})`}
+                    </span>
+                  ))}
+                  {isToday && (
+                    <span
+                      className="absolute -inset-y-1 w-0.5 bg-[var(--good)]"
+                      style={{ left: `${nowPercent}%` }}
+                    />
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </figure>
+
+      {schedules.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-[var(--line-strong)] p-4 text-sm text-[var(--muted)]">
+          {t.tools.noSchedules}
+        </div>
+      ) : (
+        <ul className="grid min-w-0 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+          {schedules.map((schedule, index) => {
+            const color = palette[index % palette.length]!;
+            const canSkip = previewItems.some(
+              (item) =>
+                item.scheduleId === schedule.id &&
+                !item.skipped &&
+                item.startsAt >= now,
+            );
+            return (
+              <li
+                key={schedule.id}
+                className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--line)] px-4 py-3 last:border-b-0"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-3 w-3 shrink-0 rounded-sm",
+                    color.fill,
+                    !schedule.enabled && "opacity-40",
+                  )}
+                />
+                <div className="min-w-0 flex-[1_1_12rem]">
+                  <strong
+                    className={cn(
+                      "block truncate text-sm",
+                      !schedule.enabled && "text-[var(--muted)]",
+                    )}
+                  >
+                    {schedule.name}
+                  </strong>
+                  <span
+                    className={cn(
+                      "text-xs",
+                      schedule.enabled && canSkip
+                        ? "font-semibold text-[var(--good)]"
+                        : "text-[var(--muted)]",
+                    )}
+                  >
+                    {schedule.enabled ? nextStart(schedule) : c.disabled}
+                  </span>
+                </div>
+                <span className="flex-[1_1_9rem] text-sm">
+                  {daysText(schedule.weekdays)} · {schedule.startTime}–
+                  {schedule.endTime}
+                </span>
+                <span className="min-w-0 flex-[1_1_9rem] truncate text-sm text-[var(--muted)]">
+                  {interpolate(c.presetNamed, {
+                    name: schedule.presetName ?? t.tools.preset,
+                  })}
+                </span>
+                <div className="ml-auto flex items-center gap-1">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={schedule.enabled}
+                    aria-label={interpolate(c.toggleSchedule, {
+                      name: schedule.name,
+                    })}
+                    disabled={busy}
+                    onClick={() => onToggleSchedule(schedule)}
+                    className={cn(
+                      "relative mx-1 h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:opacity-50",
+                      schedule.enabled
+                        ? "bg-[var(--good)]"
+                        : "bg-[var(--line-strong)]",
+                    )}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-[left]",
+                        schedule.enabled ? "left-[23px]" : "left-[3px]",
+                      )}
+                    />
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy || !canSkip}
+                    onClick={() => onSkipNext(schedule)}
+                    aria-label={`${schedule.name}: ${o.skipNext}`}
+                    title={o.skipNext}
+                  >
+                    <SkipForward size={14} aria-hidden="true" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy}
+                    onClick={() => onDeleteSchedule(schedule)}
+                    aria-label={`${schedule.name} ${t.tools.deleteSchedule}`}
+                    title={t.tools.deleteSchedule}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <section className="grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+        <div className="flex items-center justify-between gap-2">
           <div>
-            <strong className="text-xs text-[var(--muted-strong)]">
-              {o.timelineTitle}
-            </strong>
-            <p className="mt-0.5 text-[11px] leading-4 text-[var(--muted)]">
+            <h3 className="text-sm font-semibold">{c.upcoming}</h3>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">
               {o.timelineDescription}
             </p>
           </div>
           <Button
-            size="sm"
+            size="icon"
             variant="ghost"
-            disabled={Boolean(busyAction)}
+            disabled={busy}
             onClick={onRefreshPreview}
             aria-label={o.refreshTimeline}
             title={o.refreshTimeline}
           >
-            <RefreshCw size={13} />
+            <RefreshCw size={14} aria-hidden="true" />
           </Button>
         </div>
-        <ol className="grid max-h-40 gap-1 overflow-auto pr-1">
+        <ol className="grid gap-1">
           {previewState === "loading" ? (
             <li role="status" className="text-xs text-[var(--muted)]">
               {t.common.loading}
@@ -165,109 +388,141 @@ export function SchedulePanel({
           ) : previewItems.length === 0 ? (
             <li className="text-xs text-[var(--muted)]">{o.noUpcomingRuns}</li>
           ) : (
-            previewItems.slice(0, 10).map((item) => (
+            previewItems.slice(0, 6).map((item) => (
               <li
                 key={item.windowId}
-                className="rounded-md bg-[var(--surface-2)] p-2 text-xs"
+                className={cn(
+                  "flex flex-wrap items-center gap-x-3 text-sm",
+                  item.skipped && "text-[var(--muted)]",
+                )}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate font-semibold">
-                    {item.scheduleName}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-[var(--muted)]">
-                    {item.skipped
-                      ? o.skipped
-                      : item.conflictScheduleIds.length > 0
-                        ? item.winner
-                          ? o.winner
-                          : o.conflict
-                        : null}
-                  </span>
-                </div>
-                <time className="text-[10px] text-[var(--muted)]">
-                  {new Intl.DateTimeFormat(localeInfo.dateLocale, {
-                    weekday: "short",
-                    year: "2-digit",
-                    month: "2-digit",
-                    day: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }).format(item.startsAt)}
+                <time
+                  className={cn(
+                    "w-32 tabular-nums",
+                    item.skipped && "line-through",
+                  )}
+                  dateTime={new Date(item.startsAt).toISOString()}
+                >
+                  {startFormat.format(item.startsAt)}
                 </time>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate",
+                    item.skipped && "line-through",
+                  )}
+                >
+                  {item.scheduleName}
+                </span>
+                <span className="text-xs text-[var(--muted)]">
+                  {item.skipped
+                    ? o.skipped
+                    : item.conflictScheduleIds.length > 0
+                      ? item.winner
+                        ? o.winner
+                        : o.conflict
+                      : null}
+                </span>
               </li>
             ))
           )}
         </ol>
-      </div>
-      <div className="grid max-h-44 gap-2 overflow-auto pr-1">
-        {schedules.length === 0 ? (
-          <div className="rounded-md border border-dashed border-[var(--line-strong)] p-3 text-sm text-[var(--muted)]">
-            {t.tools.noSchedules}
-          </div>
-        ) : (
-          schedules.map((schedule) => (
-            <div
-              key={schedule.id}
-              className="grid gap-2 rounded-md border border-[var(--line)] bg-[var(--surface-2)] p-2"
+      </section>
+
+      {creating && (
+        <Dialog
+          title={c.newSchedule}
+          description={c.schedulesDescription}
+          onClose={() => setCreating(false)}
+          closeDisabled={busyAction === "schedule-create"}
+          className="max-w-md"
+        >
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void create();
+            }}
+          >
+            <Input
+              value={scheduleName}
+              onChange={(event) => onScheduleNameChange(event.target.value)}
+              placeholder={t.tools.scheduleNamePlaceholder}
+              aria-label={t.tools.scheduleNameAria}
+            />
+            <Select
+              value={schedulePresetId}
+              onChange={(event) => onSchedulePresetChange(event.target.value)}
+              aria-label={t.tools.schedulePresetAria}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <strong className="block truncate text-sm">
-                    {schedule.name}
-                  </strong>
-                  <span className="text-xs text-[var(--muted)]">
-                    {schedule.startTime}-{schedule.endTime} ·{" "}
-                    {schedule.presetName ?? t.tools.preset} ·{" "}
-                    {schedule.enabled ? t.common.active : t.common.off}
-                  </span>
-                </div>
-                <Badge tone={schedule.enabled ? "good" : "neutral"}>
-                  {schedule.enabled ? t.common.on : t.common.off}
-                </Badge>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => onToggleSchedule(schedule)}
-                >
-                  {schedule.enabled ? t.tools.disable : t.tools.enable}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  disabled={
-                    Boolean(busyAction) ||
-                    !previewItems.some(
-                      (item) =>
-                        item.scheduleId === schedule.id &&
-                        !item.skipped &&
-                        item.startsAt >= Date.now(),
-                    )
-                  }
-                  onClick={() => onSkipNext(schedule)}
-                  aria-label={`${schedule.name}: ${o.skipNext}`}
-                  title={o.skipNext}
-                >
-                  <SkipForward size={14} />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => onDeleteSchedule(schedule)}
-                  aria-label={`${schedule.name} ${t.tools.deleteSchedule}`}
-                  title={t.tools.deleteSchedule}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
+              <option value="">{t.tools.choosePreset}</option>
+              {presets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <Input
+                type="time"
+                value={scheduleStart}
+                onChange={(event) => onScheduleStartChange(event.target.value)}
+                aria-label={t.tools.startTime}
+              />
+              <Input
+                type="time"
+                value={scheduleEnd}
+                onChange={(event) => onScheduleEndChange(event.target.value)}
+                aria-label={t.tools.endTime}
+              />
             </div>
-          ))
-        )}
-      </div>
+            <fieldset className="flex flex-wrap gap-1">
+              <legend className="sr-only">{t.tools.weekdaysAria}</legend>
+              {weekOrder.map((day) => (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => onToggleWeekday(day)}
+                  aria-pressed={scheduleWeekdays.includes(day)}
+                  className={cn(
+                    "h-9 min-w-10 rounded-md border px-2 text-xs font-semibold max-sm:h-11",
+                    scheduleWeekdays.includes(day)
+                      ? "border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-fg)]"
+                      : "border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted-strong)]",
+                  )}
+                >
+                  {labels.get(day)}
+                </button>
+              ))}
+            </fieldset>
+            <p className="text-xs text-[var(--muted)]">{timezone}</p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={busyAction === "schedule-create"}
+                onClick={() => setCreating(false)}
+              >
+                {c.cancel}
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={
+                  busy ||
+                  !schedulePresetId ||
+                  scheduleWeekdays.length === 0 ||
+                  scheduleStart === scheduleEnd
+                }
+              >
+                <CalendarClock size={15} aria-hidden="true" />
+                {t.tools.createSchedule}
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      )}
     </section>
   );
 }

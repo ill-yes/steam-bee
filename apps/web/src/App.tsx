@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { Plus, ShieldCheck } from "lucide-react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import {
   api,
   apiErrorMessage,
@@ -32,7 +32,8 @@ import { AccountRail } from "./features/accounts/AccountRail";
 import { AppShell } from "./features/accounts/AppShell";
 import { EmptyWorkspace } from "./features/accounts/EmptyWorkspace";
 import { AuthPanel } from "./features/auth/AuthPanel";
-import { statusLabel } from "./lib/status";
+import { accountActivityStatus } from "./features/accounts/activity-status";
+import type { LoginMode } from "./features/accounts/useAddAccountFlow";
 
 const AddAccountModal = lazy(() =>
   import("./features/accounts/AddAccountModal").then((module) => ({
@@ -61,7 +62,11 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [railCollapsed, setRailCollapsed] = useState(true);
-  const [addAccountOpen, setAddAccountOpen] = useState(false);
+  const [addAccount, setAddAccount] = useState<{
+    mode?: LoginMode;
+    accountName?: string;
+  } | null>(null);
+  const openAddAccount = () => setAddAccount({});
   const [adminOpen, setAdminOpen] = useState(false);
   const loadGeneration = useRef(0);
   const loadController = useRef<AbortController | null>(null);
@@ -176,7 +181,7 @@ export function App() {
       try {
         event = JSON.parse((message as MessageEvent).data) as SteamEvent;
       } catch {
-        setError(t.errors.INVALID_RESPONSE);
+        setError(messagesRef.current.errors.INVALID_RESPONSE);
         return;
       }
       setEvents((current) => [event, ...current].slice(0, 100));
@@ -214,12 +219,17 @@ export function App() {
       source.close();
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
     };
-  }, [me?.authenticated, t.errors.INVALID_RESPONSE]);
+  }, [me?.authenticated]);
 
   async function logout() {
-    await api("/api/logout", { method: "POST" });
-    setCsrfToken(null);
-    await load();
+    try {
+      await api("/api/logout", { method: "POST" });
+      setCsrfToken(null);
+      await load();
+    } catch (logoutError) {
+      if (!isAbortError(logoutError))
+        toast.error(apiErrorMessage(logoutError, messagesRef.current));
+    }
   }
 
   if (!me) {
@@ -321,11 +331,13 @@ export function App() {
           },
         }}
       />
-      {addAccountOpen && (
+      {addAccount && (
         <Suspense fallback={<LazyDialogStatus label={t.common.loading} />}>
           <AddAccountModal
-            onClose={() => setAddAccountOpen(false)}
+            onClose={() => setAddAccount(null)}
             onDone={load}
+            initialMode={addAccount.mode}
+            reloginAccountName={addAccount.accountName}
           />
         </Suspense>
       )}
@@ -342,7 +354,7 @@ export function App() {
           collapsed={railCollapsed}
           onToggleCollapsed={() => setRailCollapsed((value) => !value)}
           onSelect={setSelectedId}
-          onAdd={() => setAddAccountOpen(true)}
+          onAdd={openAddAccount}
           onOpenAdmin={() => setAdminOpen(true)}
         />
 
@@ -357,7 +369,7 @@ export function App() {
             accounts={accounts}
             selected={selected}
             onSelect={setSelectedId}
-            onAdd={() => setAddAccountOpen(true)}
+            onAdd={openAddAccount}
             onOpenAdmin={() => setAdminOpen(true)}
           />
 
@@ -370,9 +382,12 @@ export function App() {
               )}
               diagnostics={diagnostics}
               onReload={load}
+              onRelogin={(mode) =>
+                setAddAccount({ mode, accountName: selected.accountName })
+              }
             />
           ) : (
-            <EmptyWorkspace onAdd={() => setAddAccountOpen(true)} />
+            <EmptyWorkspace onAdd={openAddAccount} />
           )}
         </section>
       </main>
@@ -401,7 +416,7 @@ function MobileAccountPicker({
   onAdd: () => void;
   onOpenAdmin: () => void;
 }) {
-  const { messages: t } = useI18n();
+  const { locale, messages: t } = useI18n();
 
   if (accounts.length === 0) return null;
 
@@ -418,7 +433,8 @@ function MobileAccountPicker({
           >
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
-                {account.accountName} · {statusLabel(account.runtimeStatus, t)}
+                {account.accountName} ·{" "}
+                {accountActivityStatus(account, t, locale).label}
               </option>
             ))}
           </Select>

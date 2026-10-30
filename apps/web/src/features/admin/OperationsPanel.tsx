@@ -216,10 +216,10 @@ export function OperationsPanel({
   }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 grid-cols-1 gap-4">
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {notice ? <Alert tone="success">{notice}</Alert> : null}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title={o.groupsTitle} description={o.groupsDescription}>
           <div className="grid gap-3">
             <Label>
@@ -230,7 +230,7 @@ export function OperationsPanel({
                 placeholder={o.groupName}
               />
             </Label>
-            <fieldset className="grid gap-2">
+            <fieldset className="grid min-w-0 gap-2">
               <legend className="text-xs font-semibold text-[var(--muted-strong)]">
                 {o.chooseAccounts}
               </legend>
@@ -348,6 +348,7 @@ export function OperationsPanel({
           <div className="grid gap-3">
             <Button
               variant="outline"
+              className="min-w-0 whitespace-normal py-2"
               onClick={() => void enableBrowserNotifications()}
               disabled={busy !== null}
             >
@@ -434,7 +435,7 @@ export function OperationsPanel({
       </div>
 
       <Section title={o.backupTitle} description={o.backupDescription}>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2">
           <label className="grid gap-1 text-xs font-semibold text-[var(--muted-strong)]">
             {o.passphrase}
             <Input
@@ -457,6 +458,7 @@ export function OperationsPanel({
             {o.passphraseHint}
           </p>
           <Button
+            className="min-w-0 whitespace-normal py-2"
             onClick={() => void downloadBackup()}
             disabled={
               busy !== null ||

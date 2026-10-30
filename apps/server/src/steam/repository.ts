@@ -185,6 +185,9 @@ export function replaceAccountLibrary(
         );
       }
     }
+    sqlite
+      .prepare("UPDATE steam_account SET library_imported_at = ? WHERE id = ?")
+      .run(now, accountId);
   });
   replace();
 }
@@ -193,7 +196,7 @@ export function hasAccountLibrary(accountId: string) {
   return Boolean(
     sqlite
       .prepare(
-        "SELECT 1 FROM steam_account_library WHERE account_id = ? LIMIT 1",
+        "SELECT 1 FROM steam_account WHERE id = ? AND library_imported_at IS NOT NULL",
       )
       .get(accountId),
   );

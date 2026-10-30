@@ -22,6 +22,7 @@ export function BoostSelectionPanel({
     appliedAt: gamesAppliedAt,
     dirty: selectionDirty,
     state: selectionState,
+    activityMode,
     onChange: onDraftChange,
     onApply,
     onRevert,
@@ -40,7 +41,9 @@ export function BoostSelectionPanel({
           <Gamepad2 size={16} className="shrink-0 text-[var(--accent)]" />
           <div className="min-w-0">
             <strong className="block truncate text-sm">
-              {t.library.selectionTitle}
+              {activityMode === "farming"
+                ? t.library.manualSelectionTitle
+                : t.library.selectionTitle}
             </strong>
             <span className="block truncate text-xs text-[var(--muted)]">
               {selectionState.body}
@@ -124,10 +127,15 @@ export function BoostSelectionPanel({
             </div>
             {appliedAppIds.length !== draftAppIds.length || selectionDirty ? (
               <p className="text-xs leading-5 text-[var(--muted)]">
-                {interpolate(t.library.activeDraft, {
-                  active: appliedAppIds.length,
-                  draft: draftAppIds.length,
-                })}
+                {activityMode === "farming"
+                  ? interpolate(t.library.savedDraft, {
+                      active: appliedAppIds.length,
+                      draft: draftAppIds.length,
+                    })
+                  : interpolate(t.library.activeDraft, {
+                      active: appliedAppIds.length,
+                      draft: draftAppIds.length,
+                    })}
               </p>
             ) : null}
           </div>

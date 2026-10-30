@@ -21,11 +21,12 @@ describe("database migrations", () => {
     migrate();
 
     expect(getMigrationState()).toMatchObject({
-      current: "011_automatic_session_recovery",
-      latest: "011_automatic_session_recovery",
+      current: "015_card_farming_resume",
+      latest: "015_card_farming_resume",
       pending: [],
     });
     expect(tableColumns("steam_account")).toContain("active_preset_id");
+    expect(tableColumns("steam_account")).toContain("library_imported_at");
     expect(tableColumns("steam_account_library")).toEqual(
       expect.arrayContaining(["favorite", "hidden", "tags_json"]),
     );
@@ -43,6 +44,8 @@ describe("database migrations", () => {
         "playtime_goal",
         "notification_rule",
         "notification_delivery",
+        "account_farming_config",
+        "account_market_price_settings",
       ]),
     );
     expect(tableColumns("account_safety_policy")).toEqual(
@@ -89,6 +92,112 @@ describe("database migrations", () => {
         "steam_app_cache_updated_at_idx",
       ]),
     );
+  });
+
+  it("adds market rules to version twelve without overwriting farming preferences or duplicating migrations", () => {
+    seedInitialSchema();
+    seedHistoricalAccount();
+    migrate();
+    sqlite
+      .prepare(
+        "INSERT INTO account_farming_config (account_id, config_json, updated_at) VALUES (?, ?, ?)",
+      )
+      .run(
+        "historical-account",
+        '{"keep":"farming preferences"}',
+        baseTimestamp,
+      );
+    // Recreate the immediately previous schema, including its recorded migration history.
+    sqlite.exec(
+      "DROP TABLE account_farming_resume; DROP TABLE account_market_price_settings; ALTER TABLE steam_account DROP COLUMN library_imported_at;",
+    );
+    sqlite
+      .prepare("DELETE FROM app_migration WHERE id IN (?, ?, ?)")
+      .run(
+        "013_market_price_settings",
+        "014_library_import_marker",
+        "015_card_farming_resume",
+      );
+    expect(getMigrationState().current).toBe("012_card_farming_settings");
+    migrate();
+    migrate();
+    expect(tableColumns("account_market_price_settings")).toEqual([
+      "account_id",
+      "settings_json",
+      "updated_at",
+    ]);
+    expect(
+      sqlite
+        .prepare(
+          "SELECT config_json FROM account_farming_config WHERE account_id = ?",
+        )
+        .get("historical-account"),
+    ).toEqual({ config_json: '{"keep":"farming preferences"}' });
+    expect(
+      sqlite
+        .prepare("SELECT count(*) AS count FROM account_market_price_settings")
+        .get(),
+    ).toEqual({ count: 0 });
+    expect(
+      sqlite
+        .prepare("SELECT count(*) AS count FROM app_migration WHERE id = ?")
+        .get("013_market_price_settings"),
+    ).toEqual({ count: 1 });
+    const references = sqlite
+      .prepare('PRAGMA foreign_key_list("account_market_price_settings")')
+      .all();
+    expect(references).toEqual([
+      expect.objectContaining({
+        table: "steam_account",
+        from: "account_id",
+        to: "id",
+        on_delete: "CASCADE",
+      }),
+    ]);
+  });
+
+  it("backfills known library import times on version thirteen and leaves never-imported accounts unknown", () => {
+    seedInitialSchema();
+    seedHistoricalAccount();
+    migrate();
+    sqlite.exec(`
+      ALTER TABLE steam_account DROP COLUMN library_imported_at;
+      DROP TABLE account_farming_resume;
+      DELETE FROM app_migration
+      WHERE id IN ('014_library_import_marker', '015_card_farming_resume');
+      INSERT INTO steam_account (id, account_name, created_at, updated_at)
+      VALUES ('never-imported', 'never.imported', ${baseTimestamp}, ${baseTimestamp});
+      INSERT INTO steam_app_cache (app_id, name, source, updated_at)
+      VALUES (440, 'Other game', 'library', ${baseTimestamp});
+      INSERT INTO steam_account_library (account_id, app_id, imported_at)
+      VALUES ('historical-account', 440, ${baseTimestamp + 200});
+    `);
+    expect(getMigrationState().current).toBe("013_market_price_settings");
+
+    migrate();
+    migrate();
+
+    expect(
+      sqlite
+        .prepare(
+          "SELECT id, library_imported_at FROM steam_account ORDER BY id",
+        )
+        .all(),
+    ).toEqual([
+      { id: "historical-account", library_imported_at: baseTimestamp + 200 },
+      { id: "never-imported", library_imported_at: null },
+    ]);
+    expect(getMigrationState()).toMatchObject({
+      current: "015_card_farming_resume",
+      pending: [],
+    });
+    expect(
+      sqlite
+        .prepare(
+          "SELECT count(*) AS count FROM app_migration WHERE id = '014_library_import_marker'",
+        )
+        .get(),
+    ).toEqual({ count: 1 });
   });
 
   it("fails legacy timed holds closed when schedule ownership is unavailable", () => {
@@ -223,7 +332,7 @@ describe("database migrations", () => {
     expect(() => migrate()).toThrow(UnsupportedDatabaseSchemaError);
     expect(getMigrationState()).toMatchObject({
       current: "999_future_schema",
-      latest: "011_automatic_session_recovery",
+      latest: "015_card_farming_resume",
       unsupported: [
         {
           id: "999_future_schema",

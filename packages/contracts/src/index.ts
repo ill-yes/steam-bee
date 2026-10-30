@@ -3,5 +3,8 @@ export * from "./admin.js";
 export * from "./automation.js";
 export * from "./errors.js";
 export * from "./events.js";
+export * from "./farming.js";
+export * from "./inventory.js";
 export * from "./operations.js";
 export * from "./system.js";
+export * from "./discovery.js";

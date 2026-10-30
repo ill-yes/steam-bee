@@ -158,12 +158,12 @@ async function exceededCap(
     .select({
       startedAt: boostSession.startedAt,
       endedAt: boostSession.endedAt,
+      stopReason: boostSession.stopReason,
     })
     .from(boostSession)
     .where(eq(boostSession.accountId, policy.accountId));
 
-  const open = sessions.find((session) => session.endedAt === null);
-  const sessionMs = open ? Math.max(0, now - open.startedAt) : 0;
+  const sessionMs = continuousSessionMs(sessions, now);
   const dailyMs = sumOverlap(sessions, startOfDay.getTime(), now);
   const weeklyMs = sumOverlap(sessions, startOfWeek.getTime(), now);
 
@@ -172,6 +172,35 @@ async function exceededCap(
     capResult("daily_limit", dailyMs, policy.maxDailyMinutes) ??
     capResult("weekly_limit", weeklyMs, policy.maxWeeklyMinutes)
   );
+}
+
+function continuousSessionMs(
+  sessions: Array<{
+    startedAt: number;
+    endedAt: number | null;
+    stopReason: string | null;
+  }>,
+  now: number,
+) {
+  const open = sessions.filter((session) => session.endedAt === null);
+  if (open.length === 0) return 0;
+  let startedAt = Math.min(...open.map((session) => session.startedAt));
+  // Target swaps split analytics attribution without stopping the Steam activity.
+  // Only an exact internal rotation boundary continues the session cap; an
+  // explicit pause, stop, disconnect, or real gap starts a new session instead.
+  const previous = sessions
+    .filter((session) => session.endedAt !== null)
+    .sort((left, right) => right.startedAt - left.startedAt);
+  for (const session of previous) {
+    if (
+      session.stopReason === "selection_changed" &&
+      session.endedAt === startedAt &&
+      session.startedAt < startedAt
+    ) {
+      startedAt = session.startedAt;
+    }
+  }
+  return Math.max(0, now - startedAt);
 }
 
 function capResult(

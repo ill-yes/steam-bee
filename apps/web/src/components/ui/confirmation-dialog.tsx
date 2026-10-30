@@ -30,6 +30,7 @@ export function ConfirmationDialog({
       title={title}
       description={description}
       onClose={busy ? () => undefined : onCancel}
+      closeDisabled={busy}
       role="alertdialog"
       className={
         destructive ? "max-w-md border-[var(--danger-line)]" : "max-w-md"

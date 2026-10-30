@@ -171,6 +171,8 @@ export type SteamAccountBase = {
   steamId: string | null;
   status: AccountStatus;
   runtimeStatus: AccountStatus;
+  activityMode?: "idle" | "manual" | "farming";
+  activeAppIds?: number[];
   desiredState: DesiredState;
   personaState: PersonaState;
   customTitle: string | null;

@@ -89,8 +89,8 @@ export const en = {
     INVALID_RESPONSE: "The server returned an invalid response.",
   },
   appShell: {
-    title: "Hour booster",
-    subtitle: "Local tool for managing your Steam boosts.",
+    title: "Your Steam hub",
+    subtitle: "Games, trading cards and market in one place.",
     systemLoading: "System loading",
     systemLoadingDetail: "Status is loading.",
     systemReady: "System ready",
@@ -127,8 +127,8 @@ export const en = {
     title: "Add Steam account",
     description: "QR is recommended. Credentials are only used once.",
     loginMode: "Login mode",
-    qrLogin: "QR login",
-    fallback: "Fallback",
+    qrLogin: "QR code",
+    fallback: "Username & password",
     qrIntro:
       "Scan the code in the Steam mobile app. SteamBee waits for approval and then stores only the refresh token.",
     qrStarting: "Starting...",
@@ -454,6 +454,7 @@ export const en = {
     tagPrompt: "Separate tags with commas",
     saveTags: "Save tags",
     selectionTitle: "Boost selection",
+    manualSelectionTitle: "Manual game selection",
     expandSelection: "Expand boost selection",
     collapseSelection: "Collapse boost selection",
     noSelectedGames: "No games selected yet.",
@@ -463,6 +464,7 @@ export const en = {
     applySelection: "Apply selection",
     noOpenChanges: "No open changes.",
     activeDraft: "Active: {active} · Draft: {draft}",
+    savedDraft: "{active} saved · {draft} draft",
     overLimit:
       "Steam title active: reduce the selection to {limit} games before applying it.",
     chooseFromLibrary: "Choose from library or add an AppID.",

@@ -53,7 +53,8 @@ These screenshots use synthetic demo accounts and fake SteamIDs.
 - Library import with manual AppID fallback.
 - Start, pause, resume, and stop per account.
 - Persona state and optional custom game title.
-- Presets, schedules, session history, and local logs.
+- Presets, a weekly schedule timeline, playtime statistics, session history,
+  and local logs.
 - Recovery health with last Steam contact, retry timing, error class, token
   expiry, and library-snapshot age.
 - Automatic recovery when another Steam session temporarily owns the account:
@@ -71,6 +72,17 @@ These screenshots use synthetic demo accounts and fake SteamIDs.
 - A single-instance lease that prevents two processes from operating the same
   `/data` directory.
 - SSE status/log updates.
+- Temporary free-game offers with opt-in browser notifications and owned-game filtering.
+- An account hub for games, inventory, card farming, offers, and account safety.
+- Steam Community inventory shown as badge card sets with a sell basket,
+  wallet-bound pricing strategies, a market listings table that follows Steam
+  Mobile confirmations, confirmed bulk sales and cancellation, fee previews,
+  progress, and a stop control.
+- Optional two-phase card farming on a board of running, upcoming and skipped
+  games, with selectable farming order (including card value), pinned games,
+  license-based refund protection, resume after restarts, effective activity
+  tracking, and the existing safety controls.
+- Additional built-in themes and local font preferences, without custom backgrounds.
 - Docker Compose setup for a VPS, Unraid, or any generic Docker host.
 - Optional prebuilt image deployment through GitHub Container Registry.
 
@@ -141,6 +153,10 @@ your backup plan, and never bind `/data` to the checked-out repository. See
   contribution licensing.
 - [Translations](docs/TRANSLATIONS.md) explains locale ownership and the
   community-translation status.
+- [Steam Tools](docs/STEAM-TOOLS.md) covers free offers, inventory, market actions,
+  card farming, and appearance preferences.
+- [Achievement Editor Feasibility](docs/ACHIEVEMENT-EDITOR.md) explains the
+  currently unsupported write integration.
 - [Product Context](PRODUCT.md) and [Design](DESIGN.md) define the product
   boundaries and visual system.
 

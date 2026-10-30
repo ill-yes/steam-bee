@@ -1,4 +1,8 @@
-import { ACCOUNT_STATUS_CAPABILITIES, ERROR_CODES } from "@steam-bee/contracts";
+import {
+  ACCOUNT_STATUS_CAPABILITIES,
+  ERROR_CODES,
+  gameSelectionLimit,
+} from "@steam-bee/contracts";
 import { and, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { boostPreset, boostPresetGame, steamAccount } from "../db/schema.js";
@@ -32,9 +36,16 @@ import {
 } from "./operations-repository.js";
 import { SafetyCoordinator } from "./safety-coordinator.js";
 import { closeWithLeaseCleanup } from "../startup.js";
+import {
+  farmingController,
+  farmingResumesAfterRestart,
+  resumeInterruptedFarming,
+} from "../farming/service.js";
+import { stopAccountBatches, shutdownBatches } from "../inventory/runtime.js";
 
 class SteamManager {
   private workers = new Map<string, SteamWorker>();
+  private farmingCleanupAccounts = new Set<string>();
   private safetyResumeTimers = new Map<string, NodeJS.Timeout>();
   private shutdownPromise: Promise<void> | null = null;
   private quiescing = false;
@@ -93,6 +104,7 @@ class SteamManager {
   });
 
   async init() {
+    farmingController.initialize();
     const accounts = await db.select().from(steamAccount);
     this.logger.info(
       { accountCount: accounts.length },
@@ -162,7 +174,15 @@ class SteamManager {
   }
 
   async start(accountId: string, context: OperationContext = {}) {
-    return this.runAccountOperation(accountId, () =>
+    const worker = this.workers.get(accountId);
+    // Preserve supervision when an already-running farm receives a redundant start.
+    if (
+      worker?.isConnected &&
+      worker.isFarming &&
+      ["online", "boosting"].includes(worker.currentStatus)
+    )
+      return;
+    return this.runFarmingInterruption(accountId, "manual-start", () =>
       this.startNow(accountId, context),
     );
   }
@@ -191,7 +211,8 @@ class SteamManager {
   }
 
   async stop(accountId: string, context: OperationContext = {}) {
-    return this.runAccountOperation(accountId, () =>
+    stopAccountBatches(accountId);
+    return this.runFarmingInterruption(accountId, "stopped", () =>
       this.stopNow(accountId, context),
     );
   }
@@ -214,12 +235,16 @@ class SteamManager {
   }
 
   async forget(accountId: string, context: OperationContext = {}) {
+    stopAccountBatches(accountId);
+    this.haltFarming(accountId, "account-removed");
     return this.runAccountOperation(accountId, () =>
       this.forgetNow(accountId, context),
     );
   }
 
   async deleteAccount(accountId: string, context: OperationContext = {}) {
+    stopAccountBatches(accountId);
+    this.haltFarming(accountId, "account-removed");
     return this.runAccountOperation(accountId, async () => {
       await this.forgetNow(accountId, context);
       await db.delete(steamAccount).where(eq(steamAccount.id, accountId));
@@ -264,7 +289,8 @@ class SteamManager {
   }
 
   async pause(accountId: string, context: OperationContext = {}) {
-    return this.runAccountOperation(accountId, () =>
+    stopAccountBatches(accountId);
+    return this.runFarmingInterruption(accountId, "paused", () =>
       this.pauseNow(accountId, context),
     );
   }
@@ -299,8 +325,16 @@ class SteamManager {
     });
   }
 
-  private async pauseNow(accountId: string, context: OperationContext) {
+  private async pauseNow(
+    accountId: string,
+    context: OperationContext,
+    shouldPause: () => boolean = () => true,
+  ) {
+    if (!shouldPause()) return;
+    stopAccountBatches(accountId);
+    if (context.source !== "farming") this.haltFarming(accountId, "paused");
     const worker = await this.getWorkerForAccount(accountId);
+    if (!shouldPause()) return;
     this.clearSafetyResume(accountId);
     this.accountOperations.remember(accountId, "pause", context);
     this.logger.info(
@@ -311,7 +345,9 @@ class SteamManager {
       await setSafetyHold(accountId, "manual");
       this.scheduleCoordinator.clearAccount(accountId);
     }
-    await worker.pause();
+    if (!shouldPause()) return;
+    await worker.pause(shouldPause);
+    if (!shouldPause()) return;
     await this.recordInfo(
       accountId,
       "steam.pause",
@@ -320,19 +356,28 @@ class SteamManager {
     );
   }
 
-  private async pauseForSafety(accountId: string, context: OperationContext) {
+  private async pauseForSafety(
+    accountId: string,
+    context: OperationContext,
+    shouldPause: () => boolean = () => true,
+  ) {
+    if (!shouldPause()) return;
     const worker =
       this.workers.get(accountId) ??
       (await this.getWorkerForAccount(accountId));
+    if (!shouldPause()) return;
     try {
-      await this.pauseNow(accountId, context);
+      await this.pauseNow(accountId, context, shouldPause);
       return;
     } catch (pauseError) {
+      if (!shouldPause()) return;
       const pauseMessage = safeErrorMessage(pauseError);
       try {
         await worker.forceDisconnectForSafety(
           "SteamBee force-disconnected after the safety pause failed.",
+          shouldPause,
         );
+        if (!shouldPause()) return;
         await this.recordError(
           accountId,
           "steam.safety.fallback",
@@ -341,6 +386,7 @@ class SteamManager {
         );
         return;
       } catch (disconnectError) {
+        if (!shouldPause()) return;
         const disconnectMessage = safeErrorMessage(disconnectError);
         await setSafetyHold(accountId, "safety_failure");
         await worker.markSafetyAttention(
@@ -361,7 +407,7 @@ class SteamManager {
   }
 
   async resume(accountId: string, context: OperationContext = {}) {
-    return this.runAccountOperation(accountId, () =>
+    return this.runFarmingInterruption(accountId, "manual-resume", () =>
       this.resumeNow(accountId, context),
     );
   }
@@ -386,7 +432,7 @@ class SteamManager {
   }
 
   async refreshWorker(accountId: string, context: OperationContext = {}) {
-    return this.runAccountOperation(accountId, () =>
+    return this.runFarmingInterruption(accountId, "settings-changed", () =>
       this.refreshWorkerNow(accountId, context),
     );
   }
@@ -404,7 +450,7 @@ class SteamManager {
     presetId: string,
     context: OperationContext = {},
   ) {
-    return this.runAccountOperation(accountId, () =>
+    return this.runFarmingInterruption(accountId, "preset-applied", () =>
       this.applyPresetNow(accountId, presetId, context),
     );
   }
@@ -414,6 +460,7 @@ class SteamManager {
     presetId: string,
     context: OperationContext,
   ) {
+    this.haltFarming(accountId, "preset-applied");
     this.accountOperations.remember(accountId, "preset-apply", context);
     const preset = await db.query.boostPreset.findFirst({
       where: and(
@@ -497,11 +544,186 @@ class SteamManager {
     }
   }
 
+  getActivity(accountId: string) {
+    return (
+      this.workers.get(accountId)?.getActivity() ?? {
+        activityMode: "idle" as const,
+        activeAppIds: [] as number[],
+      }
+    );
+  }
+
   getStatus(accountId: string) {
     return this.workers.get(accountId)?.currentStatus ?? "disconnected";
   }
 
+  async getCommunitySession(accountId: string) {
+    const worker = await this.getWorkerForAccount(accountId);
+    return worker.getCommunitySession();
+  }
+
+  /** The next Community request signs in again instead of reusing rejected cookies. */
+  discardCommunitySession(accountId: string, sessionId: string) {
+    this.workers.get(accountId)?.discardCommunitySession(sessionId);
+  }
+
+  async getAcquisitionTimes(accountId: string, appIds: number[]) {
+    const worker = await this.getWorkerForAccount(accountId);
+    return worker.acquisitionTimes(appIds);
+  }
+
+  async getFarmingAvailability(accountId: string) {
+    const account = await getAccountOrThrow(accountId);
+    const worker = this.workers.get(accountId);
+    const hold = await getActiveAutomationHold(accountId);
+    const reason = this.quiescing
+      ? "shutting_down"
+      : hold
+        ? hold.reason
+        : account.desiredState !== "running"
+          ? "not_running"
+          : !worker?.isConnected ||
+              !["online", "boosting"].includes(worker.currentStatus)
+            ? "not_connected"
+            : null;
+    return {
+      allowed: reason === null,
+      reason,
+      // A manual pause or stop is no obstacle: starting farming resumes the session.
+      resumable:
+        !this.quiescing &&
+        (hold === null || hold.reason === "manual") &&
+        account.desiredState !== "running",
+      gameLimit: gameSelectionLimit(account.customTitle),
+    };
+  }
+
+  /** Resumes a manually paused or stopped account so card farming can start. */
+  async resumeForFarming(
+    accountId: string,
+    context: OperationContext = {},
+    timeoutMs = 30_000,
+  ) {
+    const resumed = await this.runAccountOperation(accountId, async () => {
+      const availability = await this.getFarmingAvailability(accountId);
+      if (availability.allowed || !availability.resumable) return false;
+      const worker = await this.getWorkerForAccount(accountId);
+      this.clearSafetyResume(accountId);
+      this.accountOperations.remember(accountId, "resume", context);
+      await clearSafetyHold(accountId);
+      await clearRecoveryHealth(accountId);
+      await worker.resumeForFarming();
+      await this.recordInfo(
+        accountId,
+        "steam.resume",
+        "The account was resumed for card farming.",
+        this.accountOperations.metadata(accountId),
+      );
+      return true;
+    });
+    if (!resumed) return this.getFarmingAvailability(accountId);
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const availability = await this.getFarmingAvailability(accountId);
+      if (availability.allowed || Date.now() >= deadline) return availability;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  async beginFarming(
+    accountId: string,
+    shouldApply: () => boolean = () => true,
+  ) {
+    // Reserve the single Steam activity stream before the asynchronous badge scan.
+    // The persisted manual selection remains available for an explicit resume.
+    return this.applyFarmingGames(accountId, [], shouldApply);
+  }
+
+  async applyFarmingGames(
+    accountId: string,
+    appIds: number[],
+    shouldApply: () => boolean = () => true,
+  ) {
+    return this.runAccountOperation(accountId, async () => {
+      const availability = await this.getFarmingAvailability(accountId);
+      if (!shouldApply() || !availability.allowed)
+        throw appError("The account is unavailable for card farming.", 409);
+      const worker = await this.getWorkerForAccount(accountId);
+      if (!shouldApply()) return;
+      await worker.applyFarmingSelection(appIds, shouldApply);
+    });
+  }
+
+  async endFarming(accountId: string, shouldEnd: () => boolean = () => true) {
+    if (!shouldEnd()) return;
+    return this.runAccountOperation(accountId, async () => {
+      const worker = this.workers.get(accountId);
+      // Stopping a read-only badge preview must not pause manual playtime idling.
+      if (!shouldEnd() || !worker?.isFarming) return;
+      this.farmingCleanupAccounts.add(accountId);
+      try {
+        await this.pauseForSafety(
+          accountId,
+          {
+            source: "farming",
+            action: "farming-stop",
+          },
+          shouldEnd,
+        );
+      } finally {
+        this.farmingCleanupAccounts.delete(accountId);
+      }
+      if (!shouldEnd()) return;
+      await this.recordInfo(
+        accountId,
+        "steam.farming.stop",
+        "Card farming stopped; the account was paused.",
+        { source: "manual", action: "farming-stop" },
+      );
+    });
+  }
+
+  private haltFarming(
+    accountId: string,
+    reason: string,
+    keepAwaitingFarming = false,
+  ) {
+    farmingController.halt(accountId, reason);
+    this.workers.get(accountId)?.clearFarmingSelection(keepAwaitingFarming);
+  }
+
+  private runFarmingInterruption<T>(
+    accountId: string,
+    reason: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const wasFarming = this.workers.get(accountId)?.isFarming ?? false;
+    this.haltFarming(accountId, reason);
+    return this.runAccountOperation(accountId, async () => {
+      try {
+        return await operation();
+      } catch (error) {
+        if (wasFarming) {
+          try {
+            await this.pauseForSafety(accountId, {
+              source: "manual",
+              action: "farming-interrupted",
+            });
+          } catch {
+            this.logger.error(
+              { accountId },
+              "Farming interruption required a disconnect; inspect the account safety hold",
+            );
+          }
+        }
+        throw error;
+      }
+    });
+  }
+
   beginShutdown(terminal = false) {
+    farmingController.beginShutdown();
+    shutdownBatches();
     this.terminalShutdown ||= terminal;
     this.quiescing = true;
     this.clearAllSafetyResumes();
@@ -577,6 +799,8 @@ class SteamManager {
       const createdWorker = new SteamWorker(account, {
         runAccountOperation: (operation) =>
           this.runAccountOperation(account.id, operation),
+        farmingResumesAfterShutdown: () =>
+          farmingResumesAfterRestart(account.id),
         recordSessionConflict: ({ source: conflictSource, ...input }) =>
           this.recordInfo(
             account.id,
@@ -607,12 +831,24 @@ class SteamManager {
     payload: WorkerStatusPayload,
   ) {
     const accountId = worker.accountId;
+    if (this.workers.get(accountId) !== worker) return;
     if (payload.accountId !== accountId) {
       this.logger.error(
         { accountId, payloadAccountId: payload.accountId },
         "Ignoring status with a mismatched Steam account ID",
       );
       return;
+    }
+    if (!["online", "boosting"].includes(payload.status)) {
+      // A successful farming cleanup must not invalidate its own generation.
+      if (!(
+        payload.status === "paused_manual" &&
+        this.farmingCleanupAccounts.has(accountId)
+      )) {
+        // A reconnect keeps manual games off until interrupted farming resumes.
+        this.haltFarming(accountId, payload.status, true);
+      }
+      stopAccountBatches(accountId);
     }
     void this.accountOperations
       .run(accountId, async () => {
@@ -624,6 +860,17 @@ class SteamManager {
           return;
         }
         await this.processWorkerStatus(accountId, payload);
+      })
+      .then(() => {
+        if (!["online", "boosting"].includes(payload.status)) return;
+        if (this.workers.get(accountId) !== worker || this.quiescing) return;
+        // Outside the account queue: farming takes the queue itself.
+        void resumeInterruptedFarming(accountId).catch((error) => {
+          this.logger.warn(
+            errorLogFields(error, { accountId }),
+            "Interrupted card farming could not resume",
+          );
+        });
       })
       .catch((error) => {
         this.logger.error(
@@ -651,7 +898,7 @@ class SteamManager {
 
     broadcast("status", payload);
     await this.statusEventRecorder.record(payload);
-    await trackBoostSession(accountId, payload.status);
+    await trackBoostSession(accountId, payload.status, payload);
 
     if (
       !payload.error &&

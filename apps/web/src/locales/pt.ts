@@ -461,6 +461,7 @@ const messages = {
     tagPrompt: "Separe tags com vírgulas",
     saveTags: "Salvar tags",
     selectionTitle: "Seleção de reforço",
+    manualSelectionTitle: "Seleção manual de jogos",
     expandSelection: "Expandir seleção de reforço",
     collapseSelection: "Recolher seleção de reforço",
     noSelectedGames: "Nenhum jogo selecionado ainda.",
@@ -470,6 +471,7 @@ const messages = {
     applySelection: "Aplicar seleção",
     noOpenChanges: "Nenhuma alteração aberta.",
     activeDraft: "Ativo: {active} · Rascunho: {draft}",
+    savedDraft: "{active} salvos · {draft} em rascunho",
     overLimit:
       "Steam título ativo: reduza a seleção para {limit} jogos antes de aplicá-la.",
     chooseFromLibrary: "Escolha na biblioteca ou adicione AppID.",

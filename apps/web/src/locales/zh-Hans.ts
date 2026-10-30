@@ -435,6 +435,7 @@ const messages = {
     tagPrompt: "用逗号分隔标签",
     saveTags: "保存标签",
     selectionTitle: "升压选择",
+    manualSelectionTitle: "手动选择游戏",
     expandSelection: "扩大升压选择",
     collapseSelection: "折叠增强选择",
     noSelectedGames: "尚未选择游戏。",
@@ -444,6 +445,7 @@ const messages = {
     applySelection: "应用选择",
     noOpenChanges: "没有公开的变更。",
     activeDraft: "活跃：{active}·草稿：{draft}",
+    savedDraft: "已保存 {active} 个 · 草稿 {draft} 个",
     overLimit:
       "Steam 标题处于活动状态：在应用之前将选择范围减少到 {limit} 游戏。",
     chooseFromLibrary: "从库中选择或添加 AppID。",

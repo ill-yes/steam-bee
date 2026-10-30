@@ -83,7 +83,7 @@ export function AccountsPanel({
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 xl:w-[300px]">
+                <div className="grid gap-2 sm:grid-cols-3 xl:w-[300px]">
                   <Button
                     size="sm"
                     variant="outline"

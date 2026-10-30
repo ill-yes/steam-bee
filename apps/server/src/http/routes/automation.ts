@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { ERROR_CODES } from "@steam-bee/contracts";
 import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../../db/client.js";
 import { boostPreset, boostSchedule } from "../../db/schema.js";
 import { steamManager } from "../../steam/manager.js";
@@ -303,8 +304,11 @@ export async function registerAutomationRoutes(app: FastifyInstance) {
     { preHandler: requireAuth },
     async (request) => {
       const params = accountIdParams.parse(request.params);
+      const { tz } = z
+        .object({ tz: z.string().max(64).optional() })
+        .parse(request.query);
       await getAccountOrThrow(params.id);
-      return getAccountAnalytics(params.id);
+      return getAccountAnalytics(params.id, Date.now(), tz);
     },
   );
 }

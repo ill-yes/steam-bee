@@ -32,11 +32,15 @@ describe("Steam repository transactions", () => {
       VALUES (440, 'Team Fortress 2', 'manual', 1);
       INSERT INTO steam_account_game (account_id, app_id, enabled, source, created_at)
       VALUES ('${accountId}', 440, 1, 'manual', 1);
-      INSERT INTO steam_account_library (
-        account_id, app_id, playtime_forever, source,
-        favorite, hidden, tags_json, imported_at
-      ) VALUES ('${accountId}', 440, 10, 'library', 1, 0, '["classic"]', 1);
     `);
+    replaceAccountLibrary(
+      accountId,
+      [{ appId: 440, name: "Team Fortress 2", playtimeForever: 10 }],
+      new Map([
+        [440, { favorite: true, hidden: false, tagsJson: '["classic"]' }],
+      ]),
+      1,
+    );
   });
 
   it("rolls back a game replacement when an insert fails", () => {
@@ -84,16 +88,33 @@ describe("Steam repository transactions", () => {
         )
         .all(accountId),
     ).toEqual([{ appId: 440, favorite: 1, tagsJson: '["classic"]' }]);
+    expect(
+      sqlite
+        .prepare("SELECT library_imported_at FROM steam_account WHERE id = ?")
+        .get(accountId),
+    ).toEqual({ library_imported_at: 1 });
   });
 
-  it("detects whether an account already has an imported library", () => {
+  it("keeps successful empty imports distinct from accounts never imported", () => {
     expect(hasAccountLibrary(accountId)).toBe(true);
-
     sqlite
-      .prepare("DELETE FROM steam_account_library WHERE account_id = ?")
+      .prepare(
+        "UPDATE steam_account SET library_imported_at = NULL WHERE id = ?",
+      )
       .run(accountId);
-
     expect(hasAccountLibrary(accountId)).toBe(false);
+
+    replaceAccountLibrary(accountId, [], new Map(), 200);
+
+    expect(hasAccountLibrary(accountId)).toBe(true);
+    expect(sqlite.prepare("SELECT * FROM steam_account_library").all()).toEqual(
+      [],
+    );
+    expect(
+      sqlite
+        .prepare("SELECT library_imported_at FROM steam_account WHERE id = ?")
+        .get(accountId),
+    ).toEqual({ library_imported_at: 200 });
   });
 });
 

@@ -18,4 +18,6 @@ export type WorkerStatusPayload = {
   accountId: string;
   status: ContractAccountStatus;
   error?: string;
+  activityMode?: "idle" | "manual" | "farming";
+  activeAppIds?: number[];
 };

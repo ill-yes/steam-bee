@@ -64,7 +64,9 @@ export function CredentialsLoginForm({
         <Input
           id="steam-guard-code"
           name="steamGuardCode"
-          inputMode="numeric"
+          inputMode="text"
+          autoCapitalize="characters"
+          spellCheck={false}
           autoComplete="one-time-code"
           value={credentials.guardCode}
           onChange={(event) => onChange("guardCode", event.target.value)}

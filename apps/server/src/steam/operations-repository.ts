@@ -10,7 +10,7 @@ import { db } from "../db/client.js";
 import {
   accountHealthState,
   accountSafetyPolicy,
-  steamAccountLibrary,
+  steamAccount,
 } from "../db/schema.js";
 
 export type SafetyHoldOwner =
@@ -44,17 +44,11 @@ export async function getAccountHealth(
   const row = await db.query.accountHealthState.findFirst({
     where: eq(accountHealthState.accountId, accountId),
   });
-  const imported = await db
-    .select({ importedAt: steamAccountLibrary.importedAt })
-    .from(steamAccountLibrary)
-    .where(eq(steamAccountLibrary.accountId, accountId));
-  return presentHealth(
-    row,
-    imported.reduce<number | null>(
-      (latest, item) => Math.max(latest ?? 0, item.importedAt),
-      null,
-    ),
-  );
+  const account = await db.query.steamAccount.findFirst({
+    where: eq(steamAccount.id, accountId),
+    columns: { libraryImportedAt: true },
+  });
+  return presentHealth(row, account?.libraryImportedAt ?? null);
 }
 
 export async function getAccountSafetyPolicy(
@@ -70,23 +64,19 @@ export async function getAccountSafetyPolicy(
 
 export async function getAccountOperationMaps(accountIds: string[]) {
   await Promise.all(accountIds.map(ensureAccountOperations));
-  const [healthRows, safetyRows, libraryRows] = await Promise.all([
+  const [healthRows, safetyRows, accountRows] = await Promise.all([
     db.select().from(accountHealthState),
     db.select().from(accountSafetyPolicy),
     db
       .select({
-        accountId: steamAccountLibrary.accountId,
-        importedAt: steamAccountLibrary.importedAt,
+        accountId: steamAccount.id,
+        importedAt: steamAccount.libraryImportedAt,
       })
-      .from(steamAccountLibrary),
+      .from(steamAccount),
   ]);
-  const latestImport = new Map<string, number>();
-  for (const row of libraryRows) {
-    latestImport.set(
-      row.accountId,
-      Math.max(latestImport.get(row.accountId) ?? 0, row.importedAt),
-    );
-  }
+  const latestImport = new Map(
+    accountRows.map((row) => [row.accountId, row.importedAt]),
+  );
   return {
     health: new Map(
       healthRows.map((row) => [

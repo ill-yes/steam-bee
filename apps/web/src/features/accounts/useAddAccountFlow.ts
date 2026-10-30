@@ -53,19 +53,23 @@ type CredentialLoginState =
 export function useAddAccountFlow({
   onClose,
   onDone,
+  initialMode = "qr",
+  initialAccountName = "",
 }: {
   onClose: () => void;
   onDone: () => Promise<void>;
+  initialMode?: LoginMode | undefined;
+  initialAccountName?: string | undefined;
 }) {
   const { messages } = useI18n();
-  const [mode, setMode] = useState<LoginMode>("qr");
-  const modeRef = useRef<LoginMode>("qr");
+  const [mode, setMode] = useState<LoginMode>(initialMode);
+  const modeRef = useRef<LoginMode>(initialMode);
   const [qr, setQr] = useState<QrSession | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
   const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [credentials, setCredentials] = useState<SteamCredentials>({
-    accountName: "",
+    accountName: initialAccountName,
     password: "",
     guardCode: "",
   });

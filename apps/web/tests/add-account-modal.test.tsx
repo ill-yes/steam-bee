@@ -144,6 +144,34 @@ describe("add account flow", () => {
     ).toBeVisible();
   });
 
+  it.each(["ABC23", "123456"])(
+    "accepts Steam Guard code %s with a keyboard that supports letters",
+    async (guardCode) => {
+      apiMock.mockResolvedValue({ status: "guard_required" });
+      renderModal();
+      openCredentials();
+      fillCredentials(guardCode);
+
+      const input = screen.getByLabelText("Steam Guard code");
+      expect(input).toHaveAttribute("inputmode", "text");
+      expect(input).toHaveAttribute("autocapitalize", "characters");
+      expect(input).toHaveAttribute("spellcheck", "false");
+      fireEvent.click(screen.getByRole("button", { name: "Connect once" }));
+      await flushAsyncWork();
+
+      expect(apiMock).toHaveBeenCalledWith(
+        "/api/steam/login/credentials",
+        expect.objectContaining({
+          body: JSON.stringify({
+            accountName: "bee",
+            password: "secret-value",
+            guardCode,
+          }),
+        }),
+      );
+    },
+  );
+
   it("moves through connecting, importing and done without duplicate callbacks", async () => {
     const onDone = vi.fn(async () => undefined);
     const onClose = vi.fn();
@@ -349,7 +377,7 @@ describe("add account flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Connect once" }));
     expect(credentialSignal?.aborted).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "QR login" }));
+    fireEvent.click(screen.getByRole("button", { name: "QR code" }));
     expect(credentialSignal?.aborted).toBe(true);
     credentialRequest.resolve({
       status: "authenticated",
@@ -670,7 +698,7 @@ function renderModal({
 }
 
 function openCredentials() {
-  fireEvent.click(screen.getByRole("button", { name: "Fallback" }));
+  fireEvent.click(screen.getByRole("button", { name: "Username & password" }));
 }
 
 function fillCredentials(guardCode = "") {

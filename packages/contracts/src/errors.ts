@@ -14,6 +14,8 @@ export const ERROR_CODES = {
   presetNotFound: "PRESET_NOT_FOUND",
   scheduleNotFound: "SCHEDULE_NOT_FOUND",
   steamNotConnected: "STEAM_NOT_CONNECTED",
+  inventoryPriceContextExpired: "INVENTORY_PRICE_CONTEXT_EXPIRED",
+  inventoryPriceContextTooLarge: "INVENTORY_PRICE_CONTEXT_TOO_LARGE",
   conflict: "CONFLICT",
   rateLimited: "RATE_LIMITED",
 } as const;

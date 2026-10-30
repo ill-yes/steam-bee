@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { useState } from "react";
@@ -26,6 +33,7 @@ describe("accessible application chrome", () => {
   });
 
   afterEach(() => {
+    cleanup();
     document.body.style.overflow = "";
     document.documentElement.dir = "ltr";
     window.localStorage.clear();
@@ -61,6 +69,31 @@ describe("accessible application chrome", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.body.style.overflow).toBe("");
     expect(trigger).toHaveFocus();
+  });
+
+  it("keeps a submitted action modal open until busy work completes", () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <Dialog title="Market action" closeDisabled onClose={onClose}>
+        <p role="status">Submitting…</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-busy", "true");
+    const close = within(dialog).getByRole("button");
+    expect(close).toBeDisabled();
+    fireEvent.click(close);
+    fireEvent.click(dialog);
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onClose).not.toHaveBeenCalled();
+    rerender(
+      <Dialog title="Market action" onClose={onClose}>
+        <p>Finished</p>
+      </Dialog>,
+    );
+    expect(close).not.toBeDisabled();
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("exposes mobile locale and theme controls including RTL", async () => {

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  BarChart3,
+  Bookmark,
+  CalendarClock,
+  ShieldCheck,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   ACCOUNT_STATUS_CAPABILITIES,
@@ -24,16 +31,25 @@ import { getPrimaryCommand, selectionApplyCopy } from "../../lib/status";
 import { interpolate, useI18n } from "../../i18n";
 import { LogDrawer } from "../events/LogDrawer";
 import { GameLibraryPanel } from "../library/GameLibraryPanel";
-import { AccountControlPanel } from "./detail/AccountControlPanel";
-import { AccountHeader } from "./detail/AccountHeader";
-import { AccountProfilePanel } from "./detail/AccountProfilePanel";
-import { AccountStatusSummary } from "./detail/AccountStatusSummary";
+import {
+  AccountDangerZone,
+  AccountProfileSettings,
+} from "./detail/AccountProfileSettings";
+import { AccountStatePanel } from "./detail/AccountStatePanel";
 import { AnalyticsPanel } from "./detail/AnalyticsPanel";
-import { BoostToolsPanel, type PlanningTab } from "./detail/BoostToolsPanel";
+import { ToolPageHeader } from "../../components/ui/tool-page-header";
 import { PresetPanel } from "./detail/PresetPanel";
 import { SchedulePanel } from "./detail/SchedulePanel";
 import { SafetyPanel } from "./detail/SafetyPanel";
 import { useAccountResources } from "./useAccountController";
+import { SteamToolsPanel, type AccountWorkspaceTab } from "./SteamToolsPanel";
+import { AccountHubBar } from "./detail/AccountHubBar";
+import { ReloginBanner } from "./detail/ReloginBanner";
+import type { LoginMode } from "./useAddAccountFlow";
+import type { ActivityMode } from "./detail/ActivityModeSwitch";
+import { useFarmingSummary } from "../farming/useFarmingSummary";
+import { hubCopy } from "./detail/hubCopy";
+import { automationCopy } from "./detail/automationCopy";
 
 type PendingConfirmation = {
   description: string;
@@ -42,18 +58,28 @@ type PendingConfirmation = {
   action: () => Promise<boolean>;
 };
 
-export function AccountDetail({
-  account,
-  events,
-  diagnostics,
-  onReload,
-}: {
+type AccountDetailProps = {
   account: Account;
   events: SteamEvent[];
   diagnostics: Diagnostics | null;
   onReload: () => Promise<void>;
-}) {
-  const { messages: t } = useI18n();
+  onRelogin?: ((mode: LoginMode) => void) | undefined;
+};
+
+export function AccountDetail(props: AccountDetailProps) {
+  return <AccountWorkspace key={props.account.id} {...props} />;
+}
+
+function AccountWorkspace({
+  account,
+  events,
+  diagnostics,
+  onReload,
+  onRelogin,
+}: AccountDetailProps) {
+  const { locale, messages: t } = useI18n();
+  const hub = hubCopy(locale);
+  const automation = automationCopy(locale);
   const o = t.operations;
   const {
     library,
@@ -86,7 +112,9 @@ export function AccountDetail({
   const [scheduleWeekdays, setScheduleWeekdays] = useState<number[]>([
     1, 2, 3, 4, 5,
   ]);
-  const [planningTab, setPlanningTab] = useState<PlanningTab>("presets");
+  const [workspaceTab, setWorkspaceTab] =
+    useState<AccountWorkspaceTab>("library");
+  const farmingActive = account.activityMode === "farming";
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [draftAppIds, setDraftAppIds] = useState<number[]>(
@@ -111,13 +139,21 @@ export function AccountDetail({
     () => account.games.map((game) => game.appId),
     [account.games],
   );
-  const gameLimit = gameSelectionLimit(customTitle);
+  // The server checks games against the saved title, presets against the
+  // draft one; the stricter limit keeps both from failing server-side.
+  const gameLimit = Math.min(
+    gameSelectionLimit(customTitle),
+    gameSelectionLimit(account.customTitle),
+  );
   const draftOverLimit = draftAppIds.length > gameLimit;
   const selectionDirty = !sameAppIdSelection(appliedAppIds, draftAppIds);
   const statusCapability = ACCOUNT_STATUS_CAPABILITIES[account.runtimeStatus];
   const canImportLibrary = statusCapability.importable;
   const canPause = statusCapability.canPause;
-  const canStop = statusCapability.canStop;
+  const connected = statusCapability.active || statusCapability.paused;
+  const farming = useFarmingSummary(account.id, account.activityMode);
+  const needsRelogin = account.runtimeStatus === "login_required";
+  const canStop = statusCapability.canStop && !needsRelogin;
   const primaryCommand = getPrimaryCommand(
     account.runtimeStatus,
     appliedAppIds.length,
@@ -139,14 +175,24 @@ export function AccountDetail({
     [draftAppIds, library],
   );
 
-  const selectionApplyState = selectionApplyCopy(
-    account.runtimeStatus,
-    appliedAppIds.length,
-    draftAppIds.length,
-    selectionDirty,
-    gamesApplying,
-    t,
-  );
+  const selectionApplyState = farmingActive
+    ? {
+        label: hub.savedSelection,
+        body: hub.savedSelectionHint,
+        tone: gamesApplying
+          ? ("busy" as const)
+          : selectionDirty
+            ? ("dirty" as const)
+            : ("queued" as const),
+      }
+    : selectionApplyCopy(
+        account.runtimeStatus,
+        appliedAppIds.length,
+        draftAppIds.length,
+        selectionDirty,
+        gamesApplying,
+        t,
+      );
 
   useEffect(() => {
     setDraftAppIds(account.games.map((game) => game.appId));
@@ -170,7 +216,10 @@ export function AccountDetail({
   }, [account.id]);
 
   async function reloadAll() {
-    await Promise.all([onReload(), loadAccountData(account.id)]);
+    await Promise.all([
+      onReload(),
+      loadAccountData(account.id, { silent: true }),
+    ]);
   }
 
   async function runBusyAction(
@@ -185,6 +234,8 @@ export function AccountDetail({
       if (successMessage) toast.success(successMessage);
       return true;
     } catch (requestError) {
+      // A newer load aborted this one; the change itself went through.
+      if (isAbortError(requestError)) return true;
       const message = apiErrorMessage(requestError, t);
       setActionError(message);
       toast.error(message);
@@ -215,7 +266,16 @@ export function AccountDetail({
     setDraftAppIds([...new Set(appIds)]);
   }
 
-  async function applyGameSelection() {
+  async function applyGameSelection(confirmed = false): Promise<boolean> {
+    if (farmingActive && !confirmed) {
+      requestConfirmation({
+        description: hub.switchApply,
+        confirmLabel: t.common.apply,
+        destructive: false,
+        action: () => applyGameSelection(true),
+      });
+      return false;
+    }
     setActionError(null);
     if (draftOverLimit) {
       setActionError(
@@ -223,7 +283,7 @@ export function AccountDetail({
           limit: gameLimit,
         }),
       );
-      return;
+      return false;
     }
 
     setGamesApplying(true);
@@ -236,10 +296,12 @@ export function AccountDetail({
       setDraftAppIds(draftAppIds);
       setGamesAppliedAt(Date.now());
       toast.success(t.accountDetail.selectionApplied);
+      return true;
     } catch (requestError) {
       const message = apiErrorMessage(requestError, t);
       setActionError(message);
       toast.error(message);
+      return false;
     } finally {
       setGamesApplying(false);
     }
@@ -261,7 +323,7 @@ export function AccountDetail({
         { method: "POST" },
       );
       setLibrary(imported);
-      await loadAccountData(account.id);
+      await loadAccountData(account.id, { silent: true });
       toast.success(
         interpolate(t.accountDetail.gamesImported, { count: imported.length }),
       );
@@ -274,7 +336,16 @@ export function AccountDetail({
     }
   }
 
-  async function saveSettings() {
+  async function saveSettings(confirmed = false): Promise<boolean> {
+    if (farmingActive && !confirmed) {
+      requestConfirmation({
+        description: hub.switchSettings,
+        confirmLabel: t.common.apply,
+        destructive: false,
+        action: () => saveSettings(true),
+      });
+      return false;
+    }
     return runBusyAction(
       "settings",
       async () => {
@@ -305,7 +376,8 @@ export function AccountDetail({
       "delete",
       async () => {
         await api(`/api/accounts/${account.id}`, { method: "DELETE" });
-        await reloadAll();
+        // The workspace unmounts with the account; only the list reloads.
+        await onReload();
       },
       t.accountDetail.accountDeleted,
     );
@@ -335,7 +407,7 @@ export function AccountDetail({
           }),
         });
         setPresetName("");
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.presetCreated,
     );
@@ -344,9 +416,11 @@ export function AccountDetail({
   async function applyPreset(preset: BoostPreset, confirmed = false) {
     if (!confirmed) {
       requestConfirmation({
-        description: interpolate(t.accountDetail.confirmApplyPreset, {
-          name: preset.name,
-        }),
+        description:
+          (farmingActive ? `${hub.switchPreset} ` : "") +
+          interpolate(t.accountDetail.confirmApplyPreset, {
+            name: preset.name,
+          }),
         confirmLabel: t.common.apply,
         destructive: false,
         action: () => applyPreset(preset, true),
@@ -387,7 +461,7 @@ export function AccountDetail({
         await api(`/api/accounts/${account.id}/presets/${preset.id}`, {
           method: "DELETE",
         });
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.presetDeleted,
     );
@@ -421,7 +495,7 @@ export function AccountDetail({
           }),
         });
         setScheduleName("");
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.scheduleCreated,
     );
@@ -433,7 +507,7 @@ export function AccountDetail({
         method: "PUT",
         body: JSON.stringify({ enabled: !schedule.enabled }),
       });
-      await loadAccountData(account.id);
+      await loadAccountData(account.id, { silent: true });
     });
   }
 
@@ -455,7 +529,7 @@ export function AccountDetail({
         await api(`/api/accounts/${account.id}/schedules/${schedule.id}`, {
           method: "DELETE",
         });
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       t.accountDetail.scheduleDeleted,
     );
@@ -481,7 +555,7 @@ export function AccountDetail({
           `/api/accounts/${account.id}/schedules/${schedule.id}/skip-next`,
           { method: "POST" },
         );
-        await loadAccountData(account.id);
+        await loadAccountData(account.id, { silent: true });
       },
       o.saved,
     );
@@ -570,69 +644,7 @@ export function AccountDetail({
     );
   }
 
-  const loadedPlanningPanel =
-    planningTab === "presets" ? (
-      <PresetPanel
-        presets={presets}
-        activePresetId={account.activePresetId}
-        presetName={presetName}
-        busyAction={busyAction}
-        selectedCount={draftAppIds.length}
-        personaState={personaState}
-        customTitle={customTitle}
-        onPresetNameChange={setPresetName}
-        onCreatePreset={() => void createPreset()}
-        onApplyPreset={(preset) => void applyPreset(preset)}
-        onDeletePreset={(preset) => void deletePreset(preset)}
-      />
-    ) : planningTab === "schedule" ? (
-      <SchedulePanel
-        schedules={schedules}
-        presets={presets}
-        scheduleName={scheduleName}
-        schedulePresetId={schedulePresetId}
-        scheduleStart={scheduleStart}
-        scheduleEnd={scheduleEnd}
-        scheduleWeekdays={scheduleWeekdays}
-        timezone={localTimezone}
-        busyAction={busyAction}
-        onScheduleNameChange={setScheduleName}
-        onSchedulePresetChange={setSchedulePresetId}
-        onScheduleStartChange={setScheduleStart}
-        onScheduleEndChange={setScheduleEnd}
-        onToggleWeekday={toggleWeekday}
-        onCreateSchedule={() => void createSchedule()}
-        onToggleSchedule={(schedule) => void toggleSchedule(schedule)}
-        onDeleteSchedule={(schedule) => void deleteSchedule(schedule)}
-        preview={schedulePreview}
-        previewState={optionalStates.schedulePreview}
-        onRefreshPreview={() => void refreshSchedulePreview()}
-        onSkipNext={(schedule) => void skipNextSchedule(schedule)}
-      />
-    ) : planningTab === "analytics" ? (
-      <AnalyticsPanel
-        analytics={analytics}
-        goals={goals}
-        library={library}
-        busy={Boolean(busyAction)}
-        goalsState={optionalStates.goals}
-        onSaveGoal={(appId, targetMinutes) =>
-          void saveGoal(appId, targetMinutes)
-        }
-        onDeleteGoal={(goal) => void deleteGoal(goal)}
-      />
-    ) : (
-      <SafetyPanel
-        policy={safety}
-        loadState={optionalStates.safety}
-        busy={Boolean(busyAction)}
-        canPauseUntil={account.desiredState === "running"}
-        onSave={(input) => void saveSafetyPolicy(input)}
-        onPauseUntil={(until) => void pauseUntil(until)}
-      />
-    );
-
-  const planningPanel =
+  const gateResources = (panel: ReactNode) =>
     loadState === "loading" ? (
       <p role="status" className="text-sm text-[var(--muted)]">
         {t.common.loading}
@@ -640,8 +652,94 @@ export function AccountDetail({
     ) : loadState === "error" ? (
       <Alert tone="danger">{libraryError ?? o.failed}</Alert>
     ) : (
-      loadedPlanningPanel
+      panel
     );
+  const toolPage = (
+    icon: LucideIcon,
+    title: string,
+    description: string,
+    body: ReactNode,
+  ) => (
+    <div className="grid min-w-0 gap-4">
+      <ToolPageHeader icon={icon} title={title} description={description} />
+      {body}
+    </div>
+  );
+  const cardClass =
+    "min-w-0 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4";
+  const presetsPanel = toolPage(
+    Bookmark,
+    hub.presets,
+    automation.presetsDescription,
+    <div className="min-w-0">
+      {gateResources(
+        <PresetPanel
+          presets={presets}
+          schedules={schedules}
+          activePresetId={account.activePresetId}
+          presetName={presetName}
+          busyAction={busyAction}
+          selectedCount={draftAppIds.length}
+          personaState={personaState}
+          customTitle={customTitle}
+          onPresetNameChange={setPresetName}
+          onCreatePreset={createPreset}
+          onApplyPreset={(preset) => void applyPreset(preset)}
+          onDeletePreset={(preset) => void deletePreset(preset)}
+        />,
+      )}
+    </div>,
+  );
+  const schedulesPanel = toolPage(
+    CalendarClock,
+    hub.schedules,
+    automation.schedulesDescription,
+    <div className="min-w-0">
+      {gateResources(
+        <SchedulePanel
+          schedules={schedules}
+          presets={presets}
+          scheduleName={scheduleName}
+          schedulePresetId={schedulePresetId}
+          scheduleStart={scheduleStart}
+          scheduleEnd={scheduleEnd}
+          scheduleWeekdays={scheduleWeekdays}
+          timezone={localTimezone}
+          busyAction={busyAction}
+          onScheduleNameChange={setScheduleName}
+          onSchedulePresetChange={setSchedulePresetId}
+          onScheduleStartChange={setScheduleStart}
+          onScheduleEndChange={setScheduleEnd}
+          onToggleWeekday={toggleWeekday}
+          onCreateSchedule={createSchedule}
+          onToggleSchedule={(schedule) => void toggleSchedule(schedule)}
+          onDeleteSchedule={(schedule) => void deleteSchedule(schedule)}
+          preview={schedulePreview}
+          previewState={optionalStates.schedulePreview}
+          onRefreshPreview={() => void refreshSchedulePreview()}
+          onSkipNext={(schedule) => void skipNextSchedule(schedule)}
+        />,
+      )}
+    </div>,
+  );
+  const analyticsPanel = toolPage(
+    BarChart3,
+    hub.analytics,
+    automation.analyticsDescription,
+    <div className="min-w-0">
+      {gateResources(
+        <AnalyticsPanel
+          analytics={analytics}
+          goals={goals}
+          library={library}
+          busy={Boolean(busyAction)}
+          goalsState={optionalStates.goals}
+          onSaveGoal={(appId, targetMinutes) => saveGoal(appId, targetMinutes)}
+          onDeleteGoal={(goal) => void deleteGoal(goal)}
+        />,
+      )}
+    </div>,
+  );
 
   async function updateLibraryMeta(
     appId: number,
@@ -673,54 +771,123 @@ export function AccountDetail({
     }
   }
 
-  return (
-    <div className="grid gap-4">
-      <AccountHeader
-        controls={
-          <AccountControlPanel
+  function onPrimaryAction() {
+    if (!primaryCommand) return;
+    if (primaryCommand.kind === "focus-games") {
+      setWorkspaceTab("library");
+      setTimeout(() => manualAppInputRef.current?.focus(), 0);
+      return;
+    }
+    void accountAction(primaryCommand.action);
+  }
+
+  function switchToManual() {
+    requestConfirmation({
+      description: hub.confirmSwitch,
+      confirmLabel: hub.switchConfirm,
+      destructive: false,
+      action: () => accountAction("resume"),
+    });
+  }
+
+  async function startFarming() {
+    const started = await runBusyAction("farming-start", async () => {
+      await api(`/api/accounts/${account.id}/farming/start`, {
+        method: "POST",
+      });
+      await reloadAll();
+    });
+    await farming.reload();
+    return started;
+  }
+
+  function selectMode(mode: ActivityMode) {
+    const current: ActivityMode =
+      account.activityMode ??
+      (account.runtimeStatus === "boosting" ? "manual" : "idle");
+    if (mode === current) return;
+    if (mode === "idle") {
+      if (!canPause) return;
+      requestConfirmation({
+        description: hub.confirmIdle,
+        confirmLabel: hub.idleConfirm,
+        destructive: false,
+        action: () => accountAction("pause"),
+      });
+      return;
+    }
+    if (mode === "manual") {
+      if (current === "farming") switchToManual();
+      else onPrimaryAction();
+      return;
+    }
+    // Farming needs a fresh badge scan and a ready session; its own view explains why not.
+    if (!farming.summary?.canStart) {
+      setWorkspaceTab("farming");
+      return;
+    }
+    requestConfirmation({
+      description:
+        current === "manual"
+          ? interpolate(hub.confirmFarming, { count: appliedAppIds.length })
+          : hub.confirmFarmingIdle,
+      confirmLabel: hub.farmingConfirm,
+      destructive: false,
+      action: startFarming,
+    });
+  }
+
+  const accountPanel = toolPage(
+    ShieldCheck,
+    hub.account,
+    hub.accountDescription,
+    <div className="@container min-w-0">
+      <div className="grid min-w-0 items-start gap-4 @min-[46rem]:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]">
+        <div className="grid min-w-0 gap-4">
+          <AccountProfileSettings
             busyAction={busyAction}
-            canPause={canPause}
-            canStop={canStop}
-            eventCount={events.length}
-            primaryCommand={primaryCommand}
             personaState={personaState}
             customTitle={customTitle}
-            onPrimaryAction={() => {
-              if (!primaryCommand) return;
-              if (primaryCommand.kind === "focus-games") {
-                manualAppInputRef.current?.focus();
-                return;
-              }
-              void accountAction(primaryCommand.action);
-            }}
-            onPause={() => void accountAction("pause")}
-            onStop={() => void accountAction("stop")}
-            onOpenLogs={() => setLogOpen(true)}
-            onDelete={() => void deleteAccount()}
             onPersonaChange={setPersonaState}
             onCustomTitleChange={setCustomTitle}
             onSaveSettings={saveSettings}
           />
-        }
-        status={
-          <AccountStatusSummary
-            account={account}
-            libraryCount={library.length}
-            appliedCount={appliedAppIds.length}
-            draftCount={draftAppIds.length}
-            gameLimit={gameLimit}
-            selectionDirty={selectionDirty}
-            events={events}
+          <div className={cardClass}>
+            {gateResources(
+              <SafetyPanel
+                policy={safety}
+                loadState={optionalStates.safety}
+                busy={Boolean(busyAction)}
+                canPauseUntil={account.desiredState === "running"}
+                onSave={(input) => void saveSafetyPolicy(input)}
+                onPauseUntil={(until) => void pauseUntil(until)}
+              />,
+            )}
+          </div>
+          <AccountDangerZone
+            busy={Boolean(busyAction)}
+            onDelete={() => void deleteAccount()}
           />
-        }
-        profile={<AccountProfilePanel account={account} />}
-      />
-
-      {account.lastError && <Alert tone="danger">{account.lastError}</Alert>}
-      {actionError && !confirmation ? (
-        <Alert tone="danger">{actionError}</Alert>
-      ) : null}
-
+        </div>
+        <AccountStatePanel
+          account={account}
+          libraryCount={library.length}
+          appliedCount={appliedAppIds.length}
+          gameLimit={gameLimit}
+          events={events}
+          onOpenLogs={() => setLogOpen(true)}
+        />
+      </div>
+    </div>,
+  );
+  const libraryPanel = (
+    <div className="grid min-w-0 gap-3">
+      {farmingActive && <Alert tone="info">{hub.farmingSelectionHint}</Alert>}
+      {loadState === "loading" && (
+        <p role="status" className="text-sm text-[var(--muted)]">
+          {t.common.loading}
+        </p>
+      )}
       <div className="grid gap-4">
         <GameLibraryPanel
           account={{ id: account.id, runtimeStatus: account.runtimeStatus }}
@@ -733,6 +900,9 @@ export function AccountDetail({
             onUpdateMeta: updateLibraryMeta,
           }}
           selection={{
+            ...(account.activityMode
+              ? { activityMode: account.activityMode }
+              : {}),
             draftAppIds,
             appliedAppIds,
             selectedGames,
@@ -744,24 +914,69 @@ export function AccountDetail({
             state: selectionApplyState,
             manualAppInputRef,
             onChange: updateDraftGames,
-            onApply: applyGameSelection,
+            onApply: async () => {
+              await applyGameSelection();
+            },
             onRevert: () => setDraftAppIds(appliedAppIds),
           }}
-          rightRailExtra={
-            <BoostToolsPanel
-              activeTab={planningTab}
-              onTabChange={setPlanningTab}
-              presetCount={presets.length}
-              activeScheduleCount={
-                schedules.filter((schedule) => schedule.enabled).length
-              }
-              analyticsLast7DaysMs={analytics?.last7DaysMs ?? 0}
-            >
-              {planningPanel}
-            </BoostToolsPanel>
-          }
         />
       </div>
+    </div>
+  );
+
+  return (
+    <div className="grid min-w-0 gap-4">
+      <AccountHubBar
+        account={account}
+        library={library}
+        busyAction={busyAction}
+        primaryCommand={needsRelogin ? null : primaryCommand}
+        needsRelogin={needsRelogin}
+        connected={connected}
+        canStop={canStop}
+        eventCount={events.length}
+        appliedCount={appliedAppIds.length}
+        gameLimit={gameLimit}
+        farming={farming.summary}
+        onPrimaryAction={onPrimaryAction}
+        onSelectMode={selectMode}
+        onStop={() => void accountAction("stop")}
+        onLogs={() => setLogOpen(true)}
+      />
+      {needsRelogin && onRelogin ? (
+        <ReloginBanner steamMessage={account.lastError} onRelogin={onRelogin} />
+      ) : account.lastError ? (
+        <Alert tone="danger">
+          <span className="grid gap-0.5">
+            {account.health && account.health.errorClass !== "none" ? (
+              <span>{o.errorClasses[account.health.errorClass]}</span>
+            ) : null}
+            <span className="break-words text-xs font-normal">
+              {interpolate(hub.steamMessage, { message: account.lastError })}
+            </span>
+          </span>
+        </Alert>
+      ) : null}
+      {actionError && !confirmation ? (
+        <Alert tone="danger">{actionError}</Alert>
+      ) : null}
+      <SteamToolsPanel
+        accountId={account.id}
+        library={loadState === "ready" ? library : undefined}
+        activityMode={account.activityMode}
+        accountStatus={account.runtimeStatus}
+        activeTab={workspaceTab}
+        onTabChange={setWorkspaceTab}
+        remainingDrops={farming.summary?.remainingDrops}
+        libraryPanel={libraryPanel}
+        automationPanels={{
+          presets: presetsPanel,
+          schedules: schedulesPanel,
+          analytics: analyticsPanel,
+        }}
+        accountPanel={accountPanel}
+        onSwitchToFarming={() => selectMode("farming")}
+      />
 
       <LogDrawer
         open={logOpen}

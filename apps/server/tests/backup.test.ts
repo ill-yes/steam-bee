@@ -16,7 +16,23 @@ import { InstanceLease } from "../src/instance-lease.js";
 import {
   IncompleteRestoreRollbackError,
   restoreBackup,
+  supportedMigrationIds,
 } from "../src/restore.js";
+
+describe("restore tool migrations", () => {
+  it("supports every migration the server applies", () => {
+    const source = readFileSync(
+      new URL("../src/db/client.ts", import.meta.url),
+      "utf8",
+    );
+    const serverIds = [
+      ...source.matchAll(/^ {4}id: "(\d{3}_[a-z_]+)",$/gm),
+    ].map((match) => match[1]);
+    expect(serverIds.length).toBeGreaterThan(0);
+    expect([...supportedMigrationIds]).toEqual(serverIds);
+    expect(migrationIds).toEqual(serverIds);
+  });
+});
 
 describe("encrypted backup format", () => {
   const entries = [
@@ -123,6 +139,154 @@ describe("encrypted backup format", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    "012_card_farming_settings",
+    "013_market_price_settings",
+    "014_library_import_marker",
+    "015_card_farming_resume",
+  ])(
+    "accepts a supported %s snapshot and retains its stored account preferences",
+    (migrationId) => {
+      const root = mkdtempSync(
+        join(tmpdir(), "steam-bee-market-restore-test-"),
+      );
+      const dataDir = join(root, "data");
+      const backupDatabase = join(root, "backup.sqlite");
+      const inputPath = join(root, "backup.sbb");
+      const secret = Buffer.alloc(32, 11).toString("base64");
+      const farmingPreferences = JSON.stringify({
+        skipRefundable: true,
+        maxConcurrentGames: 4,
+        whitelist: [570],
+        blacklist: [],
+      });
+      const marketPreferences = JSON.stringify({
+        priceMode: "highestBuyOrder",
+        adjustment: -1,
+        minBuyerPrice: 3,
+        maxBuyerPrice: 1000,
+        delaySeconds: 10,
+        currencyId: 1,
+      });
+      mkdirSync(dataDir, { mode: 0o700 });
+      try {
+        createDatabase(
+          join(dataDir, "steam-bee.sqlite"),
+          "011_automatic_session_recovery",
+          "before",
+        );
+        writeFileSync(
+          join(dataDir, "instance.secret"),
+          Buffer.alloc(32, 3).toString("base64"),
+        );
+        createDatabase(backupDatabase, migrationId, "after");
+        const snapshot = new Database(backupDatabase);
+        try {
+          snapshot.exec(`
+            CREATE TABLE account_farming_config (
+              account_id TEXT PRIMARY KEY,
+              config_json TEXT NOT NULL,
+              updated_at INTEGER NOT NULL
+            );
+          `);
+          snapshot
+            .prepare("INSERT INTO account_farming_config VALUES (?, ?, ?)")
+            .run("owned-account", farmingPreferences, 1000);
+          if (migrationId !== "012_card_farming_settings") {
+            snapshot.exec(`
+              CREATE TABLE account_market_price_settings (
+                account_id TEXT PRIMARY KEY,
+                settings_json TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+              );
+            `);
+            snapshot
+              .prepare(
+                "INSERT INTO account_market_price_settings VALUES (?, ?, ?)",
+              )
+              .run("owned-account", marketPreferences, 1000);
+          }
+          if (migrationId >= "014_library_import_marker") {
+            snapshot.exec(`
+              CREATE TABLE steam_account (id TEXT PRIMARY KEY, library_imported_at INTEGER);
+              INSERT INTO steam_account (id, library_imported_at) VALUES ('owned-account', 1234);
+            `);
+          }
+        } finally {
+          snapshot.close();
+        }
+        writeFileSync(
+          inputPath,
+          encryptBackup(
+            [
+              { path: "steam-bee.sqlite", data: readFileSync(backupDatabase) },
+              { path: "instance.secret", data: Buffer.from(secret) },
+            ],
+            "correct horse battery staple",
+            migrationId,
+          ),
+        );
+
+        const result = restoreBackup({
+          inputPath,
+          dataDir,
+          passphrase: "correct horse battery staple",
+        });
+        const restored = new Database(join(dataDir, "steam-bee.sqlite"), {
+          readonly: true,
+        });
+        try {
+          expect(
+            restored
+              .prepare(
+                "SELECT config_json FROM account_farming_config WHERE account_id = ?",
+              )
+              .get("owned-account"),
+          ).toEqual({
+            config_json: farmingPreferences,
+          });
+          if (migrationId !== "012_card_farming_settings") {
+            expect(
+              restored
+                .prepare(
+                  "SELECT settings_json FROM account_market_price_settings WHERE account_id = ?",
+                )
+                .get("owned-account"),
+            ).toEqual({
+              settings_json: marketPreferences,
+            });
+          }
+          if (migrationId >= "014_library_import_marker") {
+            expect(
+              restored
+                .prepare(
+                  "SELECT library_imported_at FROM steam_account WHERE id = ?",
+                )
+                .get("owned-account"),
+            ).toEqual({ library_imported_at: 1234 });
+          }
+          expect(
+            restored
+              .prepare(
+                "SELECT id FROM app_migration ORDER BY applied_at DESC LIMIT 1",
+              )
+              .get(),
+          ).toEqual({ id: migrationId });
+        } finally {
+          restored.close();
+        }
+        expect(readFileSync(join(dataDir, "instance.secret"), "utf8")).toBe(
+          secret,
+        );
+        expect(
+          readProbe(join(result.rollbackDirectory, "steam-bee.sqlite")),
+        ).toBe("before");
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("refuses restore while the data directory has a runtime owner", () => {
     const root = mkdtempSync(join(tmpdir(), "steam-bee-restore-lock-test-"));
@@ -356,6 +520,10 @@ const migrationIds = [
   "009_timed_hold_schedule_ownership",
   "010_timed_hold_ownership_provenance",
   "011_automatic_session_recovery",
+  "012_card_farming_settings",
+  "013_market_price_settings",
+  "014_library_import_marker",
+  "015_card_farming_resume",
 ];
 
 function readProbe(path: string) {

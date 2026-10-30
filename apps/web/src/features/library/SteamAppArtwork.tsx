@@ -9,7 +9,7 @@ export function SteamAppArtwork({
 }: {
   appId: number;
   name: string;
-  size?: "row" | "mini" | "large";
+  size?: "row" | "mini" | "large" | "fill";
 }) {
   const [candidateIndex, setCandidateIndex] = useState(0);
   const candidates = steamArtworkCandidates(appId);
@@ -22,6 +22,7 @@ export function SteamAppArtwork({
         size === "mini" && "h-8 w-14",
         size === "row" && "h-12 w-[92px]",
         size === "large" && "aspect-[460/215] w-full",
+        size === "fill" && "h-full w-full rounded-none border-0",
       )}
       title={name}
     >

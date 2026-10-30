@@ -11,6 +11,7 @@ export function Dialog({
   children,
   className,
   role = "dialog",
+  closeDisabled = false,
 }: {
   title: string;
   description?: string;
@@ -18,6 +19,7 @@ export function Dialog({
   children: ReactNode;
   className?: string;
   role?: "dialog" | "alertdialog";
+  closeDisabled?: boolean;
 }) {
   const { messages: t } = useI18n();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -35,13 +37,16 @@ export function Dialog({
     } else {
       dialog.setAttribute("open", "");
     }
-    requestAnimationFrame(() => {
+    const focusFrame = requestAnimationFrame(() => {
       dialog
-        .querySelector<HTMLElement>("button, input, select, textarea")
+        .querySelector<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)",
+        )
         ?.focus();
     });
 
     return () => {
+      cancelAnimationFrame(focusFrame);
       if (dialog.open && typeof dialog.close === "function") dialog.close();
       else dialog.removeAttribute("open");
       document.body.style.overflow = previousOverflow;
@@ -58,14 +63,15 @@ export function Dialog({
       )}
       role={role}
       aria-modal="true"
+      aria-busy={closeDisabled || undefined}
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (!closeDisabled) onClose();
       }}
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!closeDisabled && event.target === event.currentTarget) onClose();
       }}
     >
       <div className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-5 py-4">
@@ -83,6 +89,7 @@ export function Dialog({
           variant="ghost"
           size="icon"
           onClick={onClose}
+          disabled={closeDisabled}
           aria-label={t.common.closeDialog}
         >
           <X size={18} />

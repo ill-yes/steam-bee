@@ -462,6 +462,7 @@ const messages = {
     tagPrompt: "Separe las etiquetas con comas",
     saveTags: "Guardar etiquetas",
     selectionTitle: "Selección de impulso",
+    manualSelectionTitle: "Selección manual de juegos",
     expandSelection: "Ampliar la selección de impulso",
     collapseSelection: "Contraer selección de impulso",
     noSelectedGames: "Aún no hay juegos seleccionados.",
@@ -471,6 +472,7 @@ const messages = {
     applySelection: "Aplicar selección",
     noOpenChanges: "No hay cambios abiertos.",
     activeDraft: "Activo: {active} · Borrador: {draft}",
+    savedDraft: "{active} guardados · {draft} en borrador",
     overLimit:
       "Steam título activo: reduce la selección a {limit} juegos antes de aplicarlo.",
     chooseFromLibrary: "Elija de la biblioteca o agregue un AppID.",
