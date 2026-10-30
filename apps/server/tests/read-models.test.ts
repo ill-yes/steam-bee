@@ -221,6 +221,33 @@ describe("HTTP read models", () => {
     expect(await getAccountSchedules(crypto.randomUUID())).toEqual([]);
   });
 
+  it("counts days in the viewer's time zone and every stored session", async () => {
+    // 00:30 in Berlin on 2026-10-30 is still 2026-10-29 in UTC.
+    const now = Date.UTC(2026, 9, 29, 23, 30);
+    const accountId = await insertAccount("viewer-zone", now);
+    await db.insert(boostSession).values(
+      Array.from({ length: 501 }, (_, index) => ({
+        id: crypto.randomUUID(),
+        accountId,
+        presetId: null,
+        appIdsJson: "[730]",
+        startedAt: now - 60 * 60_000 - index,
+        endedAt: now - index,
+        stopReason: "manual",
+        createdAt: now,
+      })),
+    );
+
+    const analytics = await getAccountAnalytics(
+      accountId,
+      now,
+      "Europe/Berlin",
+    );
+
+    expect(analytics.days?.at(-1)?.startsAt).toBe(Date.UTC(2026, 9, 29, 23));
+    expect(analytics.totalSessions).toBe(501);
+  });
+
   it("splits recent playtime into local days, ending with today", async () => {
     const midnight = new Date(2026, 9, 30);
     const now = midnight.getTime() + 10 * 3_600_000;
