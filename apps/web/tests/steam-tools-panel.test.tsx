@@ -159,7 +159,7 @@ describe("account workspace navigation", () => {
       "Inventory",
       "Market listings",
       "Pricing rules",
-      "Free game offers",
+      "Free to keep",
       "Presets",
       "Schedules",
       "Statistics",

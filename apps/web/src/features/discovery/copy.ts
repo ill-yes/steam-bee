@@ -1,7 +1,12 @@
 const en = {
-  title: "Free game offers",
+  title: "Free to keep",
   description:
-    "Temporarily free on Steam. Open a game in the store to review and claim its offer.",
+    "Steam sometimes gives games away for a short time. Claim one in time and it stays in your library for good.",
+  howTitle: "How this works",
+  howCheck: "SteamBee regularly checks the Steam store for games at −100 %.",
+  howOwned: "Games this account already owns are hidden.",
+  howClaim:
+    "You claim a game in the store yourself. SteamBee never buys anything.",
   refresh: "Refresh",
   refreshing: "Refreshing offers…",
   loading: "Checking Steam offers…",
@@ -9,8 +14,8 @@ const en = {
   empty: "No temporary free game offers found in the checked results.",
   staleEmpty:
     "There were no offers in the last successful check. Current availability could not be verified.",
-  openStore: "Open in Steam",
-  offerLabel: "Free on Steam",
+  openStore: "Claim in store",
+  offerLabel: "−100 % · free",
   regionLabel: "US store offers",
   region: "Availability and terms may differ in your region.",
   offerDetails: "Region & ownership details",
@@ -55,9 +60,13 @@ const en = {
 };
 
 const de: typeof en = {
-  title: "Gratisangebote",
+  title: "Gratis zum Behalten",
   description:
-    "Zeitweise kostenlos auf Steam. Öffne ein Spiel im Store, um das Angebot zu prüfen und abzuholen.",
+    "Steam verschenkt ab und zu Spiele für kurze Zeit. Wer sie rechtzeitig holt, behält sie für immer.",
+  howTitle: "So funktioniert das",
+  howCheck: "SteamBee prüft den Steam-Store regelmäßig auf Spiele mit −100 %.",
+  howOwned: "Spiele, die dieses Konto schon hat, werden ausgeblendet.",
+  howClaim: "Du holst sie selbst im Store ab. SteamBee kauft nichts.",
   refresh: "Aktualisieren",
   refreshing: "Angebote werden aktualisiert…",
   loading: "Steam-Angebote werden geprüft…",
@@ -66,8 +75,8 @@ const de: typeof en = {
     "In den geprüften Ergebnissen wurden keine zeitlich begrenzten Gratisangebote gefunden.",
   staleEmpty:
     "Bei der letzten erfolgreichen Prüfung gab es keine Angebote. Die aktuelle Verfügbarkeit konnte nicht geprüft werden.",
-  openStore: "Auf Steam öffnen",
-  offerLabel: "Gratis auf Steam",
+  openStore: "Im Store holen",
+  offerLabel: "−100 % · gratis",
   regionLabel: "Angebote aus dem US-Store",
   region: "Verfügbarkeit und Bedingungen können in deiner Region abweichen.",
   offerDetails: "Details zu Region & Besitzstand",
