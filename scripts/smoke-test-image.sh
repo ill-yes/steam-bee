@@ -59,6 +59,29 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 cleanup
 
+# Fixed synthetic hashes from the previous Argon2 versions must still verify in
+# the deployed native binding on each architecture, without a password reset.
+docker run --rm -i --entrypoint node \
+  --network none --cap-drop ALL --security-opt no-new-privileges=true \
+  --read-only "$image" -e '
+const assert = require("node:assert/strict");
+const { hash, verify } = require("@node-rs/argon2");
+const fixtures = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+void (async () => {
+  for (const fixture of fixtures) {
+    assert.equal(await verify(fixture.passwordHash, fixture.password), true,
+      `Argon2 ${fixture.version} hash no longer verifies.`);
+    assert.equal(await verify(fixture.passwordHash, fixture.password + " wrong"), false,
+      `Argon2 ${fixture.version} hash accepted a wrong password.`);
+  }
+  const password = "steam-bee synthetic smoke password";
+  const freshHash = await hash(password);
+  assert.equal(await verify(freshHash, password), true);
+  assert.equal(await verify(freshHash, password + " wrong"), false);
+  console.log(`Argon2 hash compatibility passed on ${process.platform}/${process.arch}.`);
+})().catch(error => { console.error(error); process.exitCode = 1; });
+' < "$(dirname "$0")/../apps/server/tests/fixtures/argon2-password-hashes.json"
+
 docker run --rm --user 0:0 "$image" sh -c \
   'test "$(id -u):$(id -g)" = "0:0"'
 

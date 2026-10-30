@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS base
+FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN npm install --global corepack@0.36.0 && corepack enable
@@ -15,7 +15,10 @@ COPY apps/server/package.json apps/server/package.json
 COPY apps/web/package.json apps/web/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY patches ./patches
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
+COPY scripts/check-package-manager.mjs scripts/check-package-manager.mjs
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+  node scripts/check-package-manager.mjs "$(pnpm --version)" \
+  && pnpm install --frozen-lockfile
 
 FROM deps AS build
 ARG SOURCE_URL=https://github.com/ill-yes/steam-bee
@@ -33,8 +36,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @steam-bee
 RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
-FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS runtime
-RUN rm -rf \
+FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS runtime
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base \
+  && rm -rf \
+  /var/lib/apt/lists/* \
   /usr/local/lib/node_modules/npm \
   /usr/local/lib/node_modules/corepack \
   /opt/yarn-v1.22.22 \

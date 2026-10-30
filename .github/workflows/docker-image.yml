@@ -23,27 +23,35 @@ jobs:
     uses: ./.github/workflows/quality.yml
 
   image:
-    name: PR image validation
+    name: PR image validation (${{ matrix.arch }})
     needs: quality
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Capture build date
         id: build-date
         run: echo "value=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Build image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
           load: true
           push: false
           tags: steam-bee:ci
@@ -58,6 +66,7 @@ jobs:
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.1
           image-ref: steam-bee:ci
           scanners: vuln
           severity: HIGH,CRITICAL
@@ -69,3 +78,19 @@ jobs:
 
       - name: Verify crash and OOM recovery
         run: node scripts/test-crash-recovery.mjs steam-bee:ci
+
+  image-gate:
+    name: PR image validation
+    needs: image
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require successful image validation on every architecture
+        env:
+          IMAGE_RESULT: ${{ needs.image.result }}
+        run: |
+          if [ "$IMAGE_RESULT" != "success" ]; then
+            echo "Image validation did not succeed on every architecture: $IMAGE_RESULT" >&2
+            exit 1
+          fi
