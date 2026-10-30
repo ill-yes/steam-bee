@@ -30,6 +30,9 @@ export type MarketListing = {
   listingId: string;
   assetId: string;
   name: string;
+  /** Steam item type, e.g. "Some Game Trading Card". */
+  type?: string;
+  iconUrl?: string | null;
   quantity: number;
   buyerPays: number;
   sellerReceives: number;

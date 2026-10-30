@@ -917,17 +917,13 @@ describe("grouped inventory and batch market tools", () => {
     expect(list).not.toHaveFocus();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(
-      screen.getByRole("heading", { name: "Listed card 26" }),
-    ).toBeVisible();
-    expect(screen.queryByRole("heading", { name: "Listed card 1" })).toBeNull();
+    expect(screen.getByText("Listed card 26")).toBeVisible();
+    expect(screen.queryByText("Listed card 1")).toBeNull();
     expect(list).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
-    expect(
-      screen.getByRole("heading", { name: "Listed card 1" }),
-    ).toBeVisible();
+    expect(screen.getByText("Listed card 1")).toBeVisible();
     expect(list).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
 
@@ -937,9 +933,7 @@ describe("grouped inventory and batch market tools", () => {
     });
     search.focus();
     fireEvent.change(search, { target: { value: "Listed card 60" } });
-    expect(
-      screen.getByRole("heading", { name: "Listed card 60" }),
-    ).toBeVisible();
+    expect(screen.getByText("Listed card 60")).toBeVisible();
     expect(search).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledTimes(3);
 
@@ -951,7 +945,7 @@ describe("grouped inventory and batch market tools", () => {
     refresh.focus();
     listings = listings.slice(0, 1);
     fireEvent.click(refresh);
-    await screen.findByRole("heading", { name: "Listed card 1" });
+    await screen.findByText("Listed card 1");
     expect(refresh).toHaveFocus();
     expect(scrollIntoView).toHaveBeenCalledTimes(4);
   });

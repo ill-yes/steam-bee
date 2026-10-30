@@ -323,10 +323,7 @@ export class InventoryMarketService {
             ? description.market_hash_name.slice(0, 500)
             : null,
         type: text(description.type, ""),
-        iconUrl:
-          typeof icon === "string" && /^[A-Za-z0-9_\/-]+$/.test(icon)
-            ? `https://community.akamai.steamstatic.com/economy/image/${icon}/96fx96f`
-            : null,
+        iconUrl: economyIconUrl(icon),
         quantity,
         duplicateQuantity,
         marketable: success(description.marketable),
@@ -451,6 +448,8 @@ export class InventoryMarketService {
           listingId,
           assetId,
           name: text(details.name ?? details.market_hash_name),
+          type: text(details.type, ""),
+          iconUrl: economyIconUrl(details.icon_url),
           quantity: integer(asset.amount ?? 1, 1_000_000),
           sellerReceives: toMinorUnits(base, wallet.currency),
           buyerPays: toMinorUnits(base + fees, wallet.currency),
@@ -1224,4 +1223,10 @@ export class InventoryMarketService {
       );
     return this.batches.confirm(accountId, actor, token);
   }
+}
+
+function economyIconUrl(icon: unknown) {
+  return typeof icon === "string" && /^[A-Za-z0-9_\/-]+$/.test(icon)
+    ? `https://community.akamai.steamstatic.com/economy/image/${icon}/96fx96f`
+    : null;
 }

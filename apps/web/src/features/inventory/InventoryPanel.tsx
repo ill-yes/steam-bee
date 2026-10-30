@@ -798,6 +798,10 @@ function AccountInventoryPanel({
                 busy={locked}
                 stale={!!marketError}
                 onPreview={previewCancellation}
+                onRefresh={() => {
+                  if (controller.current)
+                    void refresh(controller.current.signal);
+                }}
                 onBatchPreview={(listingIds, trigger) => {
                   previewTrigger.current = trigger;
                   batch.createPreview({ kind: "cancel", listingIds });
