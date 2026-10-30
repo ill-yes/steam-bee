@@ -49,6 +49,7 @@ import type { LoginMode } from "./useAddAccountFlow";
 import type { ActivityMode } from "./detail/ActivityModeSwitch";
 import { useFarmingSummary } from "../farming/useFarmingSummary";
 import { hubCopy } from "./detail/hubCopy";
+import { automationCopy } from "./detail/automationCopy";
 
 type PendingConfirmation = {
   description: string;
@@ -78,6 +79,7 @@ function AccountWorkspace({
 }: AccountDetailProps) {
   const { locale, messages: t } = useI18n();
   const hub = hubCopy(locale);
+  const automation = automationCopy(locale);
   const o = t.operations;
   const {
     library,
@@ -657,11 +659,12 @@ function AccountWorkspace({
   const presetsPanel = toolPage(
     Bookmark,
     hub.presets,
-    t.tools.presetsDescription,
-    <div className={cardClass}>
+    automation.presetsDescription,
+    <div className="min-w-0">
       {gateResources(
         <PresetPanel
           presets={presets}
+          schedules={schedules}
           activePresetId={account.activePresetId}
           presetName={presetName}
           busyAction={busyAction}
@@ -669,7 +672,7 @@ function AccountWorkspace({
           personaState={personaState}
           customTitle={customTitle}
           onPresetNameChange={setPresetName}
-          onCreatePreset={() => void createPreset()}
+          onCreatePreset={createPreset}
           onApplyPreset={(preset) => void applyPreset(preset)}
           onDeletePreset={(preset) => void deletePreset(preset)}
         />,
@@ -679,8 +682,8 @@ function AccountWorkspace({
   const schedulesPanel = toolPage(
     CalendarClock,
     hub.schedules,
-    t.tools.schedulesDescription,
-    <div className={cardClass}>
+    automation.schedulesDescription,
+    <div className="min-w-0">
       {gateResources(
         <SchedulePanel
           schedules={schedules}
@@ -697,7 +700,7 @@ function AccountWorkspace({
           onScheduleStartChange={setScheduleStart}
           onScheduleEndChange={setScheduleEnd}
           onToggleWeekday={toggleWeekday}
-          onCreateSchedule={() => void createSchedule()}
+          onCreateSchedule={createSchedule}
           onToggleSchedule={(schedule) => void toggleSchedule(schedule)}
           onDeleteSchedule={(schedule) => void deleteSchedule(schedule)}
           preview={schedulePreview}
@@ -711,8 +714,8 @@ function AccountWorkspace({
   const analyticsPanel = toolPage(
     BarChart3,
     hub.analytics,
-    t.tools.analyticsDescription,
-    <div className={cardClass}>
+    automation.analyticsDescription,
+    <div className="min-w-0">
       {gateResources(
         <AnalyticsPanel
           analytics={analytics}

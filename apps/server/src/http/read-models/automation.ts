@@ -87,6 +87,13 @@ export async function getAccountAnalytics(
     ...new Set(sessions.flatMap((session) => session.appIds)),
   ]);
 
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const start = new Date(startOfToday);
+    start.setDate(start.getDate() - 6 + index);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { startsAt: start.getTime(), endsAt: end.getTime(), durationMs: 0 };
+  });
   let todayMs = 0;
   let last7DaysMs = 0;
   const gameDurations = new Map<number, number>();
@@ -108,6 +115,15 @@ export async function getAccountAnalytics(
         endedAt,
         last7Days,
         now,
+      );
+    }
+    for (const day of days) {
+      if (endedAt <= day.startsAt || session.startedAt >= day.endsAt) continue;
+      day.durationMs += overlappingDurationMs(
+        session.startedAt,
+        endedAt,
+        day.startsAt,
+        Math.min(day.endsAt, now),
       );
     }
     for (const appId of session.appIds) {
@@ -143,6 +159,7 @@ export async function getAccountAnalytics(
         durationMs,
       })),
     recentSessions: presentedSessions.slice(0, 12),
+    days: days.map(({ startsAt, durationMs }) => ({ startsAt, durationMs })),
   };
 }
 

@@ -1,0 +1,106 @@
+import type { LocaleCode } from "../../../i18n";
+
+const en = {
+  presetsDescription:
+    "Saved game selections with online status and Steam title. One click loads one, and schedules use them automatically.",
+  saveCurrent: "Save current selection",
+  saveCurrentHint: "{count} games · {persona}{title}",
+  noTitle: " · no title",
+  withTitle: " · title “{title}”",
+  runningNow: "Running now",
+  activeButton: "Active",
+  gamesCount: "{count} games",
+  gameCount: "1 game",
+  usedBySchedules: "in {count} schedules",
+  usedBySchedule: "in 1 schedule",
+  morePresetGames: "+{count}",
+  newPresetTitle: "Save as preset",
+  newPresetDescription:
+    "Stores the games currently selected for boosting, the online status and the Steam title.",
+  cancel: "Cancel",
+  schedulesDescription:
+    "Starts a preset at fixed times and pauses again afterwards.",
+  newSchedule: "New schedule",
+  timezone: "Time zone",
+  thisWeek: "This week",
+  weekLabel: "Weekly plan of enabled and disabled schedules",
+  offSuffix: "off",
+  nextStart: "next start {time}",
+  noNextStart: "no start in the next 7 days",
+  skippedNext: "next start skipped",
+  disabled: "switched off",
+  everyDay: "daily",
+  weekdaysShort: "Mon–Fri",
+  presetNamed: "Preset “{name}”",
+  toggleSchedule: "{name} on or off",
+  upcoming: "Upcoming windows",
+  analyticsDescription: "How long SteamBee reported games for this account.",
+  runningNowShort: "Running now",
+  notRunning: "Nothing right now",
+  last7Days: "Last 7 days",
+  perDay: "Ø {value} per day",
+  totalSessions: "Sessions",
+  allTime: "in total",
+  playtimePerDay: "Playtime per day",
+  playtimePerDayLabel: "Reported playtime per day over the last 7 days",
+  todayShort: "Today",
+  goalProgress: "{current} of {target} h",
+  goalLeft: "{hours} h left",
+  goalReached: "reached",
+};
+
+type Copy = typeof en;
+
+const de: Copy = {
+  presetsDescription:
+    "Gespeicherte Spielauswahl mit Online-Status und Titel. Ein Klick lädt sie, Zeitpläne nutzen sie automatisch.",
+  saveCurrent: "Aktuelle Auswahl speichern",
+  saveCurrentHint: "{count} Spiele · {persona}{title}",
+  noTitle: " · kein Titel",
+  withTitle: " · Titel „{title}“",
+  runningNow: "Läuft gerade",
+  activeButton: "Aktiv",
+  gamesCount: "{count} Spiele",
+  gameCount: "1 Spiel",
+  usedBySchedules: "in {count} Zeitplänen",
+  usedBySchedule: "in 1 Zeitplan",
+  morePresetGames: "+{count}",
+  newPresetTitle: "Als Vorlage speichern",
+  newPresetDescription:
+    "Speichert die gerade zum Boosten ausgewählten Spiele, den Online-Status und den Steam-Titel.",
+  cancel: "Abbrechen",
+  schedulesDescription:
+    "Startet eine Vorlage zu festen Zeiten und pausiert danach wieder.",
+  newSchedule: "Neuer Zeitplan",
+  timezone: "Zeitzone",
+  thisWeek: "Diese Woche",
+  weekLabel: "Wochenplan der aktiven und ausgeschalteten Zeitpläne",
+  offSuffix: "aus",
+  nextStart: "nächster Start {time}",
+  noNextStart: "kein Start in den nächsten 7 Tagen",
+  skippedNext: "nächster Start übersprungen",
+  disabled: "ausgeschaltet",
+  everyDay: "täglich",
+  weekdaysShort: "Mo–Fr",
+  presetNamed: "Vorlage „{name}“",
+  toggleSchedule: "{name} ein- oder ausschalten",
+  upcoming: "Nächste Termine",
+  analyticsDescription:
+    "Wie lange SteamBee auf diesem Konto Spiele gemeldet hat.",
+  runningNowShort: "Läuft gerade",
+  notRunning: "Gerade nichts",
+  last7Days: "Letzte 7 Tage",
+  perDay: "Ø {value} pro Tag",
+  totalSessions: "Sessions",
+  allTime: "insgesamt",
+  playtimePerDay: "Spielzeit pro Tag",
+  playtimePerDayLabel: "Gemeldete Spielzeit pro Tag in den letzten 7 Tagen",
+  todayShort: "Heute",
+  goalProgress: "{current} von {target} h",
+  goalLeft: "noch {hours} h",
+  goalReached: "erreicht",
+};
+
+export function automationCopy(locale: LocaleCode) {
+  return locale === "de" ? de : en;
+}

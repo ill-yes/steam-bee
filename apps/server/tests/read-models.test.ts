@@ -221,6 +221,45 @@ describe("HTTP read models", () => {
     expect(await getAccountSchedules(crypto.randomUUID())).toEqual([]);
   });
 
+  it("splits recent playtime into local days, ending with today", async () => {
+    const midnight = new Date(2026, 9, 30);
+    const now = midnight.getTime() + 10 * 3_600_000;
+    const accountId = await insertAccount("daily-read", now);
+    await db.insert(boostSession).values([
+      {
+        id: crypto.randomUUID(),
+        accountId,
+        presetId: null,
+        appIdsJson: "[730]",
+        startedAt: midnight.getTime() - 2 * 3_600_000,
+        endedAt: midnight.getTime() + 3_600_000,
+        stopReason: "manual",
+        createdAt: now,
+      },
+      {
+        id: crypto.randomUUID(),
+        accountId,
+        presetId: null,
+        appIdsJson: "[440]",
+        startedAt: now - 30 * 60_000,
+        endedAt: null,
+        stopReason: null,
+        createdAt: now,
+      },
+    ]);
+
+    const analytics = await getAccountAnalytics(accountId, now);
+
+    expect(analytics.days).toHaveLength(7);
+    expect(analytics.days?.at(-1)).toEqual({
+      startsAt: midnight.getTime(),
+      durationMs: 90 * 60_000,
+    });
+    expect(analytics.days?.at(-2)?.durationMs).toBe(2 * 3_600_000);
+    expect(analytics.days?.[0]?.durationMs).toBe(0);
+    expect(analytics.todayMs).toBe(90 * 60_000);
+  });
+
   it("rejects unsupported persisted persona states", async () => {
     const now = Date.now();
     const accountId = await insertAccount("invalid-persona-read", now);

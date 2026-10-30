@@ -257,7 +257,11 @@ describe("web smoke", () => {
     expect(
       await screen.findByRole("heading", { name: "Presets", level: 2 }),
     ).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Save current selection/ }),
+    );
     expect(await screen.findByLabelText("Preset name")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByText("CSV")).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Analytics als JSON exportieren"),
@@ -268,6 +272,10 @@ describe("web smoke", () => {
     expect(
       await screen.findByRole("heading", { name: "Schedules", level: 2 }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", { name: "Werktag on or off" }),
+    ).toHaveAttribute("aria-checked");
+    fireEvent.click(screen.getByRole("button", { name: "New schedule" }));
     expect(screen.getByText("Choose preset")).toBeInTheDocument();
     const monday = screen.getByRole("button", { name: "Mon" });
     expect(monday).toHaveAttribute("aria-pressed", "true");
@@ -357,7 +365,7 @@ describe("web smoke", () => {
     });
     renderAccountDetail();
     fireEvent.click(section("Presets"));
-    await screen.findByLabelText("Preset name");
+    await screen.findByRole("button", { name: /Save current selection/ });
 
     fireEvent.click(section("Schedules"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -598,6 +606,9 @@ describe("web smoke", () => {
   it("creates a preset from the current draft selection", async () => {
     renderAccountDetail();
     fireEvent.click(section("Presets"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Save current selection/ }),
+    );
 
     fireEvent.change(await screen.findByLabelText("Preset name"), {
       target: { value: "Idle Evening" },
@@ -858,8 +869,7 @@ describe("web smoke", () => {
       activeAppIds: [570],
     });
     fireEvent.click(section("Presets"));
-    await screen.findByLabelText("Preset name");
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Apply/ }));
     expect(screen.getByRole("alertdialog")).toHaveTextContent(
       "Applying this preset stops farming",
     );

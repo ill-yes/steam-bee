@@ -1,14 +1,27 @@
-import { PlaySquare, Star, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { PlaySquare, Plus, Star, Trash2 } from "lucide-react";
 import type { PersonaState } from "@steam-bee/contracts";
-import type { BoostPreset } from "../../../api";
-import { Badge } from "../../../components/ui/badge";
+import type { BoostPreset, BoostSchedule } from "../../../api";
 import { Button } from "../../../components/ui/button";
+import { Dialog } from "../../../components/ui/dialog";
 import { Input } from "../../../components/ui/form";
 import { personaLabel } from "../../../lib/status";
+import { cn } from "../../../lib/utils";
 import { interpolate, useI18n } from "../../../i18n";
+import { SteamAppArtwork } from "../../library/SteamAppArtwork";
+import { automationCopy } from "./automationCopy";
 
+const personaDot: Record<number, string> = {
+  1: "bg-[var(--good)]",
+  2: "bg-[var(--danger)]",
+  3: "bg-[var(--warn)]",
+  7: "bg-[var(--line-strong)]",
+};
+
+/** Presets as cards with game artwork; a dashed card saves the current selection. */
 export function PresetPanel({
   presets,
+  schedules = [],
   activePresetId,
   presetName,
   busyAction,
@@ -21,6 +34,7 @@ export function PresetPanel({
   onDeletePreset,
 }: {
   presets: BoostPreset[];
+  schedules?: BoostSchedule[];
   activePresetId: string | null;
   presetName: string;
   busyAction: string | null;
@@ -28,90 +42,222 @@ export function PresetPanel({
   personaState: PersonaState;
   customTitle: string;
   onPresetNameChange: (value: string) => void;
-  onCreatePreset: () => void;
+  /** Resolves true once the preset is stored. */
+  onCreatePreset: () => Promise<boolean> | void;
   onApplyPreset: (preset: BoostPreset) => void;
   onDeletePreset: (preset: BoostPreset) => void;
 }) {
-  const { messages: t } = useI18n();
+  const { messages: t, locale } = useI18n();
+  const c = automationCopy(locale);
+  const [creating, setCreating] = useState(false);
+  const busy = Boolean(busyAction);
+  const title = customTitle.trim();
+
+  async function save() {
+    if ((await onCreatePreset()) !== false) setCreating(false);
+  }
 
   return (
     <section className="grid gap-3">
-      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-        <Input
-          value={presetName}
-          onChange={(event) => onPresetNameChange(event.target.value)}
-          placeholder={t.tools.presetPlaceholder}
-          aria-label={t.tools.presetNameAria}
-        />
-        <Button
-          variant="primary"
-          size="sm"
-          disabled={Boolean(busyAction) || selectedCount === 0}
-          onClick={onCreatePreset}
-        >
-          <Star size={15} />
-          {t.tools.savePreset}
-        </Button>
-      </div>
-      <p className="text-[11px] leading-4 text-[var(--muted)]">
-        {interpolate(t.tools.current, {
-          count: selectedCount,
-          persona: personaLabel(personaState, t),
-          titleActive: customTitle.trim() ? t.tools.withSteamTitle : "",
-        })}
-      </p>
-      <div className="grid max-h-56 gap-2 overflow-auto pr-1">
-        {presets.length === 0 ? (
-          <div className="rounded-md border border-dashed border-[var(--line-strong)] p-3 text-sm text-[var(--muted)]">
-            {t.tools.noPresets}
-          </div>
-        ) : (
-          presets.map((preset) => (
-            <div
+      <ul className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {presets.map((preset) => {
+          const active = preset.id === activePresetId;
+          const scheduleCount = schedules.filter(
+            (schedule) => schedule.presetId === preset.id,
+          ).length;
+          const names = preset.games.map((game) => game.name);
+          return (
+            <li
               key={preset.id}
-              className="grid gap-2 rounded-md border border-[var(--line)] bg-[var(--surface-2)] p-2"
+              className={cn(
+                "grid min-w-0 overflow-hidden rounded-xl border bg-[var(--surface)]",
+                active
+                  ? "border-[var(--good)] ring-1 ring-[var(--good)]"
+                  : "border-[var(--line)]",
+              )}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <strong className="block truncate text-sm">
+              <div
+                aria-hidden="true"
+                className={cn(
+                  "grid h-24 gap-0.5 bg-[var(--surface-2)]",
+                  preset.games.length >= 3
+                    ? "grid-cols-3"
+                    : preset.games.length === 2
+                      ? "grid-cols-2"
+                      : "grid-cols-1",
+                )}
+              >
+                {preset.games.slice(0, 3).map((game) => (
+                  <SteamAppArtwork
+                    key={game.appId}
+                    appId={game.appId}
+                    name={game.name}
+                    size="fill"
+                  />
+                ))}
+              </div>
+              <div className="grid min-w-0 gap-2.5 p-3.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h3 className="min-w-0 flex-1 break-words text-base font-semibold [overflow-wrap:anywhere]">
                     {preset.name}
-                  </strong>
-                  <span className="text-xs text-[var(--muted)]">
-                    {preset.appIds.length} {t.common.games} ·{" "}
-                    {personaLabel(preset.personaState, t)}
-                    {preset.customTitle ? t.tools.titleActive : ""}
-                  </span>
+                  </h3>
+                  {active && (
+                    <span className="shrink-0 rounded-full bg-[var(--good-soft)] px-2 py-0.5 text-[11px] font-bold text-[var(--good)]">
+                      {c.runningNow}
+                    </span>
+                  )}
                 </div>
-                {preset.id === activePresetId ? (
-                  <Badge tone="good">{t.tools.active}</Badge>
-                ) : null}
+                <p className="min-w-0 truncate text-sm text-[var(--muted)]">
+                  {names.slice(0, 3).join(", ")}
+                  {names.length > 3
+                    ? ` ${interpolate(c.morePresetGames, { count: names.length - 3 })}`
+                    : ""}
+                </p>
+                <div className="flex flex-wrap gap-1.5 text-xs">
+                  <Chip>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "h-2 w-2 rounded-full",
+                        personaDot[preset.personaState] ??
+                          "bg-[var(--line-strong)]",
+                      )}
+                    />
+                    {personaLabel(preset.personaState, t)}
+                  </Chip>
+                  {preset.customTitle && (
+                    <Chip>
+                      {interpolate(c.withTitle, {
+                        title: preset.customTitle,
+                      }).replace(/^ · /, "")}
+                    </Chip>
+                  )}
+                  <Chip>
+                    {preset.appIds.length === 1
+                      ? c.gameCount
+                      : interpolate(c.gamesCount, {
+                          count: preset.appIds.length,
+                        })}
+                  </Chip>
+                  {scheduleCount > 0 && (
+                    <Chip>
+                      {scheduleCount === 1
+                        ? c.usedBySchedule
+                        : interpolate(c.usedBySchedules, {
+                            count: scheduleCount,
+                          })}
+                    </Chip>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant={active ? "secondary" : "primary"}
+                    size="sm"
+                    className="min-h-11 flex-1 lg:min-h-9"
+                    disabled={busy || active}
+                    onClick={() => onApplyPreset(preset)}
+                    aria-label={
+                      active ? undefined : `${t.tools.apply}: ${preset.name}`
+                    }
+                  >
+                    {!active && <PlaySquare size={15} aria-hidden="true" />}
+                    {active ? c.activeButton : t.tools.apply}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy}
+                    onClick={() => onDeletePreset(preset)}
+                    aria-label={`${preset.name} ${t.tools.deletePreset}`}
+                    title={t.tools.deletePreset}
+                  >
+                    <Trash2 size={14} aria-hidden="true" />
+                  </Button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="flex-1"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => onApplyPreset(preset)}
-                >
-                  <PlaySquare size={15} />
-                  {t.tools.apply}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  disabled={Boolean(busyAction)}
-                  onClick={() => onDeletePreset(preset)}
-                  aria-label={`${preset.name} ${t.tools.deletePreset}`}
-                  title={t.tools.deletePreset}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
+            </li>
+          );
+        })}
+        <li className="min-w-0">
+          <button
+            type="button"
+            disabled={busy || selectedCount === 0}
+            onClick={() => setCreating(true)}
+            className="grid h-full min-h-56 w-full place-content-center justify-items-center gap-2 rounded-xl border-2 border-dashed border-[var(--line-strong)] p-4 text-center transition-colors hover:bg-[var(--surface)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus size={24} aria-hidden="true" />
+            <strong className="text-sm">{c.saveCurrent}</strong>
+            <span className="text-xs text-[var(--muted)]">
+              {interpolate(c.saveCurrentHint, {
+                count: selectedCount,
+                persona: personaLabel(personaState, t),
+                title: title ? interpolate(c.withTitle, { title }) : c.noTitle,
+              })}
+            </span>
+          </button>
+        </li>
+      </ul>
+      {presets.length === 0 && (
+        <p className="text-sm text-[var(--muted)]">{t.tools.noPresets}</p>
+      )}
+      {creating && (
+        <Dialog
+          title={c.newPresetTitle}
+          description={c.newPresetDescription}
+          onClose={() => setCreating(false)}
+          closeDisabled={busyAction === "preset-create"}
+          className="max-w-md"
+        >
+          <form
+            className="grid gap-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
+            }}
+          >
+            <Input
+              value={presetName}
+              onChange={(event) => onPresetNameChange(event.target.value)}
+              placeholder={t.tools.presetPlaceholder}
+              aria-label={t.tools.presetNameAria}
+            />
+            <p className="text-xs text-[var(--muted)]">
+              {interpolate(t.tools.current, {
+                count: selectedCount,
+                persona: personaLabel(personaState, t),
+                titleActive: title ? t.tools.withSteamTitle : "",
+              })}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setCreating(false)}
+              >
+                {c.cancel}
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={busy || selectedCount === 0}
+              >
+                <Star size={15} aria-hidden="true" />
+                {t.tools.savePreset}
+              </Button>
             </div>
-          ))
-        )}
-      </div>
+          </form>
+        </Dialog>
+      )}
     </section>
+  );
+}
+
+function Chip({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[var(--muted-strong)]">
+      {children}
+    </span>
   );
 }
