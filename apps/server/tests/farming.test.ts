@@ -274,6 +274,31 @@ describe("card farming lifecycle", () => {
     expect(adapter.cardValues).toHaveBeenCalledOnce();
   });
 
+  it("remembers games without card prices instead of searching on every read", async () => {
+    const { controller, adapter } = setup([
+      game(1, 300, oldPurchase),
+      game(2, 300, oldPurchase),
+    ]);
+    adapter.cardValues = vi.fn(
+      async () =>
+        new Map([
+          [1, { average: 0.05, text: "0,05€" }],
+          [2, null],
+        ]),
+    );
+    const config = { ...DEFAULT_FARMING_CONFIG, order: "card_value" as const };
+    const scanned = await controller.scan(accountId, config);
+    expect(scanned.pricing).toBe(true);
+    await vi.waitFor(() =>
+      expect(controller.snapshot(accountId).pricing).toBe(false),
+    );
+    controller.snapshot(accountId, config);
+    expect(adapter.cardValues).toHaveBeenCalledOnce();
+    expect(
+      controller.snapshot(accountId).games.map((entry) => entry.cardValue),
+    ).toEqual([{ average: 0.05, text: "0,05€" }, null]);
+  });
+
   it("keeps the resume request through interruptions and clears it on a stop", async () => {
     const { controller, adapter } = setup([game(1, 119, oldPurchase)]);
     await controller.start(accountId, DEFAULT_FARMING_CONFIG);

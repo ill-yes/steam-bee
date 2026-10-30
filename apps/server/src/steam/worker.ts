@@ -668,7 +668,8 @@ export class SteamWorker extends EventEmitter {
       async (eresult?: number, message?: string) => {
         const wasFarming = this.farmingAppIds !== null;
         const decision = classifySteamFailure(eresult);
-        const resumeFarming = wasFarming && this.keepsRunningForFarming(decision);
+        const resumeFarming =
+          wasFarming && this.keepsRunningForFarming(decision);
         this.clearFarmingSelection();
         this.communitySession.invalidate();
         if (resumeFarming) this.awaitingFarming = true;

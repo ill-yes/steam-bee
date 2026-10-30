@@ -51,6 +51,8 @@ export function useFarmingPanel(
   const active =
     currentSnapshot !== null &&
     ["scanning", "warming", "farming"].includes(currentSnapshot.phase);
+  // Card prices arrive in the background, also while farming is stopped.
+  const polling = active || Boolean(currentSnapshot?.pricing);
 
   function accept(result: FarmingSnapshot) {
     if (result.accountId !== accountId) return;
@@ -107,7 +109,7 @@ export function useFarmingPanel(
   }, [accountId, availabilityKey, loading, busy]);
 
   useEffect(() => {
-    if (!active || busy) return;
+    if (!polling || busy) return;
     const controller = new AbortController();
     const requestEpoch = epoch.current;
     let disposed = false;
@@ -141,7 +143,7 @@ export function useFarmingPanel(
       clearTimeout(timer);
       controller.abort();
     };
-  }, [accountId, active, busy]);
+  }, [accountId, polling, busy]);
 
   function edit(change: Partial<FarmingDraft>) {
     if (busyRef.current) return;
