@@ -1008,8 +1008,11 @@ export class InventoryMarketService {
             listingId,
             name: listing?.name ?? `Listing ${listingId}`,
             quantity: listing?.quantity ?? 1,
-            buyerPays: listing?.buyerPays ?? null,
-            sellerReceives: listing?.sellerReceives ?? null,
+            // Listings carry unit prices; preview rows carry row totals.
+            buyerPays: listing ? listing.buyerPays * listing.quantity : null,
+            sellerReceives: listing
+              ? listing.sellerReceives * listing.quantity
+              : null,
             steamFee: null,
             publisherFee: null,
             status: listing ? ("ready" as const) : ("unavailable" as const),

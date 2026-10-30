@@ -172,9 +172,15 @@ function AccountInventoryPanel({
       : apiErrorMessage(error, messages);
   }
 
-  const batch = useBatchMarket(accountId, errorMessage, () => {
+  const batch = useBatchMarket(accountId, errorMessage, (job) => {
     setBasket({});
     pendingListingIds.current = null;
+    // Pending listings may already exist, so the pending-state effect would
+    // not re-arm the watch for the new ones.
+    if (job.items.some((item) => item.status === "pending_confirmation")) {
+      confirmationWatchStarted.current = Date.now();
+      setConfirmationWatchUntil(Date.now() + CONFIRMATION_WATCH_MS);
+    }
     if (controller.current) void refresh(controller.current.signal);
   });
   const locked = busy || batch.busy || batch.running || batch.recoveryRequired;

@@ -11,6 +11,7 @@ describe("price rule example", () => {
     expect(sellerReceives(115)).toBe(100);
     // Floored fees allow more than buyerPays / 1.15 here: 28 + 1 + 2 = 31.
     expect(sellerReceives(31)).toBe(28);
+    expect(sellerReceives(40)).toBe(36);
   });
 
   it("matches a brute-force search for the largest payout", () => {
