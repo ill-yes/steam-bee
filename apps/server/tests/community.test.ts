@@ -133,6 +133,27 @@ describe("Steam Community HTTP transport", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  it("discards the cached web session when Steam sends it to sign in", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const discard = vi.fn();
+    const request = createCommunityRequest(
+      async () => SESSION,
+      fetcher,
+      Date.now,
+      discard,
+    );
+    fetcher.mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://steamcommunity.com/login/home/" },
+      }),
+    );
+    await expect(request("account-one", "/market/")).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect(discard).toHaveBeenCalledWith("account-one", SESSION.sessionId);
+  });
+
   it("follows a same-host redirect to the profile's custom URL", async () => {
     const { fetcher, request } = harness();
     fetcher

@@ -18,6 +18,8 @@ export function createCommunityRequest(
   sessionFor: (accountId: string) => Promise<CommunitySession>,
   fetcher: typeof fetch = fetch,
   now: () => number = Date.now,
+  discardSession: (accountId: string, sessionId: string) => void = () =>
+    undefined,
 ) {
   // Market cookies belong to one web session and expire with Steam's Max-Age.
   const marketCookies = new Map<
@@ -120,6 +122,8 @@ export function createCommunityRequest(
             },
             "Steam Community redirect rejected",
           );
+          // Cached cookies stay valid for 30 minutes; Steam may end them sooner.
+          discardSession(accountId, session.sessionId);
           throw appError("Steam Community requires a renewed sign-in.", 409);
         }
         target = next;
@@ -224,6 +228,10 @@ function redirectPath(response: Response, from: URL): string | null {
   }
 }
 
-export const communityRequest = createCommunityRequest((accountId) =>
-  steamManager.getCommunitySession(accountId),
+export const communityRequest = createCommunityRequest(
+  (accountId) => steamManager.getCommunitySession(accountId),
+  fetch,
+  Date.now,
+  (accountId, sessionId) =>
+    steamManager.discardCommunitySession(accountId, sessionId),
 );

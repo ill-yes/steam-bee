@@ -75,6 +75,11 @@ export class CommunitySessionBroker {
     }
   }
 
+  /** Drops a session Steam rejected, unless a newer one replaced it already. */
+  discard(sessionId: string) {
+    if (this.cached?.sessionId === sessionId) this.cached = null;
+  }
+
   invalidate() {
     this.cached = null;
     if (this.pending) {
