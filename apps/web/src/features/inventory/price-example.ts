@@ -1,7 +1,7 @@
 import type { MarketPriceSettings } from "@steam-bee/contracts";
 
 /** Typical card prices in wallet minor units, used only for the worked example. */
-const exampleSource: Record<MarketPriceSettings["priceMode"], number> = {
+export const exampleSource: Record<MarketPriceSettings["priceMode"], number> = {
   lowestSellOrder: 17,
   highestBuyOrder: 14,
 };

@@ -10,7 +10,7 @@ import { interpolate, useI18n } from "../../i18n";
 import { advancedInventoryCopy } from "./advanced-copy";
 import { formatMinorToMajor, parseMajorToMinor } from "./inventory-model";
 import { formatMoney } from "./inventory-ui";
-import { priceExample } from "./price-example";
+import { exampleSource, priceExample } from "./price-example";
 import { cn } from "../../lib/utils";
 import {
   readPriceRulesDraft,
@@ -358,141 +358,155 @@ export function PriceRulesPanel({
                   </Alert>
                 )
               )}
-              <div className="@container min-w-0">
-                <div className="grid min-w-0 items-start gap-4 @min-[44rem]:grid-cols-[minmax(0,3fr)_minmax(240px,2fr)]">
-                  <div className="grid min-w-0 gap-3">
-                    <fieldset
-                      role="radiogroup"
-                      className="grid min-w-0 gap-2 @min-[28rem]:grid-cols-2"
-                      disabled={disabled || saving}
-                    >
-                      <legend className="mb-1.5 text-xs font-semibold text-[var(--muted-strong)]">
-                        {a.priceMode}
-                      </legend>
-                      {(
-                        [
-                          ["lowestSellOrder", a.lowestSellOrder, a.lowestCard],
-                          ["highestBuyOrder", a.highestBuyOrder, a.highestCard],
-                        ] as const
-                      ).map(([value, title, hint]) => (
-                        <label
-                          key={value}
-                          className={cn(
-                            "flex min-w-0 cursor-pointer items-start gap-2.5 rounded-lg border p-3 text-sm",
-                            mode === value
-                              ? "border-[var(--primary)] bg-[var(--surface-2)] ring-1 ring-[var(--primary)]"
-                              : "border-[var(--line)] hover:border-[var(--line-strong)]",
-                          )}
-                        >
-                          <input
-                            type="radio"
-                            name={`${contentId}-mode`}
-                            value={value}
-                            checked={mode === value}
-                            onChange={() => {
-                              setMode(value);
-                              change({ priceMode: value });
-                            }}
-                            className="mt-0.5"
-                          />
-                          <span className="min-w-0">
-                            <strong className="block">{title}</strong>
-                            <span className="text-xs text-[var(--muted)]">
-                              {hint}
-                            </span>
-                          </span>
-                        </label>
-                      ))}
-                    </fieldset>
-                    <p className="text-xs text-[var(--muted)]">
-                      {mode === "highestBuyOrder"
-                        ? a.highestHelp
-                        : a.lowestHelp}
-                    </p>
-                    <div className="grid min-w-0 gap-3 @min-[28rem]:grid-cols-3">
-                      <Label>
-                        {a.adjustment}
-                        {currency
-                          ? ` (${(draftCurrency.current ?? currency).code})`
-                          : ""}
-                        <Input
-                          inputMode="text"
-                          type="text"
-                          value={adjustment}
-                          onChange={(event) => {
-                            setAdjustment(event.target.value);
-                            change({ adjustment: event.target.value });
+              <StrategyPicker
+                mode={mode}
+                adjustment={adjustment}
+                minimum={minimum}
+                maximum={maximum}
+                currency={draftCurrency.current ?? currency}
+                disabled={disabled || saving}
+                onPick={(priceMode, amount) => {
+                  const digits =
+                    (draftCurrency.current ?? currency)?.minorUnit ?? 2;
+                  const text = localizeDecimal(
+                    formatMinorToMajor(amount, digits) ?? "0",
+                    locale,
+                  );
+                  setMode(priceMode);
+                  setAdjustment(text);
+                  change({ priceMode, adjustment: text });
+                }}
+              />
+              <PriceScale
+                mode={mode}
+                adjustment={adjustment}
+                minimum={minimum}
+                maximum={maximum}
+                currency={draftCurrency.current ?? currency}
+              />
+              <section className="grid min-w-0 gap-3 rounded-lg border border-[var(--line)] p-3">
+                <h4 className="text-sm font-semibold">{a.fineTune}</h4>
+                <div className="@container grid min-w-0 gap-3">
+                  <fieldset
+                    role="radiogroup"
+                    className="grid min-w-0 gap-2 @min-[28rem]:grid-cols-2"
+                    disabled={disabled || saving}
+                  >
+                    <legend className="mb-1.5 text-xs font-semibold text-[var(--muted-strong)]">
+                      {a.priceMode}
+                    </legend>
+                    {(
+                      [
+                        ["lowestSellOrder", a.lowestSellOrder, a.lowestCard],
+                        ["highestBuyOrder", a.highestBuyOrder, a.highestCard],
+                      ] as const
+                    ).map(([value, title, hint]) => (
+                      <label
+                        key={value}
+                        className={cn(
+                          "flex min-w-0 cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2 text-sm",
+                          mode === value
+                            ? "border-[var(--primary)] bg-[var(--surface-2)] ring-1 ring-[var(--primary)]"
+                            : "border-[var(--line)] hover:border-[var(--line-strong)]",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name={`${contentId}-mode`}
+                          value={value}
+                          checked={mode === value}
+                          onChange={() => {
+                            setMode(value);
+                            change({ priceMode: value });
                           }}
-                          disabled={disabled || saving || !currency}
+                          className="mt-0.5"
                         />
-                      </Label>
-                      <Label>
-                        {a.minPrice}
-                        <Input
-                          inputMode="decimal"
-                          type="text"
-                          placeholder={a.optional}
-                          value={minimum}
-                          onChange={(event) => {
-                            setMinimum(event.target.value);
-                            change({ minimum: event.target.value });
-                          }}
-                          disabled={disabled || saving || !currency}
-                        />
-                      </Label>
-                      <Label>
-                        {a.maxPrice}
-                        <Input
-                          inputMode="decimal"
-                          type="text"
-                          placeholder={a.optional}
-                          value={maximum}
-                          onChange={(event) => {
-                            setMaximum(event.target.value);
-                            change({ maximum: event.target.value });
-                          }}
-                          disabled={disabled || saving || !currency}
-                        />
-                      </Label>
-                    </div>
-                    <p className="text-xs leading-5 text-[var(--muted)]">
-                      {a.adjustmentHelp}
-                    </p>
-                    <details className="text-sm">
-                      <summary className="cursor-pointer font-semibold">
-                        {interpolate(a.advancedDelay, { seconds: delay })}
-                      </summary>
-                      <Label className="mt-2">
-                        {a.delay}
-                        <Input
-                          type="number"
-                          min={1}
-                          max={60}
-                          step={1}
-                          value={delay}
-                          onChange={(event) => {
-                            setDelay(event.target.value);
-                            change({ delay: event.target.value });
-                          }}
-                          disabled={disabled || saving}
-                          className="max-w-32"
-                        />
-                      </Label>
-                    </details>
+                        <span className="min-w-0">
+                          <strong className="block">{title}</strong>
+                          <span className="sr-only">{hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <p className="text-xs text-[var(--muted)]">
+                    {mode === "highestBuyOrder" ? a.highestHelp : a.lowestHelp}
+                  </p>
+                  <div className="grid min-w-0 gap-3 @min-[28rem]:grid-cols-3">
+                    <Label>
+                      {a.adjustment}
+                      {currency
+                        ? ` (${(draftCurrency.current ?? currency).code})`
+                        : ""}
+                      <Input
+                        inputMode="text"
+                        type="text"
+                        value={adjustment}
+                        onChange={(event) => {
+                          setAdjustment(event.target.value);
+                          change({ adjustment: event.target.value });
+                        }}
+                        disabled={disabled || saving || !currency}
+                      />
+                    </Label>
+                    <Label>
+                      {a.minPrice}
+                      <Input
+                        inputMode="decimal"
+                        type="text"
+                        placeholder={a.optional}
+                        value={minimum}
+                        onChange={(event) => {
+                          setMinimum(event.target.value);
+                          change({ minimum: event.target.value });
+                        }}
+                        disabled={disabled || saving || !currency}
+                      />
+                    </Label>
+                    <Label>
+                      {a.maxPrice}
+                      <Input
+                        inputMode="decimal"
+                        type="text"
+                        placeholder={a.optional}
+                        value={maximum}
+                        onChange={(event) => {
+                          setMaximum(event.target.value);
+                          change({ maximum: event.target.value });
+                        }}
+                        disabled={disabled || saving || !currency}
+                      />
+                    </Label>
                   </div>
-                  <PriceExampleCard
-                    mode={mode}
-                    adjustment={adjustment}
-                    minimum={minimum}
-                    maximum={maximum}
-                    currency={draftCurrency.current ?? currency}
-                  />
+                  <p className="text-xs leading-5 text-[var(--muted)]">
+                    {a.adjustmentHelp}
+                  </p>
+                  <details className="text-sm">
+                    <summary className="cursor-pointer font-semibold">
+                      {interpolate(a.advancedDelay, { seconds: delay })}
+                    </summary>
+                    <Label className="mt-2">
+                      {a.delay}
+                      <Input
+                        type="number"
+                        min={1}
+                        max={60}
+                        step={1}
+                        value={delay}
+                        onChange={(event) => {
+                          setDelay(event.target.value);
+                          change({ delay: event.target.value });
+                        }}
+                        disabled={disabled || saving}
+                        className="max-w-32"
+                      />
+                    </Label>
+                  </details>
                 </div>
-              </div>
+              </section>
               <Button
                 type="submit"
-                size="sm"
-                className="justify-self-start"
+                variant="primary"
+                className="justify-self-end"
                 disabled={
                   disabled ||
                   saving ||
@@ -516,7 +530,156 @@ function localizeDecimal(text: string, locale: string) {
   return locale === "de" ? text.replace(".", ",") : text;
 }
 
-function PriceExampleCard({
+const strategies = [
+  { id: "instant", mode: "highestBuyOrder", adjustment: 0, speed: 3 },
+  { id: "undercut", mode: "lowestSellOrder", adjustment: -1, speed: 2 },
+  { id: "match", mode: "lowestSellOrder", adjustment: 0, speed: 1 },
+] as const;
+
+function parsedRules(
+  adjustment: string,
+  minimum: string,
+  maximum: string,
+  currency: MarketCurrency | null,
+) {
+  const digits = currency?.minorUnit ?? 2;
+  const adjust = parseMajorToMinor(adjustment, digits, { allowNegative: true });
+  const min = minimum.trim() === "" ? null : parseMajorToMinor(minimum, digits);
+  const max = maximum.trim() === "" ? null : parseMajorToMinor(maximum, digits);
+  const valid =
+    currency !== null &&
+    adjust !== null &&
+    (minimum.trim() === "" || min !== null) &&
+    (maximum.trim() === "" || max !== null);
+  return valid ? { adjust: adjust!, min, max } : null;
+}
+
+/** Three presets for the common choices; anything else shows as a custom rule. */
+function StrategyPicker({
+  mode,
+  adjustment,
+  minimum,
+  maximum,
+  currency,
+  disabled,
+  onPick,
+}: {
+  mode: MarketPriceSettings["priceMode"];
+  adjustment: string;
+  minimum: string;
+  maximum: string;
+  currency: MarketCurrency | null;
+  disabled: boolean;
+  onPick: (mode: MarketPriceSettings["priceMode"], adjustment: number) => void;
+}) {
+  const { locale, localeInfo } = useI18n();
+  const a = advancedInventoryCopy(locale);
+  const name = useId();
+  const rules = parsedRules(adjustment, minimum, maximum, currency);
+  const current = strategies.find(
+    (strategy) =>
+      strategy.mode === mode && rules?.adjust === strategy.adjustment,
+  );
+  const copy = {
+    instant: [a.strategyInstant, a.strategyInstantHint],
+    undercut: [a.strategyUndercut, a.strategyUndercutHint],
+    match: [a.strategyMatch, a.strategyMatchHint],
+  } as const;
+  return (
+    <fieldset
+      role="radiogroup"
+      className="grid min-w-0 gap-2 sm:grid-cols-3"
+      disabled={disabled}
+    >
+      <legend className="mb-2 text-sm font-semibold">{a.strategy}</legend>
+      {strategies.map((strategy) => {
+        const selected = current?.id === strategy.id;
+        const example = rules
+          ? priceExample({
+              mode: strategy.mode,
+              adjustment: strategy.adjustment,
+              minimum: rules.min,
+              maximum: rules.max,
+            })
+          : null;
+        const [title, hint] = copy[strategy.id];
+        return (
+          <label
+            key={strategy.id}
+            className={cn(
+              "grid min-w-0 cursor-pointer content-start gap-2 rounded-xl border p-3 text-sm",
+              selected
+                ? "border-[var(--accent)] bg-[var(--accent-soft)] ring-1 ring-[var(--accent)]"
+                : "border-[var(--line)] bg-[var(--surface)] hover:border-[var(--line-strong)]",
+            )}
+          >
+            <span className="flex items-start gap-2">
+              <input
+                type="radio"
+                name={name}
+                checked={selected}
+                disabled={disabled || (!currency && strategy.adjustment !== 0)}
+                onChange={() => onPick(strategy.mode, strategy.adjustment)}
+                className="mt-0.5"
+              />
+              <strong>{title}</strong>
+            </span>
+            <span className="text-xs leading-5 text-[var(--muted)]">
+              {hint}
+            </span>
+            <span className="grid gap-1">
+              <span className="text-[11px] font-semibold text-[var(--muted-strong)]">
+                {a.speed}
+              </span>
+              <span
+                className="flex gap-1"
+                role="img"
+                aria-label={interpolate(a.speedLevel, {
+                  level: strategy.speed,
+                })}
+              >
+                {[1, 2, 3].map((level) => (
+                  <span
+                    key={level}
+                    className={cn(
+                      "h-1.5 flex-1 rounded-full",
+                      level <= strategy.speed
+                        ? "bg-[var(--good)]"
+                        : "bg-[var(--line)]",
+                    )}
+                  />
+                ))}
+              </span>
+            </span>
+            {example && (
+              <span className="grid">
+                <span className="text-[11px] font-semibold text-[var(--muted-strong)]">
+                  {a.receiveAbout}
+                </span>
+                <span className="text-xl font-bold tabular-nums">
+                  {formatMoney(
+                    example.receive,
+                    currency,
+                    localeInfo.dateLocale,
+                  )}
+                </span>
+              </span>
+            )}
+          </label>
+        );
+      })}
+      {!current && (
+        <p className="text-xs text-[var(--muted)] sm:col-span-3">
+          <strong className="text-[var(--ink)]">{a.strategyCustom}:</strong>{" "}
+          {a.strategyCustomHint}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+/** Places the example buyer price between the example market prices. */
+function PriceScale({
   mode,
   adjustment,
   minimum,
@@ -531,100 +694,90 @@ function PriceExampleCard({
 }) {
   const { locale, localeInfo } = useI18n();
   const a = advancedInventoryCopy(locale);
-  const digits = currency?.minorUnit ?? 2;
-  const adjust = parseMajorToMinor(adjustment, digits, { allowNegative: true });
-  const min = minimum.trim() === "" ? null : parseMajorToMinor(minimum, digits);
-  const max = maximum.trim() === "" ? null : parseMajorToMinor(maximum, digits);
-  const valid =
-    currency !== null &&
-    adjust !== null &&
-    (minimum.trim() === "" || min !== null) &&
-    (maximum.trim() === "" || max !== null);
-  const example = valid
-    ? priceExample({ mode, adjustment: adjust, minimum: min, maximum: max })
-    : null;
+  const rules = parsedRules(adjustment, minimum, maximum, currency);
   const money = (value: number) =>
     formatMoney(value, currency, localeInfo.dateLocale);
-  const signed = (value: number) =>
-    value < 0 ? `−${money(-value)}` : `+${money(value)}`;
-
-  return (
-    <aside
-      aria-label={a.exampleTitle}
-      className="grid min-w-0 gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-4 text-sm"
-    >
-      <strong>{a.exampleTitle}</strong>
-      {example ? (
-        <>
-          <span className="text-xs text-[var(--muted)]">
-            {interpolate(a.exampleSubtitle, { price: money(example.source) })}
-          </span>
-          <dl className="mt-2 grid">
-            <ExampleRow
-              label={
-                mode === "highestBuyOrder"
-                  ? a.highestBuyOrder
-                  : a.lowestSellOrder
-              }
-              value={money(example.source)}
-            />
-            <ExampleRow
-              label={a.exampleAdjustment}
-              value={signed(example.adjustment)}
-            />
-            <ExampleRow
-              label={a.exampleBuyerPays}
-              value={money(example.buyerPays)}
-              hint={example.limited ? a.exampleLimited : undefined}
-            />
-            <ExampleRow
-              label={a.exampleFees}
-              value={`−${money(example.fees)}`}
-            />
-            <ExampleRow
-              label={a.exampleReceive}
-              value={money(example.receive)}
-              strong
-            />
-          </dl>
-        </>
-      ) : (
-        <span className="text-xs text-[var(--muted)]">{a.exampleInvalid}</span>
-      )}
-      <span className="mt-2 text-xs text-[var(--muted)]">{a.exampleNote}</span>
-    </aside>
+  if (!rules)
+    return (
+      <p className="rounded-lg border border-[var(--line)] p-3 text-xs text-[var(--muted)]">
+        {a.exampleInvalid}
+      </p>
+    );
+  const example = priceExample({
+    mode,
+    adjustment: rules.adjust,
+    minimum: rules.min,
+    maximum: rules.max,
+  });
+  const buy = exampleSource.highestBuyOrder;
+  const sell = exampleSource.lowestSellOrder;
+  const points = [buy, sell, example.buyerPays, rules.min, rules.max].filter(
+    (value): value is number => value !== null && value <= sell * 3,
   );
-}
-
-function ExampleRow({
-  label,
-  value,
-  hint,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  hint?: string | undefined;
-  strong?: boolean;
-}) {
+  const low = Math.max(0, Math.min(...points) - 3);
+  const high = Math.max(...points) + 3;
+  const at = (value: number) =>
+    `${Math.min(100, Math.max(0, ((value - low) / (high - low)) * 100))}%`;
   return (
-    <div className="flex items-baseline justify-between gap-3 border-t border-[var(--line)] py-1.5 first:border-t-0">
-      <dt className={cn("min-w-0", strong && "font-semibold")}>
-        {label}
-        {hint ? (
-          <small className="block text-[11px] text-[var(--muted)]">
-            {hint}
-          </small>
-        ) : null}
-      </dt>
-      <dd
-        className={cn(
-          "shrink-0 tabular-nums",
-          strong && "font-bold text-[var(--good)]",
+    <section
+      aria-label={a.scaleTitle}
+      className="grid min-w-0 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-4"
+    >
+      <div>
+        <h4 className="text-sm font-semibold">{a.scaleTitle}</h4>
+        <p className="text-xs text-[var(--muted)]">
+          {interpolate(a.scaleSubtitle, { buy: money(buy), sell: money(sell) })}
+        </p>
+      </div>
+      <div className="relative mx-2 mb-10 mt-9 h-2" aria-hidden="true">
+        <div className="absolute inset-0 rounded-full bg-[var(--line)]" />
+        <div
+          className="absolute inset-y-0 rounded-full bg-[var(--good-soft)] ring-1 ring-[var(--good-line)]"
+          style={{
+            left: at(rules.min ?? low),
+            right: `calc(100% - ${at(rules.max ?? high)})`,
+          }}
+        />
+        {[
+          [buy, a.scaleBuy],
+          [sell, a.scaleSell],
+        ].map(([value, label]) => (
+          <span
+            key={label}
+            className="absolute top-3 -translate-x-1/2 whitespace-nowrap text-center text-[11px] text-[var(--muted)]"
+            style={{ left: at(value as number) }}
+          >
+            <span className="mx-auto mb-0.5 block h-2 w-px bg-[var(--muted)]" />
+            {label}
+            <br />
+            <strong className="text-[var(--ink)]">
+              {money(value as number)}
+            </strong>
+          </span>
+        ))}
+        <span
+          className="absolute -top-8 -translate-x-1/2 whitespace-nowrap rounded-md bg-[var(--primary)] px-2 py-0.5 text-xs font-semibold text-[var(--primary-fg)]"
+          style={{ left: at(example.buyerPays) }}
+        >
+          {interpolate(a.scaleYours, { price: money(example.buyerPays) })}
+        </span>
+        <span
+          className="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-[var(--primary)] bg-[var(--surface)]"
+          style={{ left: at(example.buyerPays) }}
+        />
+      </div>
+      <p className="text-sm">
+        {interpolate(a.scaleFlow, {
+          buyer: money(example.buyerPays),
+          fees: money(example.fees),
+          receive: money(example.receive),
+        })}
+        {example.limited && (
+          <span className="block text-xs text-[var(--muted)]">
+            {a.exampleLimited}
+          </span>
         )}
-      >
-        {value}
-      </dd>
-    </div>
+      </p>
+    </section>
   );
 }

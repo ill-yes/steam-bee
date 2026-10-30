@@ -767,6 +767,46 @@ describe("grouped inventory and batch market tools", () => {
     ).toBe(false);
   });
 
+  it("applies a sales strategy to the price source and adjustment", async () => {
+    renderPanel();
+    await screen.findByText("Bee card");
+    fireEvent.click(screen.getByRole("tab", { name: "Pricing rules" }));
+    const strategy = await screen.findByRole("radiogroup", {
+      name: "How fast should cards sell?",
+    });
+    fireEvent.click(
+      within(strategy).getByRole("radio", {
+        name: /Undercut the cheapest listing/,
+      }),
+    );
+    expect(
+      screen.getByRole("radio", { name: /^Lowest sell order/ }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("textbox", { name: /Buyer-price adjustment/ }),
+    ).toHaveValue("-0.01");
+    expect(
+      screen.getByRole("region", { name: "Where your price lands" }),
+    ).toHaveTextContent("Buyer pays $0.16");
+    fireEvent.click(
+      within(strategy).getByRole("radio", { name: /Sell instantly/ }),
+    );
+    expect(
+      screen.getByRole("radio", { name: /^Highest buy order/ }),
+    ).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Save pricing rules" }));
+    await screen.findByText(/Pricing rules saved/);
+    expect(api).toHaveBeenCalledWith(
+      "/api/accounts/first/market/settings",
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining(
+          '"priceMode":"highestBuyOrder","adjustment":0',
+        ),
+      }),
+    );
+  });
+
   it("rejects wallet precision mistakes instead of silently rounding a JPY rule", async () => {
     setup((path) =>
       path.endsWith("/market/listings")
