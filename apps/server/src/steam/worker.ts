@@ -190,6 +190,10 @@ export class SteamWorker extends EventEmitter {
     return this.communitySession.get();
   }
 
+  discardCommunitySession(sessionId: string) {
+    this.communitySession.discard(sessionId);
+  }
+
   /**
    * Earliest license date per app, from the licenses Steam sends at logon.
    * Apps without a known license are left out.

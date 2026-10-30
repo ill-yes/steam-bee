@@ -562,6 +562,11 @@ class SteamManager {
     return worker.getCommunitySession();
   }
 
+  /** The next Community request signs in again instead of reusing rejected cookies. */
+  discardCommunitySession(accountId: string, sessionId: string) {
+    this.workers.get(accountId)?.discardCommunitySession(sessionId);
+  }
+
   async getAcquisitionTimes(accountId: string, appIds: number[]) {
     const worker = await this.getWorkerForAccount(accountId);
     return worker.acquisitionTimes(appIds);
