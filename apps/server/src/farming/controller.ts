@@ -25,7 +25,15 @@ export type FarmingAdapter = {
   end(accountId: string, shouldEnd?: () => boolean): Promise<void>;
   /** Persists whether farming should resume after an interruption. */
   remember?(accountId: string, resume: boolean): void;
+  /** Average card prices per game; games it cannot price are left out. */
+  cardValues?(
+    accountId: string,
+    appIds: number[],
+    shouldContinue: () => boolean,
+  ): Promise<Map<number, { average: number; text: string }>>;
 };
+
+const CARD_VALUE_TTL = 24 * 60 * 60_000;
 
 /** Interruptions that do not mean the user wanted farming to end. */
 const RESUMABLE_HALTS = new Set([
@@ -44,6 +52,10 @@ type Session = {
   timer: ReturnType<typeof setTimeout> | null;
   activeSince: number | null;
   applied: boolean;
+  /** Position of each game on Steam's badge pages, the default order. */
+  badgeOrder: Map<number, number>;
+  cardValues: Map<number, { average: number; text: string; at: number }>;
+  pricing: boolean;
 };
 
 export class FarmingController {
@@ -79,10 +91,14 @@ export class FarmingController {
         timer: null,
         activeSince: null,
         applied: false,
+        badgeOrder: new Map(),
+        cardValues: new Map(),
+        pricing: false,
       };
       this.sessions.set(accountId, session);
     } else if (config && !this.isActive(session)) {
       session.snapshot.config = structuredClone(config);
+      this.filterGames(session);
     }
     return structuredClone(session.snapshot);
   }
@@ -227,6 +243,9 @@ export class FarmingController {
     const oldGames = new Map(
       session.snapshot.games.map((game) => [game.appId, game]),
     );
+    session.badgeOrder = new Map(
+      discovery.games.map((game, index) => [game.appId, index]),
+    );
     session.snapshot.games = discovery.games.map((game) => {
       const previous = oldGames.get(game.appId);
       const observed = Math.max(
@@ -234,10 +253,12 @@ export class FarmingController {
         previous?.playtimeMinutes ?? 0,
       );
       // Preserve a conservative local estimate when Steam's badge page rounds hours.
+      const value = session.cardValues.get(game.appId);
       return {
         ...game,
         playtimeMinutes: observed || game.playtimeMinutes,
         skipReason: null,
+        cardValue: value ? { average: value.average, text: value.text } : null,
       };
     });
     session.snapshot.scannedAt = this.now();
@@ -270,6 +291,91 @@ export class FarmingController {
             ? "refund_window"
             : null;
     }
+    this.orderGames(session);
+    this.priceGames(session);
+  }
+
+  /** Pinned games first in their order, then the chosen strategy, then badge order. */
+  private orderGames(session: Session) {
+    const { order, priority } = session.snapshot.config;
+    const pinned = new Map(priority.map((appId, index) => [appId, index]));
+    const badge = (game: FarmingGame) =>
+      session.badgeOrder.get(game.appId) ?? Number.MAX_SAFE_INTEGER;
+    const strategy = (left: FarmingGame, right: FarmingGame) => {
+      switch (order) {
+        case "card_value":
+          return (
+            (right.cardValue?.average ?? -1) - (left.cardValue?.average ?? -1)
+          );
+        case "drops_desc":
+          return right.remainingDrops - left.remainingDrops;
+        case "drops_asc":
+          return left.remainingDrops - right.remainingDrops;
+        case "hours_desc":
+          return (right.playtimeMinutes ?? 0) - (left.playtimeMinutes ?? 0);
+        case "acquired_asc":
+          return (
+            (left.acquiredAt ?? Number.MAX_SAFE_INTEGER) -
+            (right.acquiredAt ?? Number.MAX_SAFE_INTEGER)
+          );
+        case "name":
+          return left.name.localeCompare(right.name);
+        default:
+          return 0;
+      }
+    };
+    session.snapshot.games.sort((left, right) => {
+      const leftPin = pinned.get(left.appId) ?? Number.MAX_SAFE_INTEGER;
+      const rightPin = pinned.get(right.appId) ?? Number.MAX_SAFE_INTEGER;
+      return (
+        leftPin - rightPin ||
+        strategy(left, right) ||
+        badge(left) - badge(right)
+      );
+    });
+  }
+
+  /** Looks up missing card prices in the background when ordering by value. */
+  private priceGames(session: Session) {
+    if (
+      !this.adapter.cardValues ||
+      session.pricing ||
+      this.shuttingDown ||
+      session.snapshot.config.order !== "card_value"
+    )
+      return;
+    const now = this.now();
+    const missing = session.snapshot.games
+      .filter((game) => game.remainingDrops > 0 && game.skipReason === null)
+      .filter((game) => {
+        const known = session.cardValues.get(game.appId);
+        return !known || now - known.at > CARD_VALUE_TTL;
+      })
+      .map((game) => game.appId);
+    if (missing.length === 0) return;
+    session.pricing = true;
+    const { accountId } = session.snapshot;
+    void this.adapter
+      .cardValues(
+        accountId,
+        missing,
+        () =>
+          !this.shuttingDown && session.snapshot.config.order === "card_value",
+      )
+      .then((values) => {
+        for (const [appId, value] of values)
+          session.cardValues.set(appId, { ...value, at: this.now() });
+        for (const game of session.snapshot.games) {
+          const value = session.cardValues.get(game.appId);
+          if (value)
+            game.cardValue = { average: value.average, text: value.text };
+        }
+        this.orderGames(session);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        session.pricing = false;
+      });
   }
 
   private creditPlaytime(session: Session) {
@@ -339,8 +445,14 @@ export class FarmingController {
           availability.gameLimit,
         ),
       );
-      const selection =
-        warming.length > 0
+      const pinned = new Set(session.snapshot.config.priority);
+      // A pulled-forward game runs alone before any warm-up batch.
+      const first = eligible[0];
+      const pulled = first !== undefined && pinned.has(first.appId);
+      const warmingUp = !pulled && warming.length > 0;
+      const selection = pulled
+        ? [first].slice(0, limit)
+        : warmingUp
           ? warming.slice(0, limit)
           : eligible.slice(0, Math.min(1, limit));
       const appIds = selection.map((game) => game.appId);
@@ -366,7 +478,7 @@ export class FarmingController {
       }
       session.applied = true;
       session.snapshot.activeAppIds = appIds;
-      session.snapshot.phase = warming.length > 0 ? "warming" : "farming";
+      session.snapshot.phase = warmingUp ? "warming" : "farming";
       session.activeSince = this.now();
       session.timer = setTimeout(() => {
         session.timer = null;

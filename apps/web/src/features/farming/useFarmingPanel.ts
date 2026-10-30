@@ -167,7 +167,9 @@ export function useFarmingPanel(
   /** Resolves true once the command and its response were accepted. */
   async function action(
     name: Action,
-    override?: Pick<FarmingConfig, "whitelist" | "blacklist">,
+    override?: Partial<
+      Pick<FarmingConfig, "whitelist" | "blacklist" | "order" | "priority">
+    >,
   ): Promise<boolean> {
     if (busyRef.current) return false;
     if ((name === "scan" || name === "start") && dirtyRef.current) return false;
@@ -216,6 +218,9 @@ export function useFarmingPanel(
                         whitelist: whitelist!,
                         blacklist: blacklist!,
                         autoResume: draft.autoResume,
+                        // The rules dialog leaves the board's order untouched.
+                        order: currentSnapshot?.config.order ?? "default",
+                        priority: currentSnapshot?.config.priority ?? [],
                       },
                 ),
               }

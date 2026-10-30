@@ -203,6 +203,77 @@ describe("card farming lifecycle", () => {
     );
   });
 
+  it("orders games by strategy and farms a pulled-forward game alone first", async () => {
+    const games = [
+      { ...game(1, 300, oldPurchase), remainingDrops: 1 },
+      { ...game(2, 300, oldPurchase), remainingDrops: 5 },
+      { ...game(3, 30, oldPurchase), remainingDrops: 2 },
+    ];
+    const { controller, adapter } = setup(games);
+    const started = await controller.start(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "drops_desc",
+    });
+    expect(started.games.map((entry) => entry.appId)).toEqual([2, 3, 1]);
+    // Warm-up still comes first without a pinned game.
+    expect(adapter.apply).toHaveBeenLastCalledWith(
+      accountId,
+      [3],
+      expect.any(Function),
+    );
+
+    const pinned = controller.reconfigure(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "drops_desc",
+      priority: [1],
+    });
+    expect(pinned.games.map((entry) => entry.appId)).toEqual([1, 2, 3]);
+    await vi.waitFor(() =>
+      expect(controller.snapshot(accountId).activeAppIds).toEqual([1]),
+    );
+    expect(controller.snapshot(accountId).phase).toBe("farming");
+
+    const byName = controller.reconfigure(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "default",
+    });
+    expect(byName.games.map((entry) => entry.appId)).toEqual([1, 2, 3]);
+    await controller.stop(accountId);
+  });
+
+  it("looks up card values in the background and orders by them", async () => {
+    const { controller, adapter } = setup([
+      game(1, 300, oldPurchase),
+      game(2, 300, oldPurchase),
+    ]);
+    adapter.cardValues = vi.fn(
+      async () =>
+        new Map([
+          [1, { average: 0.05, text: "0,05€" }],
+          [2, { average: 0.4, text: "0,40€" }],
+        ]),
+    );
+    await controller.scan(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "card_value",
+    });
+    await vi.waitFor(() =>
+      expect(
+        controller.snapshot(accountId).games.map((entry) => entry.appId),
+      ).toEqual([2, 1]),
+    );
+    expect(controller.snapshot(accountId).games[0]?.cardValue).toEqual({
+      average: 0.4,
+      text: "0,40€",
+    });
+    expect(adapter.cardValues).toHaveBeenCalledOnce();
+    controller.snapshot(accountId, {
+      ...DEFAULT_FARMING_CONFIG,
+      order: "card_value",
+    });
+    expect(adapter.cardValues).toHaveBeenCalledOnce();
+  });
+
   it("keeps the resume request through interruptions and clears it on a stop", async () => {
     const { controller, adapter } = setup([game(1, 119, oldPurchase)]);
     await controller.start(accountId, DEFAULT_FARMING_CONFIG);

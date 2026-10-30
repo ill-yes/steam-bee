@@ -558,7 +558,7 @@ describe("card farming controls", () => {
     expect(within(running).getByText(/2 drops left/)).toBeInTheDocument();
     expect(within(running).getByText(/2\.5 h/)).toBeInTheDocument();
     expect(running.querySelector('img[src*="/730/"]')).not.toBeNull();
-    const waiting = screen.getByRole("list", { name: "Up next" });
+    const waiting = screen.getByRole("list", { name: "Then automatically" });
     expect(within(waiting).getByText(/1 drop left/)).toBeInTheDocument();
     const skipped = screen.getByRole("list", { name: "Skipped" });
     expect(within(skipped).getByText("Excluded by you")).toBeInTheDocument();
@@ -632,6 +632,58 @@ describe("card farming controls", () => {
     expect(
       vi.mocked(api).mock.calls.some(([path]) => path.endsWith("/stop")),
     ).toBe(false);
+  });
+
+  it("pulls games forward and changes the automatic order", async () => {
+    let config = { ...DEFAULT_FARMING_CONFIG };
+    const farming = () => ({
+      ...snapshot("first", "farming"),
+      scannedAt: 0,
+      activeAppIds: [730],
+      config,
+      games: [730, 440, 570].map((appId) => ({
+        appId,
+        name: `Game ${appId}`,
+        remainingDrops: 2,
+        playtimeMinutes: 150,
+        acquiredAt: null,
+        skipReason: null,
+        cardValue: appId === 440 ? { average: 0.2, text: "$0.20" } : null,
+      })),
+    });
+    vi.mocked(api).mockImplementation(async (path, init) => {
+      if (path.endsWith("/config"))
+        config = JSON.parse(String(init?.body)) as typeof config;
+      return farming();
+    });
+    render(<FarmingPanel accountId="first" />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pull Game 570 forward" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([570]));
+    const pinned = await screen.findByRole("list", { name: "Pulled forward" });
+    await waitFor(() =>
+      expect(within(pinned).getByText("Game 570")).toBeInTheDocument(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pull Game 440 forward" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([570, 440]));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Move Game 440 up" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([440, 570]));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Order" }), {
+      target: { value: "card_value" },
+    });
+    await waitFor(() => expect(config.order).toBe("card_value"));
+    expect(await screen.findByText("≈ $0.20 per card")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Release Game 570" }),
+    );
+    await waitFor(() => expect(config.priority).toEqual([440]));
   });
 
   it.each([

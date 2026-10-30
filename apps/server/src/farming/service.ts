@@ -1,5 +1,6 @@
 import {
   DEFAULT_FARMING_CONFIG,
+  FARMING_ORDERS,
   type FarmingConfig,
 } from "@steam-bee/contracts";
 import { eq } from "drizzle-orm";
@@ -21,7 +22,14 @@ import {
   enrichBadgeGames,
   MAX_BADGE_PAGE_BYTES,
 } from "./badges.js";
+import {
+  cardSearchPath,
+  readCardValueResponse,
+  type CardValue,
+} from "./card-values.js";
 import { FarmingController } from "./controller.js";
+
+const CARD_VALUE_GAP_MS = 1_500;
 
 const logger = createLogger("farming");
 
@@ -39,6 +47,12 @@ export const farmingConfigSchema = z
       .transform((ids) => [...new Set(ids)]),
     // Settings saved before this option existed resume by default.
     autoResume: z.boolean().default(true),
+    order: z.enum(FARMING_ORDERS).default("default"),
+    priority: z
+      .array(appIdSchema)
+      .max(500)
+      .default([])
+      .transform((ids) => [...new Set(ids)]),
   })
   .strict();
 
@@ -106,6 +120,20 @@ export const farmingController = new FarmingController({
         "Card farming resume state could not be saved",
       );
     }
+  },
+  cardValues: async (accountId, appIds, shouldContinue) => {
+    const values = new Map<number, CardValue>();
+    // One market search per game, spaced out, at most 60 games per pass.
+    for (const [index, appId] of appIds.slice(0, 60).entries()) {
+      if (!shouldContinue()) break;
+      if (index > 0)
+        await new Promise((resolve) => setTimeout(resolve, CARD_VALUE_GAP_MS));
+      const response = await communityRequest(accountId, cardSearchPath(appId));
+      if (response.status === 429) break;
+      const value = await readCardValueResponse(response);
+      if (value) values.set(appId, value);
+    }
+    return values;
   },
   discover: async (accountId, shouldContinue) => {
     if (shouldContinue && !shouldContinue())
