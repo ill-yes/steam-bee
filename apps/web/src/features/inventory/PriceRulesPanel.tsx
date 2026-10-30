@@ -36,7 +36,7 @@ export function PriceRulesPanel({
   embedded?: boolean;
   active?: boolean;
 }) {
-  const { locale, messages } = useI18n();
+  const { locale, localeInfo, messages } = useI18n();
   const a = advancedInventoryCopy(locale);
   const contentId = useId();
   const [restored] = useState(() => readPriceRulesDraft(accountId));
@@ -88,7 +88,9 @@ export function PriceRulesPanel({
     const digits = wallet?.minorUnit ?? 2;
     const amount = (minor: number) => {
       const text = formatMinorToMajor(minor, digits);
-      return text === null ? null : localizeDecimal(text, locale);
+      return text === null
+        ? null
+        : localizeDecimal(text, localeInfo.dateLocale);
     };
     setMode(value.priceMode);
     setAdjustment(sameCurrency ? (amount(value.adjustment) ?? "0") : "0");
@@ -366,7 +368,7 @@ export function PriceRulesPanel({
                     (draftCurrency.current ?? currency)?.minorUnit ?? 2;
                   const text = localizeDecimal(
                     formatMinorToMajor(amount, digits) ?? "0",
-                    locale,
+                    localeInfo.dateLocale,
                   );
                   setMode(priceMode);
                   setAdjustment(text);
@@ -522,8 +524,13 @@ export function PriceRulesPanel({
   );
 }
 
-function localizeDecimal(text: string, locale: string) {
-  return locale === "de" ? text.replace(".", ",") : text;
+/** Shows a "1.23" amount with the locale's decimal separator; parsing accepts both. */
+function localizeDecimal(text: string, intlLocale: string) {
+  const separator =
+    new Intl.NumberFormat(intlLocale)
+      .formatToParts(1.5)
+      .find((part) => part.type === "decimal")?.value ?? ".";
+  return separator === "," ? text.replace(".", ",") : text;
 }
 
 const strategies = [
