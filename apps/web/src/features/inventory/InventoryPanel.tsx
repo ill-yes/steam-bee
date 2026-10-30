@@ -456,9 +456,7 @@ function AccountInventoryPanel({
       setActionError(
         cause instanceof RangeError && cause.message === s.actionLimit
           ? s.actionLimit
-          : locale === "de"
-            ? "Prüfe den Korb anhand des aktuellen Inventars."
-            : "Review the basket against the current inventory.",
+          : s.basketStale,
       );
       return;
     }

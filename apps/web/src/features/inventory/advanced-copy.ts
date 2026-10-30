@@ -182,8 +182,12 @@ const en = {
   dismissJob: "Dismiss completed batch",
   noEligible: "No eligible duplicates in these filters.",
   batchLimit: "Select no more than 50 items per batch.",
+  savedCurrencyMismatch:
+    "Saved price amounts use a different wallet currency. Amounts were reset in this form; review them before saving.",
 };
 const de: typeof en = {
+  savedCurrencyMismatch:
+    "Die gespeicherten Preisbeträge gehören zu einer anderen Wallet-Währung. Die Beträge wurden im Formular geleert; prüfe sie vor dem Speichern neu.",
   inventoryView: "Inventar",
   listingsView: "Marktangebote",
   marketCount: "Angebote: {count}",

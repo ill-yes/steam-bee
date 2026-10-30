@@ -454,6 +454,7 @@ export const en = {
     tagPrompt: "Separate tags with commas",
     saveTags: "Save tags",
     selectionTitle: "Boost selection",
+    manualSelectionTitle: "Manual game selection",
     expandSelection: "Expand boost selection",
     collapseSelection: "Collapse boost selection",
     noSelectedGames: "No games selected yet.",
@@ -463,6 +464,7 @@ export const en = {
     applySelection: "Apply selection",
     noOpenChanges: "No open changes.",
     activeDraft: "Active: {active} · Draft: {draft}",
+    savedDraft: "{active} saved · {draft} draft",
     overLimit:
       "Steam title active: reduce the selection to {limit} games before applying it.",
     chooseFromLibrary: "Choose from library or add an AppID.",

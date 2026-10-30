@@ -451,6 +451,7 @@ const messages = {
     tagPrompt: "کوما کے ساتھ ٹیگز کو الگ کریں۔",
     saveTags: "ٹیگز محفوظ کریں۔",
     selectionTitle: "انتخاب کو فروغ دیں۔",
+    manualSelectionTitle: "دستی گیم انتخاب",
     expandSelection: "بوسٹ سلیکشن کو پھیلائیں۔",
     collapseSelection: "بوسٹ سلیکشن کو سکیڑیں۔",
     noSelectedGames: "ابھی تک کوئی گیمز منتخب نہیں ہوئے ہیں۔",
@@ -460,6 +461,7 @@ const messages = {
     applySelection: "انتخاب کا اطلاق کریں۔",
     noOpenChanges: "کوئی کھلی تبدیلیاں نہیں۔",
     activeDraft: "فعال: {active} · مسودہ: {draft}",
+    savedDraft: "محفوظ: {active} · مسودہ: {draft}",
     overLimit:
       "Steam ٹائٹل فعال: اسے لاگو کرنے سے پہلے انتخاب کو {limit} گیمز تک کم کریں۔",
     chooseFromLibrary: "لائبریری سے انتخاب کریں یا AppID شامل کریں۔",

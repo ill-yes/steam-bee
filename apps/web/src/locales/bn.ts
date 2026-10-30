@@ -454,6 +454,7 @@ const messages = {
     tagPrompt: "কমা দিয়ে আলাদা ট্যাগ",
     saveTags: "ট্যাগ সংরক্ষণ করুন",
     selectionTitle: "বুস্ট নির্বাচন",
+    manualSelectionTitle: "ম্যানুয়াল গেম নির্বাচন",
     expandSelection: "বুস্ট নির্বাচন প্রসারিত করুন",
     collapseSelection: "বুস্ট নির্বাচন সঙ্কুচিত করুন",
     noSelectedGames: "এখনো কোনো গেম নির্বাচিত হয়নি।",
@@ -463,6 +464,7 @@ const messages = {
     applySelection: "নির্বাচন প্রয়োগ করুন",
     noOpenChanges: "কোন খোলা পরিবর্তন.",
     activeDraft: "সক্রিয়: {active} · খসড়া: {draft}",
+    savedDraft: "{active} সংরক্ষিত · {draft} খসড়া",
     overLimit:
       "Steam শিরোনাম সক্রিয়: এটি প্রয়োগ করার আগে নির্বাচনকে {limit} গেমে কমিয়ে দিন।",
     chooseFromLibrary: "লাইব্রেরি থেকে বেছে নিন বা একটি AppID যোগ করুন।",

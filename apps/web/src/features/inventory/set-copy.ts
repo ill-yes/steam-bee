@@ -54,6 +54,7 @@ const en = {
   actions: "{count} Steam actions · {delay} s apart",
   actionLimit:
     "At most 50 Steam actions fit in one batch. Reduce quantities or items.",
+  basketStale: "Review the basket against the current inventory.",
   ruleLowest: "Lowest sell order",
   ruleHighest: "Highest buy order",
   rulePrice: "Price: {rule}{adjustment}",
@@ -120,6 +121,7 @@ const de: typeof en = {
   actions: "{count} Steam-Aktionen · alle {delay} s",
   actionLimit:
     "Höchstens 50 Steam-Aktionen passen in einen Durchlauf. Reduziere Mengen oder Gegenstände.",
+  basketStale: "Prüfe den Korb anhand des aktuellen Inventars.",
   ruleLowest: "Niedrigstes Verkaufsangebot",
   ruleHighest: "Höchstes Kaufgesuch",
   rulePrice: "Preis: {rule}{adjustment}",

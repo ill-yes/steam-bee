@@ -468,6 +468,7 @@ const messages = {
     tagPrompt: "Séparez les balises par des virgules",
     saveTags: "Enregistrer les balises",
     selectionTitle: "Sélection Boost",
+    manualSelectionTitle: "Sélection manuelle des jeux",
     expandSelection: "Élargir la sélection de boost",
     collapseSelection: "Réduire la sélection de boost",
     noSelectedGames: "Aucun jeu sélectionné pour l'instant.",
@@ -477,6 +478,7 @@ const messages = {
     applySelection: "Appliquer la sélection",
     noOpenChanges: "Aucun changement ouvert.",
     activeDraft: "Actif : {active} · Brouillon : {draft}",
+    savedDraft: "{active} enregistrés · {draft} en brouillon",
     overLimit:
       "Steam titre actif : réduisez la sélection à {limit} jeux avant de l'appliquer.",
     chooseFromLibrary: "Choisissez dans la bibliothèque ou ajoutez un AppID.",

@@ -466,6 +466,7 @@ const messages = {
     tagPrompt: "Tags mit Komma trennen",
     saveTags: "Tags speichern",
     selectionTitle: "Boost-Auswahl",
+    manualSelectionTitle: "Manuelle Spielauswahl",
     expandSelection: "Boost-Auswahl ausklappen",
     collapseSelection: "Boost-Auswahl einklappen",
     noSelectedGames: "Noch keine Spiele ausgewählt.",
@@ -475,6 +476,7 @@ const messages = {
     applySelection: "Auswahl anwenden",
     noOpenChanges: "Keine offenen Änderungen.",
     activeDraft: "Aktiv: {active} · Entwurf: {draft}",
+    savedDraft: "{active} gespeichert · {draft} im Entwurf",
     overLimit:
       "Steam-Titel aktiv: Reduziere die Auswahl auf {limit} Spiele, bevor du sie anwendest.",
     chooseFromLibrary: "Aus Bibliothek wählen oder AppID hinzufügen.",

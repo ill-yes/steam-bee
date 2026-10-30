@@ -455,6 +455,7 @@ const messages = {
     tagPrompt: "टैग को अल्पविराम से अलग करें",
     saveTags: "टैग सहेजें",
     selectionTitle: "चयन को बढ़ावा दें",
+    manualSelectionTitle: "मैन्युअल गेम चयन",
     expandSelection: "बूस्ट चयन का विस्तार करें",
     collapseSelection: "बूस्ट चयन को संक्षिप्त करें",
     noSelectedGames: "अभी तक कोई खेल नहीं चुना गया.",
@@ -464,6 +465,7 @@ const messages = {
     applySelection: "चयन लागू करें",
     noOpenChanges: "कोई खुला परिवर्तन नहीं.",
     activeDraft: "सक्रिय: {active} · ड्राफ्ट: {draft}",
+    savedDraft: "{active} सहेजे गए · {draft} ड्राफ्ट",
     overLimit:
       "Steam शीर्षक सक्रिय: इसे लागू करने से पहले चयन को घटाकर {limit} गेम कर दें।",
     chooseFromLibrary: "लाइब्रेरी से चुनें या AppID जोड़ें।",
