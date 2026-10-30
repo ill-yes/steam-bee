@@ -139,7 +139,12 @@ function AccountWorkspace({
     () => account.games.map((game) => game.appId),
     [account.games],
   );
-  const gameLimit = gameSelectionLimit(customTitle);
+  // The server checks games against the saved title, presets against the
+  // draft one; the stricter limit keeps both from failing server-side.
+  const gameLimit = Math.min(
+    gameSelectionLimit(customTitle),
+    gameSelectionLimit(account.customTitle),
+  );
   const draftOverLimit = draftAppIds.length > gameLimit;
   const selectionDirty = !sameAppIdSelection(appliedAppIds, draftAppIds);
   const statusCapability = ACCOUNT_STATUS_CAPABILITIES[account.runtimeStatus];
@@ -229,6 +234,8 @@ function AccountWorkspace({
       if (successMessage) toast.success(successMessage);
       return true;
     } catch (requestError) {
+      // A newer load aborted this one; the change itself went through.
+      if (isAbortError(requestError)) return true;
       const message = apiErrorMessage(requestError, t);
       setActionError(message);
       toast.error(message);
@@ -369,7 +376,8 @@ function AccountWorkspace({
       "delete",
       async () => {
         await api(`/api/accounts/${account.id}`, { method: "DELETE" });
-        await reloadAll();
+        // The workspace unmounts with the account; only the list reloads.
+        await onReload();
       },
       t.accountDetail.accountDeleted,
     );

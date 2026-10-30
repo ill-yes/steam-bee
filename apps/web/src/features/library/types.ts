@@ -54,5 +54,4 @@ export type GameLibraryPanelProps = {
   account: { id: string; runtimeStatus: AccountStatus };
   library: LibraryModel;
   selection: SelectionModel;
-  rightRailExtra?: ReactNode;
 };

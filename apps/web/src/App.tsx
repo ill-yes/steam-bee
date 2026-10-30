@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { Plus, ShieldCheck } from "lucide-react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import {
   api,
   apiErrorMessage,
@@ -181,7 +181,7 @@ export function App() {
       try {
         event = JSON.parse((message as MessageEvent).data) as SteamEvent;
       } catch {
-        setError(t.errors.INVALID_RESPONSE);
+        setError(messagesRef.current.errors.INVALID_RESPONSE);
         return;
       }
       setEvents((current) => [event, ...current].slice(0, 100));
@@ -219,12 +219,17 @@ export function App() {
       source.close();
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
     };
-  }, [me?.authenticated, t.errors.INVALID_RESPONSE]);
+  }, [me?.authenticated]);
 
   async function logout() {
-    await api("/api/logout", { method: "POST" });
-    setCsrfToken(null);
-    await load();
+    try {
+      await api("/api/logout", { method: "POST" });
+      setCsrfToken(null);
+      await load();
+    } catch (logoutError) {
+      if (!isAbortError(logoutError))
+        toast.error(apiErrorMessage(logoutError, messagesRef.current));
+    }
   }
 
   if (!me) {
