@@ -38,6 +38,9 @@ describe("Steam free offer discovery", () => {
         row("9", { name: "&lt;img src=x onerror=alert(1)&gt;" }),
       )?.[0]?.name,
     ).toBe("<img src=x onerror=alert(1)>");
+    expect(
+      parseFreeGameOffers(row("10", { name: "Game <<b>script>x" }))?.[0]?.name,
+    ).toBe("Game script>x");
   });
 
   it("excludes F2P, partial discounts, paid offers, bundles and untrusted destinations", () => {

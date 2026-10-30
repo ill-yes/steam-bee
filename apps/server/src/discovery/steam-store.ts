@@ -162,9 +162,17 @@ function classContent(html: string, name: string) {
       "i",
     ),
   );
-  return match
-    ? decodeEntities(match[2]!.replace(/<[^>]*>/g, "")).trim()
-    : null;
+  return match ? decodeEntities(stripTags(match[2]!)).trim() : null;
+}
+
+/** Removes tags until none are left, so nested fragments cannot form a new tag. */
+function stripTags(html: string) {
+  let text = html;
+  for (let previous = ""; text !== previous;) {
+    previous = text;
+    text = text.replace(/<[^>]*>/g, "");
+  }
+  return text.replace(/</g, "");
 }
 
 function decodeEntities(text: string) {
