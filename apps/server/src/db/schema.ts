@@ -214,6 +214,7 @@ export const boostSession = sqliteTable("boost_session", {
   startedAt: integer("started_at").notNull(),
   endedAt: integer("ended_at"),
   stopReason: text("stop_reason"),
+  lastSeenAt: integer("last_seen_at"),
   createdAt: integer("created_at").notNull(),
 });
 

@@ -78,13 +78,13 @@ function PreviewAmounts({
   return (
     <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 text-xs">
       <dt>{t.totalBuyer}</dt>
-      <dd className="text-right tabular-nums">
+      <dd className="text-end tabular-nums">
         {format(totalAmount(items, (item) => item.buyerPays))}
       </dd>
       <dt>{a.batchFees}</dt>
-      <dd className="text-right tabular-nums">{format(totalFees(items))}</dd>
+      <dd className="text-end tabular-nums">{format(totalFees(items))}</dd>
       <dt className="font-semibold text-[var(--good)]">{t.totalReceive}</dt>
-      <dd className="text-right font-semibold tabular-nums text-[var(--good)]">
+      <dd className="text-end font-semibold tabular-nums text-[var(--good)]">
         {format(totalAmount(items, (item) => item.sellerReceives))}
       </dd>
     </dl>
@@ -410,15 +410,15 @@ export function BatchPreviewDialog({
         {preview.kind === "sale" && preview.currency && (
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 border-t border-[var(--line)] pt-3 text-sm">
             <dt>{t.totalBuyer}</dt>
-            <dd className="text-right">
+            <dd className="text-end">
               {money(preview.totalBuyerPays, preview.currency)}
             </dd>
             <dt>{a.batchFees}</dt>
-            <dd className="text-right">
+            <dd className="text-end">
               {fees === null ? "—" : money(fees, preview.currency)}
             </dd>
             <dt className="font-semibold">{t.totalReceive}</dt>
-            <dd className="text-right font-semibold text-[var(--good)]">
+            <dd className="text-end font-semibold text-[var(--good)]">
               {money(preview.totalSellerReceives, preview.currency)}
             </dd>
           </dl>

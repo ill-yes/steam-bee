@@ -220,6 +220,21 @@ function AccountInventoryPanel({
   useEffect(() => {
     setBasket((current) => pruneBasket(current, variants));
   }, [variants]);
+  // The basket shows the saved pause between sales before the rules tab opens.
+  const basketFilled = entries.length > 0;
+  const settingsKnown = settings !== null;
+  useEffect(() => {
+    if (!basketFilled || settingsKnown) return;
+    const abort = new AbortController();
+    api<MarketPriceSettings>(`${base}/market/settings`, {
+      signal: abort.signal,
+    })
+      .then((value) => {
+        if (!abort.signal.aborted) onSettingsChange(value);
+      })
+      .catch(() => undefined);
+    return () => abort.abort();
+  }, [base, basketFilled, settingsKnown, onSettingsChange]);
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 30_000);
     return () => window.clearInterval(timer);
@@ -877,32 +892,32 @@ function AccountInventoryPanel({
             {preview.kind === "sale" ? (
               <dl className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 text-sm [&_dd]:break-words [&_dt]:break-words">
                 <dt className="text-[var(--muted)]">{t.quantity}</dt>
-                <dd className="text-right font-semibold">
+                <dd className="text-end font-semibold">
                   {preview.value.quantity}
                 </dd>
                 <dt className="text-[var(--muted)]">{t.buyerPerItem}</dt>
-                <dd className="text-right">
+                <dd className="text-end">
                   {money(
                     preview.value.buyerPaysPerItem,
                     preview.value.currency,
                   )}
                 </dd>
                 <dt className="text-[var(--muted)]">{t.receivePerItem}</dt>
-                <dd className="text-right">
+                <dd className="text-end">
                   {money(
                     preview.value.sellerReceivesPerItem,
                     preview.value.currency,
                   )}
                 </dd>
                 <dt className="text-[var(--muted)]">{t.steamFee}</dt>
-                <dd className="text-right">
+                <dd className="text-end">
                   {money(
                     preview.value.steamFeePerItem * preview.value.quantity,
                     preview.value.currency,
                   )}
                 </dd>
                 <dt className="text-[var(--muted)]">{t.publisherFee}</dt>
-                <dd className="text-right">
+                <dd className="text-end">
                   {money(
                     preview.value.publisherFeePerItem * preview.value.quantity,
                     preview.value.currency,
@@ -911,11 +926,11 @@ function AccountInventoryPanel({
                 <dt className="border-t border-[var(--line)] pt-2">
                   {t.totalBuyer}
                 </dt>
-                <dd className="border-t border-[var(--line)] pt-2 text-right">
+                <dd className="border-t border-[var(--line)] pt-2 text-end">
                   {money(preview.value.totalBuyerPays, preview.value.currency)}
                 </dd>
                 <dt className="font-semibold">{t.totalReceive}</dt>
-                <dd className="text-right font-semibold text-[var(--good)]">
+                <dd className="text-end font-semibold text-[var(--good)]">
                   {money(
                     preview.value.totalSellerReceives,
                     preview.value.currency,

@@ -59,7 +59,7 @@ export function DataPanel({
         title={t.admin.data.librariesTitle}
         description={t.admin.data.librariesDescription}
       >
-        <div className="grid max-h-[430px] gap-2 overflow-auto pr-1">
+        <div className="grid max-h-[430px] gap-2 overflow-auto pe-1">
           {overview.accounts.length === 0 ? (
             <EmptyState title={t.admin.accountsPanel.emptyTitle}>
               {t.admin.data.noAccountsBody}
@@ -119,7 +119,7 @@ export function DataPanel({
               <Search
                 size={15}
                 aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"
+                className="pointer-events-none absolute inset-s-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"
               />
               <Input
                 type="search"
@@ -129,7 +129,7 @@ export function DataPanel({
                   setAppPage(0);
                 }}
                 placeholder={t.admin.data.appCacheSearchPlaceholder}
-                className="pl-9"
+                className="ps-9"
               />
             </span>
           </Label>
@@ -139,7 +139,7 @@ export function DataPanel({
               total: overview.totals.appCache,
             })}
           </p>
-          <div className="grid max-h-[430px] gap-2 overflow-auto pr-1">
+          <div className="grid max-h-[430px] gap-2 overflow-auto pe-1">
             {overview.apps.length === 0 ? (
               <EmptyState title={t.admin.data.noAppDataTitle}>
                 {t.admin.data.noAppDataBody}

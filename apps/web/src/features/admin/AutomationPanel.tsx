@@ -28,7 +28,7 @@ export function AutomationPanel({
         title={t.tools.presets}
         description={t.admin.automation.presetsDescription}
       >
-        <div className="grid max-h-[430px] gap-2 overflow-auto pr-1">
+        <div className="grid max-h-[430px] gap-2 overflow-auto pe-1">
           {overview.presets.length === 0 ? (
             <EmptyState title={t.admin.automation.noPresetsTitle}>
               {t.admin.automation.noPresetsBody}
@@ -69,7 +69,7 @@ export function AutomationPanel({
         title={t.tools.schedules}
         description={t.admin.automation.schedulesDescription}
       >
-        <div className="grid max-h-[430px] gap-2 overflow-auto pr-1">
+        <div className="grid max-h-[430px] gap-2 overflow-auto pe-1">
           {overview.schedules.length === 0 ? (
             <EmptyState title={t.admin.automation.noSchedulesTitle}>
               {t.admin.automation.noSchedulesBody}

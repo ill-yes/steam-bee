@@ -19,7 +19,13 @@ import { hasAccountLibrary, replaceSelectedGames } from "./repository.js";
 import { enforceGameLimit } from "./validation.js";
 import { SteamWorker } from "./worker.js";
 import { getAccountOrThrow } from "./account-repository.js";
-import { trackBoostSession } from "./boost-session-tracker.js";
+import {
+  closeInterruptedBoostSessions,
+  markOpenBoostSessionsSeen,
+  trackBoostSession,
+} from "./boost-session-tracker.js";
+
+const boostSessionHeartbeatMs = 60_000;
 import { SteamStatusEventRecorder } from "./status-event-recorder.js";
 import { AccountOperationState } from "./account-operation-state.js";
 import type { WorkerStatusPayload } from "./types.js";
@@ -47,6 +53,7 @@ class SteamManager {
   private workers = new Map<string, SteamWorker>();
   private farmingCleanupAccounts = new Set<string>();
   private safetyResumeTimers = new Map<string, NodeJS.Timeout>();
+  private boostSessionHeartbeat: NodeJS.Timeout | null = null;
   private shutdownPromise: Promise<void> | null = null;
   private quiescing = false;
   private terminalShutdown = false;
@@ -105,6 +112,13 @@ class SteamManager {
 
   async init() {
     farmingController.initialize();
+    // Sessions still open here were cut off by a crash or kill, not boosted.
+    const interrupted = await closeInterruptedBoostSessions();
+    if (interrupted > 0)
+      this.logger.warn(
+        { sessionCount: interrupted },
+        "Closed boost sessions left open by an unexpected stop",
+      );
     const accounts = await db.select().from(steamAccount);
     this.logger.info(
       { accountCount: accounts.length },
@@ -159,6 +173,25 @@ class SteamManager {
     }
     this.scheduleCoordinator.start({ runInitialTick: false });
     this.safetyCoordinator.start();
+    this.startBoostSessionHeartbeat();
+  }
+
+  private startBoostSessionHeartbeat() {
+    if (this.boostSessionHeartbeat) return;
+    this.boostSessionHeartbeat = setInterval(() => {
+      markOpenBoostSessionsSeen().catch((error) => {
+        this.logger.error(
+          errorLogFields(error),
+          "Failed to stamp open boost sessions",
+        );
+      });
+    }, boostSessionHeartbeatMs);
+    this.boostSessionHeartbeat.unref();
+  }
+
+  private stopBoostSessionHeartbeat() {
+    if (this.boostSessionHeartbeat) clearInterval(this.boostSessionHeartbeat);
+    this.boostSessionHeartbeat = null;
   }
 
   runAccountOperation<T>(
@@ -745,6 +778,7 @@ class SteamManager {
 
   private async shutdownNow() {
     this.clearAllSafetyResumes();
+    this.stopBoostSessionHeartbeat();
     const entries = [...this.workers.entries()];
     this.logger.info(
       { workerCount: entries.length },

@@ -205,14 +205,14 @@ export function InventorySetBrowser({
               <Search
                 size={14}
                 aria-hidden="true"
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]"
+                className="pointer-events-none absolute inset-s-2.5 top-1/2 -translate-y-1/2 text-[var(--muted)]"
               />
               <Input
                 id={`${accountId}-inventory-search`}
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="pl-8"
+                className="ps-8"
               />
             </div>
           </div>
@@ -251,7 +251,7 @@ export function InventorySetBrowser({
               </button>
             ))}
           </div>
-          <label className="ml-auto flex min-h-8 items-center gap-2 text-xs font-semibold">
+          <label className="ms-auto flex min-h-8 items-center gap-2 text-xs font-semibold">
             <input
               type="checkbox"
               checked={duplicatesOnly}
@@ -639,12 +639,12 @@ function Tile({
   const badges = (
     <>
       {variant.quantity > 1 && (
-        <span className="absolute right-1 top-1 rounded-full bg-[var(--ink)] px-1.5 text-[10px] font-bold text-[var(--surface)]">
+        <span className="absolute inset-e-1 top-1 rounded-full bg-[var(--ink)] px-1.5 text-[10px] font-bold text-[var(--surface)]">
           ×{variant.quantity}
         </span>
       )}
       {inBasket && (
-        <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-[var(--primary)] text-[var(--primary-fg)]">
+        <span className="absolute inset-s-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-[var(--primary)] text-[var(--primary-fg)]">
           <Check size={12} aria-hidden="true" />
         </span>
       )}

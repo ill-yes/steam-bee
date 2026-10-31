@@ -21,8 +21,8 @@ describe("database migrations", () => {
     migrate();
 
     expect(getMigrationState()).toMatchObject({
-      current: "015_card_farming_resume",
-      latest: "015_card_farming_resume",
+      current: "016_boost_session_heartbeat",
+      latest: "016_boost_session_heartbeat",
       pending: [],
     });
     expect(tableColumns("steam_account")).toContain("active_preset_id");
@@ -109,14 +109,15 @@ describe("database migrations", () => {
       );
     // Recreate the immediately previous schema, including its recorded migration history.
     sqlite.exec(
-      "DROP TABLE account_farming_resume; DROP TABLE account_market_price_settings; ALTER TABLE steam_account DROP COLUMN library_imported_at;",
+      "DROP TABLE account_farming_resume; DROP TABLE account_market_price_settings; ALTER TABLE steam_account DROP COLUMN library_imported_at; ALTER TABLE boost_session DROP COLUMN last_seen_at;",
     );
     sqlite
-      .prepare("DELETE FROM app_migration WHERE id IN (?, ?, ?)")
+      .prepare("DELETE FROM app_migration WHERE id IN (?, ?, ?, ?)")
       .run(
         "013_market_price_settings",
         "014_library_import_marker",
         "015_card_farming_resume",
+        "016_boost_session_heartbeat",
       );
     expect(getMigrationState().current).toBe("012_card_farming_settings");
     migrate();
@@ -163,8 +164,9 @@ describe("database migrations", () => {
     sqlite.exec(`
       ALTER TABLE steam_account DROP COLUMN library_imported_at;
       DROP TABLE account_farming_resume;
+      ALTER TABLE boost_session DROP COLUMN last_seen_at;
       DELETE FROM app_migration
-      WHERE id IN ('014_library_import_marker', '015_card_farming_resume');
+      WHERE id IN ('014_library_import_marker', '015_card_farming_resume', '016_boost_session_heartbeat');
       INSERT INTO steam_account (id, account_name, created_at, updated_at)
       VALUES ('never-imported', 'never.imported', ${baseTimestamp}, ${baseTimestamp});
       INSERT INTO steam_app_cache (app_id, name, source, updated_at)
@@ -188,7 +190,7 @@ describe("database migrations", () => {
       { id: "never-imported", library_imported_at: null },
     ]);
     expect(getMigrationState()).toMatchObject({
-      current: "015_card_farming_resume",
+      current: "016_boost_session_heartbeat",
       pending: [],
     });
     expect(
@@ -332,7 +334,7 @@ describe("database migrations", () => {
     expect(() => migrate()).toThrow(UnsupportedDatabaseSchemaError);
     expect(getMigrationState()).toMatchObject({
       current: "999_future_schema",
-      latest: "015_card_farming_resume",
+      latest: "016_boost_session_heartbeat",
       unsupported: [
         {
           id: "999_future_schema",
@@ -521,6 +523,16 @@ function seedOperationalIndexes() {
 function seedVersionNineTimedHolds() {
   seedInitialSchema();
   sqlite.exec(`
+    CREATE TABLE boost_session (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES steam_account(id) ON DELETE CASCADE,
+      preset_id TEXT,
+      app_ids_json TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER,
+      stop_reason TEXT,
+      created_at INTEGER NOT NULL
+    );
     CREATE TABLE notification_rule (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

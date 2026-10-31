@@ -163,7 +163,12 @@ describe("Steam market integer money", () => {
         wallet_currency_increment: 100,
       }),
     );
-    expect(yen.currency).toEqual({ id: 8, code: "JPY", minorUnit: 0 });
+    expect(yen.currency).toEqual({
+      id: 8,
+      code: "JPY",
+      minorUnit: 0,
+      priceStep: 1,
+    });
     const quote = quoteFromBuyerCap(11500, yen, "0.10");
     expect(toMinorUnits(quote.buyerPays, yen.currency)).toBe(115);
     expect(toMinorUnits(quote.base, yen.currency)).toBe(100);
@@ -171,6 +176,8 @@ describe("Steam market integer money", () => {
       walletData({ wallet_currency: 38, wallet_country: "KW" }),
     );
     expect(dinar.currency.minorUnit).toBe(3);
+    // One Steam hundredth is ten fils, so undercutting moves by 10 minor units.
+    expect(dinar.currency.priceStep).toBe(10);
     expect(toMinorUnits(115, dinar.currency)).toBe(1150);
     expect(() => toMinorUnits(115, yen.currency)).toThrow(/precision/);
     expect(() =>
@@ -331,6 +338,23 @@ describe("inventory and explicit market actions", () => {
     await expect(service.previewSale("a", "b", "101", 1)).rejects.toThrow(
       /Keep one/,
     );
+  });
+  it("frees the rest of a partly sold stack once Steam shows the sold copies gone", async () => {
+    const { service, state, posts } = harness();
+    state.inventory = inventory([asset("100", "10", "5")]);
+    const first = await service.previewSale("a", "b", "100", 2);
+    await service.confirmSale("a", "b", first.token);
+    // Steam has not deducted the listed copies yet: the stack stays blocked.
+    await expect(service.previewSale("a", "b", "100", 1)).rejects.toThrow(
+      /already been submitted/,
+    );
+    state.inventory = inventory([asset("100", "10", "3")]);
+    await service.inventory("a");
+    const second = await service.previewSale("a", "b", "100", 2);
+    await expect(
+      service.confirmSale("a", "b", second.token),
+    ).resolves.toMatchObject({ ok: true });
+    expect(posts).toHaveLength(2);
   });
   it("allows a retry after Steam definitely rejected the listing", async () => {
     const { service, state, posts } = harness();

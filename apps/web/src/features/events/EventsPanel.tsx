@@ -45,7 +45,7 @@ export function EventsPanel({ events }: { events: SteamEvent[] }) {
           className="w-full overflow-auto"
           options={eventFilterModes(t)}
         />
-        <div className="grid max-h-[440px] gap-2 overflow-auto pr-1">
+        <div className="grid max-h-[440px] gap-2 overflow-auto pe-1">
           {filteredEvents.length === 0 ? (
             <div className="rounded-md border border-dashed border-[var(--line-strong)] bg-[var(--surface-2)] p-4 text-sm text-[var(--muted)]">
               {events.length === 0

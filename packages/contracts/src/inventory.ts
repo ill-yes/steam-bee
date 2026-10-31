@@ -1,5 +1,13 @@
-/** Prices use integer ISO currency minor units; minorUnit is the exponent. */
-export type MarketCurrency = { id: number; code: string; minorUnit: number };
+/**
+ * Prices use integer ISO currency minor units; minorUnit is the exponent.
+ * priceStep is the wallet's smallest price change in minor units (10 for KWD).
+ */
+export type MarketCurrency = {
+  id: number;
+  code: string;
+  minorUnit: number;
+  priceStep?: number;
+};
 export type InventoryItem = {
   assetId: string;
   /** Steam description identity, shared by separate assets of the same variant. */

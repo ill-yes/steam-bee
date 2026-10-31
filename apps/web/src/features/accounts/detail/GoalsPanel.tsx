@@ -93,8 +93,14 @@ export function GoalsPanel({
               >
                 {goal.reached ? `${c.goalReached} · ` : ""}
                 {interpolate(c.goalProgress, {
-                  current: Math.round(goal.currentMinutes / 60),
-                  target: Math.round(goal.targetMinutes / 60),
+                  current: formatGoalHours(
+                    goal.currentMinutes,
+                    localeInfo.dateLocale,
+                  ),
+                  target: formatGoalHours(
+                    goal.targetMinutes,
+                    localeInfo.dateLocale,
+                  ),
                 })}
               </span>
               <Button
@@ -128,11 +134,9 @@ export function GoalsPanel({
               {goal.reached
                 ? null
                 : `${interpolate(c.goalLeft, {
-                    hours: Math.max(
-                      0,
-                      Math.round(
-                        (goal.targetMinutes - goal.currentMinutes) / 60,
-                      ),
+                    hours: formatGoalHours(
+                      Math.max(0, goal.targetMinutes - goal.currentMinutes),
+                      localeInfo.dateLocale,
                     ),
                   })} · `}
               {goal.snapshotImportedAt
@@ -149,4 +153,9 @@ export function GoalsPanel({
       </div>
     </section>
   );
+}
+
+// Goals are often a few hours away, so whole hours would hide real progress.
+function formatGoalHours(minutes: number, locale: string) {
+  return (minutes / 60).toLocaleString(locale, { maximumFractionDigits: 1 });
 }

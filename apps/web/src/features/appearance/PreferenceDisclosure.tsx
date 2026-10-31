@@ -89,7 +89,7 @@ export function PreferenceDisclosure({
       </summary>
       <div
         id={panelId}
-        className="fixed inset-x-4 top-16 z-40 mt-2 grid max-h-[calc(100dvh-5rem)] gap-3 overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-[var(--modal-shadow)] sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:w-[280px] sm:rtl:left-0 sm:rtl:right-auto"
+        className="fixed inset-x-4 top-16 z-40 mt-2 grid max-h-[calc(100dvh-5rem)] gap-3 overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-[var(--modal-shadow)] sm:absolute sm:inset-x-auto sm:inset-e-0 sm:top-full sm:w-[280px]"
       >
         {children}
       </div>

@@ -9,7 +9,11 @@ import {
   steamAccountGame,
 } from "../src/db/schema.js";
 import { getAccountAnalytics } from "../src/http/read-models/automation.js";
-import { trackBoostSession } from "../src/steam/boost-session-tracker.js";
+import {
+  closeInterruptedBoostSessions,
+  markOpenBoostSessionsSeen,
+  trackBoostSession,
+} from "../src/steam/boost-session-tracker.js";
 
 describe("boost session attribution to reported activity", () => {
   let accountId: string;
@@ -172,5 +176,51 @@ describe("boost session attribution to reported activity", () => {
       .from(boostSession)
       .where(eq(boostSession.accountId, accountId));
     expect(JSON.parse(sessions[0]?.appIdsJson ?? "[]")).toEqual([]);
+  });
+});
+
+describe("boost sessions cut off by a crash", () => {
+  let accountId: string;
+  let timestamp: number;
+  beforeEach(async () => {
+    migrate();
+    timestamp = Date.UTC(2026, 0, 2, 12);
+    vi.spyOn(Date, "now").mockImplementation(() => timestamp);
+    accountId = randomUUID();
+    await db.insert(steamAccount).values({
+      id: accountId,
+      accountName: `crash-${accountId}`,
+      status: "disconnected",
+      desiredState: "running",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+  });
+  afterEach(async () => {
+    await db.delete(steamAccount).where(eq(steamAccount.id, accountId));
+    vi.restoreAllMocks();
+  });
+
+  it("ends an open session at its last heartbeat instead of counting the downtime", async () => {
+    await trackBoostSession(accountId, "boosting", {
+      activityMode: "manual",
+      activeAppIds: [730],
+    });
+    timestamp += 5 * 60_000;
+    await markOpenBoostSessionsSeen();
+    // The process dies here; it restarts three hours later.
+    timestamp += 3 * 60 * 60_000;
+    expect(await closeInterruptedBoostSessions()).toBeGreaterThanOrEqual(1);
+
+    const [session] = await db
+      .select()
+      .from(boostSession)
+      .where(eq(boostSession.accountId, accountId));
+    expect(session).toMatchObject({
+      endedAt: Date.UTC(2026, 0, 2, 12, 5),
+      stopReason: "interrupted",
+    });
+    const analytics = await getAccountAnalytics(accountId, timestamp, "UTC");
+    expect(analytics.recentSessions[0]?.durationMs).toBe(5 * 60_000);
   });
 });

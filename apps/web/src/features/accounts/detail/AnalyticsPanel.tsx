@@ -162,7 +162,7 @@ export function AnalyticsPanel({
                       }}
                     />
                   </span>
-                  <span className="text-right tabular-nums text-[var(--muted-strong)]">
+                  <span className="text-end tabular-nums text-[var(--muted-strong)]">
                     {duration(game.durationMs)}
                   </span>
                 </li>
@@ -192,7 +192,7 @@ export function AnalyticsPanel({
                     {formatDateTime(session.startedAt, localeInfo.dateLocale)}
                   </time>
                   <span className="truncate">{sessionLabel(session)}</span>
-                  <span className="text-right tabular-nums">
+                  <span className="text-end tabular-nums">
                     {duration(session.durationMs)}
                   </span>
                 </li>
