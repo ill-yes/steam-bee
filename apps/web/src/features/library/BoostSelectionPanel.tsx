@@ -151,7 +151,7 @@ export function BoostSelectionPanel({
               {t.library.chooseFromLibrary}
             </div>
           ) : (
-            <div className="grid max-h-[520px] gap-2 overflow-auto pr-1">
+            <div className="grid max-h-[520px] gap-2 overflow-auto pe-1">
               {selectedGames.map((app) => (
                 <div
                   key={app.appId}

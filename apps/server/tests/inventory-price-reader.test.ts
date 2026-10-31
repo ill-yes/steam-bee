@@ -86,6 +86,7 @@ describe("display-only market price reads", () => {
       id: 8,
       code: "JPY",
       minorUnit: 0,
+      priceStep: 1,
     });
     expect(request).toHaveBeenCalledTimes(2);
   });

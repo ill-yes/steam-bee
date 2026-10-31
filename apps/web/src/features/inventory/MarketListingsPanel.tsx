@@ -295,23 +295,17 @@ export function MarketListingsPanel({
             <table className="w-full min-w-[620px] border-collapse text-sm">
               <caption className="sr-only">{t.listings}</caption>
               <thead>
-                <tr className="text-left text-xs text-[var(--muted)]">
+                <tr className="text-start text-xs text-[var(--muted)]">
                   <th scope="col" className="w-10 px-3 py-2">
                     <span className="sr-only">{a.selectedListings}</span>
                   </th>
                   <th scope="col" className="px-3 py-2 font-semibold">
                     {a.listingItem}
                   </th>
-                  <th
-                    scope="col"
-                    className="px-3 py-2 text-right font-semibold"
-                  >
+                  <th scope="col" className="px-3 py-2 text-end font-semibold">
                     {a.listingBuyerPays}
                   </th>
-                  <th
-                    scope="col"
-                    className="px-3 py-2 text-right font-semibold"
-                  >
+                  <th scope="col" className="px-3 py-2 text-end font-semibold">
                     {a.listingYouReceive}
                   </th>
                   <th scope="col" className="px-3 py-2 font-semibold">
@@ -374,10 +368,10 @@ export function MarketListingsPanel({
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-[var(--muted-strong)]">
+                      <td className="px-3 py-1.5 text-end tabular-nums text-[var(--muted-strong)]">
                         {money(listing.buyerPays)}
                       </td>
-                      <td className="px-3 py-1.5 text-right font-semibold tabular-nums">
+                      <td className="px-3 py-1.5 text-end font-semibold tabular-nums">
                         <span className="sr-only">{t.receivePerItem}: </span>
                         {money(listing.sellerReceives)}
                       </td>
@@ -388,7 +382,7 @@ export function MarketListingsPanel({
                           {listing.pendingConfirmation ? t.pending : a.active}
                         </Badge>
                       </td>
-                      <td className="px-3 py-1.5 text-right">
+                      <td className="px-3 py-1.5 text-end">
                         <Button
                           size="sm"
                           variant="ghost"

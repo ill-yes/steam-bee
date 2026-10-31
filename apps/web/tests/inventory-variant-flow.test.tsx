@@ -281,7 +281,9 @@ describe("inventory variant sale flows with real asset allocations", () => {
     expect(basket().getByText("$2.30")).toBeVisible();
     expect(basket().getByText("$0.30")).toBeVisible();
     expect(basket().getAllByText("$2.00")).toHaveLength(2);
-    expect(basket().getByText("2 Steam actions · 10 s apart")).toBeVisible();
+    expect(
+      await basket().findByText("2 Steam actions · 10 s apart"),
+    ).toBeVisible();
     fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
     const dialog = await screen.findByRole("alertdialog", {
       name: "Review duplicate sales",
@@ -385,7 +387,9 @@ describe("inventory variant sale flows with real asset allocations", () => {
       ),
     );
     expect(basket().getByText("2 items · 3 copies")).toBeVisible();
-    expect(basket().getByText("3 Steam actions · 10 s apart")).toBeVisible();
+    expect(
+      await basket().findByText("3 Steam actions · 10 s apart"),
+    ).toBeVisible();
     fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
     await screen.findByRole("alertdialog", { name: "Review duplicate sales" });
     expect(api).toHaveBeenCalledWith(
@@ -430,7 +434,9 @@ describe("inventory variant sale flows with real asset allocations", () => {
     expect(
       basket().getByRole("button", { name: "Sell one more The Bee" }),
     ).toBeDisabled();
-    expect(basket().getByText("50 Steam actions · 10 s apart")).toBeVisible();
+    expect(
+      await basket().findByText("50 Steam actions · 10 s apart"),
+    ).toBeVisible();
     expect(saleRequests()).toHaveLength(0);
     fireEvent.click(basket().getByRole("button", { name: "Review sale" }));
     await screen.findByRole("alertdialog", { name: "Review duplicate sales" });
@@ -467,7 +473,9 @@ describe("inventory variant sale flows with real asset allocations", () => {
     );
     expect(basketQuantity("Beekeeper")).toHaveTextContent("26");
     expect(basketQuantity("The Bee")).toHaveTextContent("24");
-    expect(basket().getByText("50 Steam actions · 10 s apart")).toBeVisible();
+    expect(
+      await basket().findByText("50 Steam actions · 10 s apart"),
+    ).toBeVisible();
     expect(saleRequests()).toHaveLength(0);
   });
 });

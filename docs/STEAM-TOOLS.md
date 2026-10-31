@@ -265,12 +265,17 @@ highlighted. The last card saves the current selection as a new preset.
 windows continue on the next day, disabled schedules are dashed and a marker
 shows the current time. Each schedule has an on/off switch, its next start, and
 skip and delete actions; new schedules open in a dialog. The list of upcoming
-windows stays below.
+windows stays below. The timeline uses the browser's time zone; a schedule saved
+in another zone is shifted to match and shows its own zone in the list. When a
+scheduled start or pause fails, SteamBee retries after 1, 2, 4 and up to 60
+minutes instead of every minute.
 
 **Statistics** shows what is running now, playtime today and in the last seven
 days, the number of sessions, playtime per day and top games as bars, recent
 sessions and playtime goals with progress bars. Days follow the browser's time
-zone, and the values count the games actually reported to Steam.
+zone, and the values count the games actually reported to Steam. Open sessions
+are stamped every minute; after a crash or a killed container they end at the
+last stamp, so the downtime is not counted as playtime.
 
 ## Appearance
 

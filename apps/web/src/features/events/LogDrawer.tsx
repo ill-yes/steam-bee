@@ -23,7 +23,7 @@ export function LogDrawer({
   return (
     <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm">
       <aside
-        className="absolute right-0 top-0 grid h-full w-full max-w-[460px] grid-rows-[auto_minmax(0,1fr)] border-l border-[var(--line)] bg-[var(--bg)] shadow-[var(--modal-shadow)]"
+        className="absolute inset-e-0 top-0 grid h-full w-full max-w-[460px] grid-rows-[auto_minmax(0,1fr)] border-s border-[var(--line)] bg-[var(--bg)] shadow-[var(--modal-shadow)]"
         aria-label={t.logDrawer.aria}
       >
         <header className="flex items-start justify-between gap-3 border-b border-[var(--line)] bg-[var(--surface)] px-4 py-3">

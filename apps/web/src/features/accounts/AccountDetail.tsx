@@ -215,6 +215,22 @@ function AccountWorkspace({
     });
   }, [account.id]);
 
+  // An import the server ran on its own (after sign-in) only shows up as an event.
+  const latestImportEventId = events.find(
+    (event) =>
+      event.accountId === account.id && event.type === "steam.library.import",
+  )?.id;
+  const seenImportEventId = useRef(latestImportEventId);
+  useEffect(() => {
+    if (
+      latestImportEventId === undefined ||
+      latestImportEventId === seenImportEventId.current
+    )
+      return;
+    seenImportEventId.current = latestImportEventId;
+    void loadAccountData(account.id, { silent: true });
+  }, [account.id, latestImportEventId, loadAccountData]);
+
   async function reloadAll() {
     await Promise.all([
       onReload(),

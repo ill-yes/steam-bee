@@ -31,6 +31,7 @@ export const supportedMigrationIds = [
   "013_market_price_settings",
   "014_library_import_marker",
   "015_card_farming_resume",
+  "016_boost_session_heartbeat",
 ] as const;
 const supportedMigrations = new Set<string>(supportedMigrationIds);
 

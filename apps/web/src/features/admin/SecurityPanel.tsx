@@ -111,7 +111,7 @@ export function SecurityPanel({
           </Button>
         }
       >
-        <div className="grid max-h-[360px] gap-2 overflow-auto pr-1">
+        <div className="grid max-h-[360px] gap-2 overflow-auto pe-1">
           {sessions.length === 0 ? (
             <EmptyState title={t.admin.security.noSessionsTitle}>
               {t.admin.security.noSessionsBody}

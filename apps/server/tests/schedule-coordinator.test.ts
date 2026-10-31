@@ -58,7 +58,13 @@ describe("ScheduleCoordinator", () => {
     expect(harness.order).not.toContain("commit:schedule-a");
     expect(harness.order).toContain("error:steam.schedule.error");
 
-    await harness.coordinator.tick(activeAt);
+    // The next attempt waits one interval instead of retrying immediately.
+    await harness.coordinator.tick(new Date(activeAt.getTime() + 30_000));
+    expect(
+      harness.order.filter((entry) => entry === "apply:schedule-a"),
+    ).toHaveLength(1);
+
+    await harness.coordinator.tick(new Date(activeAt.getTime() + 60_000));
 
     expect(
       harness.order.filter((entry) => entry === "apply:schedule-a"),
@@ -85,6 +91,35 @@ describe("ScheduleCoordinator", () => {
       "info:steam.schedule.pause",
       "lock:end:account-a",
     ]);
+    expect(harness.repository.schedules[0]?.lastStoppedWindow).toBe(
+      "schedule-a:2026-07-08:10:00-11:00",
+    );
+  });
+
+  it("backs off a failing pause instead of retrying every minute", async () => {
+    const harness = createHarness([scheduleRecord()]);
+    await harness.coordinator.tick(activeAt);
+    let failing = true;
+    harness.ports.pause = async (accountId) => {
+      harness.order.push(`pause:${accountId}`);
+      if (failing) throw new Error("Steam unavailable");
+    };
+    const pauses = () =>
+      harness.order.filter((entry) => entry === "pause:account-a").length;
+    const at = (minutes: number) =>
+      new Date(afterWindow.getTime() + minutes * 60_000);
+
+    await harness.coordinator.tick(at(0));
+    await harness.coordinator.tick(at(0.5));
+    expect(pauses()).toBe(1);
+    await harness.coordinator.tick(at(1));
+    expect(pauses()).toBe(2);
+    // Two failures: the next attempt waits two minutes.
+    await harness.coordinator.tick(at(2));
+    expect(pauses()).toBe(2);
+    failing = false;
+    await harness.coordinator.tick(at(3));
+    expect(pauses()).toBe(3);
     expect(harness.repository.schedules[0]?.lastStoppedWindow).toBe(
       "schedule-a:2026-07-08:10:00-11:00",
     );

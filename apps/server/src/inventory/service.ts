@@ -178,7 +178,12 @@ export class InventoryMarketService {
   private readonly intents = new Map<string, Intent>();
   private readonly locks = new Map<string, Promise<unknown>>();
   // Retain uncertain/accepted submissions for this process. Never blindly retry a sale.
-  private readonly submitted = new Map<string, Map<string, number>>();
+  // Assets sent to Steam, with the stack size they had: once Steam's inventory
+  // shows the sold copies gone, the rest of a partly sold stack is sellable.
+  private readonly submitted = new Map<
+    string,
+    Map<string, { quantity: number; before: number }>
+  >();
   private readonly now: () => number;
   private readonly batches: MarketBatchQueue;
   private readonly accountEpoch = new Map<string, number>();
@@ -333,7 +338,17 @@ export class InventoryMarketService {
         publisherFee: description.market_fee ?? null,
       });
     }
+    this.releaseSettledSubmissions(accountId, items);
     return items;
+  }
+  private releaseSettledSubmissions(accountId: string, items: Item[]) {
+    const submitted = this.submitted.get(accountId);
+    if (!submitted) return;
+    for (const [assetId, entry] of submitted) {
+      const item = items.find((candidate) => candidate.assetId === assetId);
+      if (!item || item.quantity <= entry.before - entry.quantity)
+        submitted.delete(assetId);
+    }
   }
   async inventory(accountId: string): Promise<InventorySnapshot> {
     const isCurrent = this.captureGuard(accountId);
@@ -624,7 +639,7 @@ export class InventoryMarketService {
           entry.quantity -
           Math.min(
             entry.quantity,
-            this.submitted.get(accountId)?.get(entry.assetId) ?? 0,
+            this.submitted.get(accountId)?.get(entry.assetId)?.quantity ?? 0,
           ),
         0,
       );
@@ -802,8 +817,9 @@ export class InventoryMarketService {
       if (!shouldContinue()) throw stoppedBeforeSubmission();
       // Reserve before calling Steam: an interrupted HTTP response must never cause a blind retry.
       const submitted =
-        this.submitted.get(accountId) ?? new Map<string, number>();
-      submitted.set(assetId, quantity);
+        this.submitted.get(accountId) ??
+        new Map<string, { quantity: number; before: number }>();
+      submitted.set(assetId, { quantity, before: item.quantity });
       this.submitted.set(accountId, submitted);
       let data: Json;
       try {
@@ -1101,7 +1117,8 @@ export class InventoryMarketService {
                   entry.quantity -
                   Math.min(
                     entry.quantity,
-                    this.submitted.get(accountId)?.get(entry.assetId) ?? 0,
+                    this.submitted.get(accountId)?.get(entry.assetId)
+                      ?.quantity ?? 0,
                   ),
                 0,
               );

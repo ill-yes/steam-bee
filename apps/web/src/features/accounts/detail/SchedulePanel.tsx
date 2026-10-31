@@ -39,20 +39,70 @@ function minutes(time: string) {
   return (hours ?? 0) * 60 + (mins ?? 0);
 }
 
-/** Splits each schedule window into per-weekday blocks; overnight windows continue on the next day. */
-export function weekBlocks(schedules: BoostSchedule[]) {
+const weekMinutes = 7 * dayMinutes;
+
+/** Minutes the zone is ahead of UTC at the given instant. */
+export function zoneOffsetMinutes(zone: string, at: number) {
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+        .formatToParts(at)
+        .map((part) => [part.type, part.value]),
+    );
+    const wallClock = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+    );
+    return Math.round((wallClock - Math.floor(at / 60_000) * 60_000) / 60_000);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Splits each schedule window into per-weekday blocks in the viewer's zone:
+ * a schedule saved in another zone is shifted, and windows that cross
+ * midnight continue on the next day.
+ */
+export function weekBlocks(
+  schedules: BoostSchedule[],
+  displayZone?: string,
+  at = Date.now(),
+) {
   const days = new Map<number, Block[]>(weekOrder.map((day) => [day, []]));
+  const displayOffset = displayZone ? zoneOffsetMinutes(displayZone, at) : 0;
   schedules.forEach((schedule, index) => {
     const color = palette[index % palette.length]!;
+    const shift =
+      displayZone && schedule.timezone && schedule.timezone !== displayZone
+        ? displayOffset - zoneOffsetMinutes(schedule.timezone, at)
+        : 0;
     const start = minutes(schedule.startTime);
-    const end = minutes(schedule.endTime);
+    let length = minutes(schedule.endTime) - start;
+    if (length <= 0) length += dayMinutes;
     for (const day of schedule.weekdays) {
-      if (end > start) {
-        days.get(day)?.push({ schedule, color, start, end });
-      } else {
-        days.get(day)?.push({ schedule, color, start, end: dayMinutes });
-        if (end > 0)
-          days.get((day + 1) % 7)?.push({ schedule, color, start: 0, end });
+      let from =
+        (((day * dayMinutes + start + shift) % weekMinutes) + weekMinutes) %
+        weekMinutes;
+      let left = length;
+      while (left > 0) {
+        const weekday = Math.floor(from / dayMinutes);
+        const offset = from - weekday * dayMinutes;
+        const end = Math.min(dayMinutes, offset + left);
+        days.get(weekday)?.push({ schedule, color, start: offset, end });
+        left -= end - offset;
+        from = ((weekday + 1) % 7) * dayMinutes;
       }
     }
   });
@@ -116,7 +166,7 @@ export function SchedulePanel({
     return () => window.clearInterval(timer);
   }, []);
   const previewItems = Array.isArray(preview?.items) ? preview.items : [];
-  const blocks = weekBlocks(schedules);
+  const blocks = weekBlocks(schedules, timezone, now);
   const labels = new Map(
     weekdayLabels(localeInfo.dateLocale).map((day) => [day.value, day.label]),
   );
@@ -228,7 +278,7 @@ export function SchedulePanel({
                           : `border-2 border-dashed bg-[var(--surface)] leading-5 ${block.color.line}`,
                       )}
                       style={{
-                        left: `${(block.start / dayMinutes) * 100}%`,
+                        insetInlineStart: `${(block.start / dayMinutes) * 100}%`,
                         width: `${((block.end - block.start) / dayMinutes) * 100}%`,
                       }}
                     >
@@ -239,7 +289,7 @@ export function SchedulePanel({
                   {isToday && (
                     <span
                       className="absolute -inset-y-1 w-0.5 bg-[var(--good)]"
-                      style={{ left: `${nowPercent}%` }}
+                      style={{ insetInlineStart: `${nowPercent}%` }}
                     />
                   )}
                 </div>
@@ -299,13 +349,16 @@ export function SchedulePanel({
                 <span className="flex-[1_1_9rem] text-sm">
                   {daysText(schedule.weekdays)} · {schedule.startTime}–
                   {schedule.endTime}
+                  {schedule.timezone && schedule.timezone !== timezone
+                    ? ` (${schedule.timezone})`
+                    : ""}
                 </span>
                 <span className="min-w-0 flex-[1_1_9rem] truncate text-sm text-[var(--muted)]">
                   {interpolate(c.presetNamed, {
                     name: schedule.presetName ?? t.tools.preset,
                   })}
                 </span>
-                <div className="ml-auto flex items-center gap-1">
+                <div className="ms-auto flex items-center gap-1">
                   <button
                     type="button"
                     role="switch"
@@ -325,8 +378,8 @@ export function SchedulePanel({
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-[left]",
-                        schedule.enabled ? "left-[23px]" : "left-[3px]",
+                        "absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white transition-[inset-inline-start]",
+                        schedule.enabled ? "inset-s-[23px]" : "inset-s-[3px]",
                       )}
                     />
                   </button>

@@ -40,7 +40,7 @@ export function LibraryToolbar({
         <Search
           size={15}
           aria-hidden="true"
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"
+          className="pointer-events-none absolute inset-s-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"
         />
         <Input
           id="library-search"
@@ -49,7 +49,7 @@ export function LibraryToolbar({
           value={search.value}
           onChange={(event) => search.onChange(event.target.value)}
           placeholder={t.library.searchPlaceholder}
-          className="pl-9"
+          className="ps-9"
         />
       </div>
       <Select

@@ -145,6 +145,7 @@ describe("encrypted backup format", () => {
     "013_market_price_settings",
     "014_library_import_marker",
     "015_card_farming_resume",
+    "016_boost_session_heartbeat",
   ])(
     "accepts a supported %s snapshot and retains its stored account preferences",
     (migrationId) => {
@@ -524,6 +525,7 @@ const migrationIds = [
   "013_market_price_settings",
   "014_library_import_marker",
   "015_card_farming_resume",
+  "016_boost_session_heartbeat",
 ];
 
 function readProbe(path: string) {

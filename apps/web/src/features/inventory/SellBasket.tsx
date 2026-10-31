@@ -190,15 +190,15 @@ export function SellBasketPanel({
       {entries.length > 0 && (
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-t border-[var(--line)] pt-2 text-xs">
           <dt className="text-[var(--muted)]">{s.buyerPays}</dt>
-          <dd className="text-right">
+          <dd className="text-end">
             {totals.priced ? money(totals.buyer, totalCurrency) : "—"}
           </dd>
           <dt className="text-[var(--muted)]">{s.fees}</dt>
-          <dd className="text-right">
+          <dd className="text-end">
             {totals.priced ? money(totals.fees, totalCurrency) : "—"}
           </dd>
           <dt className="font-semibold">{s.receive}</dt>
-          <dd className="text-right font-semibold text-[var(--good)]">
+          <dd className="text-end font-semibold text-[var(--good)]">
             {totals.priced ? money(totals.receive, totalCurrency) : "—"}
           </dd>
         </dl>
@@ -222,10 +222,12 @@ export function SellBasketPanel({
         >
           {overLimit
             ? s.actionLimit
-            : interpolate(s.actions, {
-                count: actions,
-                delay: settings?.delaySeconds ?? 10,
-              })}
+            : settings
+              ? interpolate(s.actions, {
+                  count: actions,
+                  delay: settings.delaySeconds,
+                })
+              : interpolate(s.actionsCount, { count: actions })}
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
