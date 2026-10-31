@@ -115,7 +115,7 @@ export function AccountRail({
               key={account.id}
               type="button"
               className={cn(
-                "relative grid min-h-14 w-full items-center gap-2 rounded-md border border-transparent text-left transition hover:border-[var(--line)] hover:bg-[var(--surface-2)]",
+                "relative grid min-h-14 w-full items-center gap-2 rounded-md border border-transparent text-start transition hover:border-[var(--line)] hover:bg-[var(--surface-2)]",
                 collapsed
                   ? "grid-cols-1 justify-items-center p-2"
                   : "grid-cols-[auto_36px_minmax(0,1fr)_auto] px-2 py-2",
@@ -137,7 +137,7 @@ export function AccountRail({
             >
               <span
                 className={cn(
-                  collapsed && "absolute right-2 top-2",
+                  collapsed && "absolute inset-e-2 top-2",
                   !collapsed && "contents",
                 )}
               >

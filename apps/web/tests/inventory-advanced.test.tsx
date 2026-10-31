@@ -855,7 +855,10 @@ describe("grouped inventory and batch market tools", () => {
       "At most 50 Steam actions fit in one batch.",
     );
     expect(screen.getByText("50 items · 100 copies")).toBeVisible();
-    expect(screen.getByText("50 Steam actions · 10 s apart")).toBeVisible();
+    // The saved pause is read once the basket fills, without opening the rules tab.
+    expect(
+      await screen.findByText("50 Steam actions · 10 s apart"),
+    ).toBeVisible();
     expect(vi.mocked(api).mock.calls.every(([, init]) => !init?.method)).toBe(
       true,
     );

@@ -578,6 +578,15 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: "016_boost_session_heartbeat",
+    description:
+      "Record when open boost sessions were last seen so a crash can close them",
+    sql: `
+      ALTER TABLE boost_session ADD COLUMN last_seen_at INTEGER;
+      UPDATE boost_session SET last_seen_at = COALESCE(ended_at, started_at);
+    `,
+  },
 ];
 
 export function migrate() {

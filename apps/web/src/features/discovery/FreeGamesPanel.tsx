@@ -331,7 +331,7 @@ function AccountFreeGamesPanel({ accountId }: { accountId: string }) {
           />
           {copy.offerDetails}
         </summary>
-        <div className="grid gap-2 border-l-2 border-[var(--line)] py-1 pl-4 leading-5">
+        <div className="grid gap-2 border-s-2 border-[var(--line)] py-1 ps-4 leading-5">
           <p>{copy.region}</p>
           {data?.libraryImportedAt !== null &&
           data?.libraryImportedAt !== undefined ? (

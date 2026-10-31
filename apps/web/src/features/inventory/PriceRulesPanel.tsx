@@ -533,11 +533,15 @@ function localizeDecimal(text: string, intlLocale: string) {
   return separator === "," ? text.replace(".", ",") : text;
 }
 
-const strategies = [
-  { id: "instant", mode: "highestBuyOrder", adjustment: 0, speed: 3 },
-  { id: "undercut", mode: "lowestSellOrder", adjustment: -1, speed: 2 },
-  { id: "match", mode: "lowestSellOrder", adjustment: 0, speed: 1 },
-] as const;
+/** Undercut moves by the wallet's smallest price step (one fils is not a KWD price). */
+function strategiesFor(currency: MarketCurrency | null) {
+  const step = currency?.priceStep ?? 1;
+  return [
+    { id: "instant", mode: "highestBuyOrder", adjustment: 0, speed: 3 },
+    { id: "undercut", mode: "lowestSellOrder", adjustment: -step, speed: 2 },
+    { id: "match", mode: "lowestSellOrder", adjustment: 0, speed: 1 },
+  ] as const;
+}
 
 function parsedRules(
   adjustment: string,
@@ -579,6 +583,7 @@ function StrategyPicker({
   const a = advancedInventoryCopy(locale);
   const name = useId();
   const rules = parsedRules(adjustment, minimum, maximum, currency);
+  const strategies = strategiesFor(currency);
   const current = strategies.find(
     (strategy) =>
       strategy.mode === mode && rules?.adjust === strategy.adjustment,
@@ -732,7 +737,12 @@ function PriceScale({
           {interpolate(a.scaleSubtitle, { buy: money(buy), sell: money(sell) })}
         </p>
       </div>
-      <div className="relative mx-2 mb-10 mt-9 h-2" aria-hidden="true">
+      {/* A number line: low prices stay on the left in every writing direction. */}
+      <div
+        className="relative mx-2 mb-10 mt-9 h-2"
+        dir="ltr"
+        aria-hidden="true"
+      >
         <div className="absolute inset-0 rounded-full bg-[var(--line)]" />
         <div
           className="absolute inset-y-0 rounded-full bg-[var(--good-soft)] ring-1 ring-[var(--good-line)]"

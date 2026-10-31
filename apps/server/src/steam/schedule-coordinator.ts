@@ -46,9 +46,19 @@ export type ScheduleCoordinatorPorts = {
 };
 
 const scheduleIntervalMs = 60_000;
+const maxRetryDelayMs = 60 * 60_000;
+
+type FailedTransition = {
+  key: string;
+  failures: number;
+  retryAt: number;
+};
 
 export class ScheduleCoordinator {
   private readonly activeWindows = new Map<string, string>();
+  // A start or pause that keeps failing waits 1, 2, 4 … 60 minutes between
+  // attempts instead of retrying (and logging an error) on every tick.
+  private readonly failedTransitions = new Map<string, FailedTransition>();
   private timer: NodeJS.Timeout | null = null;
   private tickInFlight: Promise<void> | null = null;
   private trailingTickAt: Date | null = null;
@@ -97,10 +107,32 @@ export class ScheduleCoordinator {
 
   clearAccount(accountId: string) {
     this.activeWindows.delete(accountId);
+    this.failedTransitions.delete(accountId);
   }
 
   clearAll() {
     this.activeWindows.clear();
+    this.failedTransitions.clear();
+  }
+
+  private isBackingOff(accountId: string, key: string, now: Date) {
+    const failed = this.failedTransitions.get(accountId);
+    return failed?.key === key && now.getTime() < failed.retryAt;
+  }
+
+  private recordTransitionFailure(accountId: string, key: string, now: Date) {
+    const previous = this.failedTransitions.get(accountId);
+    const failures = previous?.key === key ? previous.failures + 1 : 1;
+    const delayMs = Math.min(
+      scheduleIntervalMs * 2 ** (failures - 1),
+      maxRetryDelayMs,
+    );
+    this.failedTransitions.set(accountId, {
+      key,
+      failures,
+      retryAt: now.getTime() + delayMs,
+    });
+    return { failures, retryAt: now.getTime() + delayMs };
   }
 
   async getHoldOwner(
@@ -180,7 +212,7 @@ export class ScheduleCoordinator {
           const schedules =
             await this.ports.repository.listSchedulesForAccount(accountId);
           const entries = await this.evaluateSchedules(schedules, now);
-          await this.transitionAccount(accountId, entries);
+          await this.transitionAccount(accountId, entries, now);
         }),
       ),
     );
@@ -226,14 +258,18 @@ export class ScheduleCoordinator {
     return entries;
   }
 
-  private async transitionAccount(accountId: string, entries: ScheduleEntry[]) {
+  private async transitionAccount(
+    accountId: string,
+    entries: ScheduleEntry[],
+    now: Date,
+  ) {
     const hold = await this.ports.getActiveHold?.(accountId);
     if (hold) return;
     const winner = selectScheduleWinner(entries);
     const previousWindow = this.activeWindows.get(accountId);
 
     if (!winner?.state?.windowId) {
-      await this.stopAccountWindow(accountId, entries, previousWindow);
+      await this.stopAccountWindow(accountId, entries, now, previousWindow);
       return;
     }
 
@@ -280,6 +316,8 @@ export class ScheduleCoordinator {
       scheduleId: winner.schedule.id,
       presetId: winner.schedule.presetId,
     } satisfies OperationContext;
+    const retryKey = `start:${winner.schedule.id}:${nextWindow}`;
+    if (this.isBackingOff(accountId, retryKey, now)) return;
     try {
       await this.ports.applyPreset(
         accountId,
@@ -297,6 +335,7 @@ export class ScheduleCoordinator {
         previousWindows,
       });
       this.activeWindows.set(accountId, nextWindow);
+      this.failedTransitions.delete(accountId);
       await this.ports.recordInfo(
         accountId,
         "steam.schedule.start",
@@ -304,11 +343,12 @@ export class ScheduleCoordinator {
         context,
       );
     } catch (error) {
+      const retry = this.recordTransitionFailure(accountId, retryKey, now);
       await this.ports.recordError(
         accountId,
         "steam.schedule.error",
         `Schedule could not start: ${safeErrorMessage(error)}`,
-        context,
+        { ...context, ...retry },
       );
     }
   }
@@ -316,6 +356,7 @@ export class ScheduleCoordinator {
   private async stopAccountWindow(
     accountId: string,
     entries: ScheduleEntry[],
+    now: Date,
     previousWindow?: string,
   ) {
     const openWindows = openScheduleWindows(entries);
@@ -325,6 +366,8 @@ export class ScheduleCoordinator {
       source: "scheduler",
       action: "schedule-pause",
     } satisfies OperationContext;
+    const retryKey = "pause";
+    if (this.isBackingOff(accountId, retryKey, now)) return;
     try {
       const desiredState = await this.ports.getDesiredState(accountId);
       if (desiredState !== "stopped") {
@@ -332,6 +375,7 @@ export class ScheduleCoordinator {
       }
       await this.ports.repository.markWindowsStopped(accountId, openWindows);
       this.activeWindows.delete(accountId);
+      this.failedTransitions.delete(accountId);
       await this.ports.recordInfo(
         accountId,
         "steam.schedule.pause",
@@ -339,11 +383,12 @@ export class ScheduleCoordinator {
         context,
       );
     } catch (error) {
+      const retry = this.recordTransitionFailure(accountId, retryKey, now);
       await this.ports.recordError(
         accountId,
         "steam.schedule.error",
         `Schedules could not pause: ${safeErrorMessage(error)}`,
-        context,
+        { ...context, ...retry },
       );
     }
   }

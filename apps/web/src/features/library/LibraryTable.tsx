@@ -195,7 +195,7 @@ export function LibraryTable({
                       <th
                         key={header.id}
                         className={cn(
-                          "border-b border-[var(--line)] px-2 py-1.5 text-left text-xs font-semibold text-[var(--muted-strong)]",
+                          "border-b border-[var(--line)] px-2 py-1.5 text-start text-xs font-semibold text-[var(--muted-strong)]",
                           header.id === "select" && "w-9 pl-3",
                           header.id === "artwork" && "w-[72px]",
                           header.id === "playtimeForever" && "w-28 text-right",
@@ -239,9 +239,9 @@ export function LibraryTable({
                           cell.column.id === "select" && "pl-3",
                           cell.column.id === "meta" && "pr-3",
                           cell.column.id === "playtimeForever" &&
-                            "whitespace-nowrap text-right tabular-nums",
+                            "whitespace-nowrap text-end tabular-nums",
                           cell.column.id === "appId" &&
-                            "text-right text-xs tabular-nums text-[var(--muted)]",
+                            "text-end text-xs tabular-nums text-[var(--muted)]",
                         )}
                       >
                         {flexRender(

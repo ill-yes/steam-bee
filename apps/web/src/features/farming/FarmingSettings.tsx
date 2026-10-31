@@ -186,7 +186,7 @@ export function FarmingSettings({
         <div className="mt-4 grid gap-2 border-t border-[var(--line)] pt-3">
           {error && <Alert tone="danger">{error}</Alert>}
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <p className="mr-auto text-xs text-[var(--muted)]">
+            <p className="me-auto text-xs text-[var(--muted)]">
               {dirty ? t.pendingChanges : t.savedState}
             </p>
             {dirty && (

@@ -112,6 +112,7 @@ async function startBoostSession(
     startedAt,
     endedAt: null,
     stopReason: null,
+    lastSeenAt: startedAt,
     createdAt: startedAt,
   });
   await recordInfoEventSafely({
@@ -123,6 +124,50 @@ async function startBoostSession(
       presetId: activePresetId,
     },
   });
+}
+
+// Open sessions are stamped while the server runs so a crash can be told apart
+// from boosting: on the next start they end at the last stamp, not at "now".
+export async function markOpenBoostSessionsSeen(seenAt = Date.now()) {
+  await db
+    .update(boostSession)
+    .set({ lastSeenAt: seenAt })
+    .where(isNull(boostSession.endedAt));
+}
+
+export async function closeInterruptedBoostSessions() {
+  const openSessions = await db
+    .select({
+      id: boostSession.id,
+      accountId: boostSession.accountId,
+      startedAt: boostSession.startedAt,
+      lastSeenAt: boostSession.lastSeenAt,
+    })
+    .from(boostSession)
+    .where(isNull(boostSession.endedAt));
+  const accounts = new Map<string, number>();
+  for (const session of openSessions) {
+    await db
+      .update(boostSession)
+      .set({
+        endedAt: Math.max(
+          session.startedAt,
+          session.lastSeenAt ?? session.startedAt,
+        ),
+        stopReason: "interrupted",
+      })
+      .where(eq(boostSession.id, session.id));
+    accounts.set(session.accountId, (accounts.get(session.accountId) ?? 0) + 1);
+  }
+  for (const [accountId, sessionCount] of accounts) {
+    await recordInfoEventSafely({
+      accountId,
+      type: "steam.boost.session.end",
+      message: "Boost session ended by an unexpected server stop.",
+      metadata: { reason: "interrupted", sessionCount },
+    });
+  }
+  return openSessions.length;
 }
 
 async function endBoostSession(

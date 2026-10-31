@@ -99,7 +99,7 @@ export function parseWallet(value: Record<string, unknown>): Wallet {
   const increment = integer(value.wallet_currency_increment ?? 1);
   if (minimum < 1 || increment < 1 || minimum % increment !== 0)
     throw appError("Steam wallet price increments are unsupported.", 409);
-  const wallet = {
+  const wallet: Wallet = {
     currency: { id, code, minorUnit },
     country: value.wallet_country,
     minimum,
@@ -116,7 +116,10 @@ export function parseWallet(value: Record<string, unknown>): Wallet {
         : integer(value.wallet_fee_base ?? 0),
   };
   toMinorUnits(minimum, wallet.currency);
-  toMinorUnits(increment, wallet.currency);
+  wallet.currency = {
+    ...wallet.currency,
+    priceStep: toMinorUnits(increment, wallet.currency),
+  };
   return wallet;
 }
 /** Steam's API counts hundredths even for zero- and three-decimal currencies. */

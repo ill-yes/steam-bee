@@ -9,7 +9,9 @@ const stateStart = '{"state":{"data":';
 
 /**
  * Steam's current listing page embeds its order book in the dehydrated query
- * state instead of calling Market_LoadOrderSpread. Amounts are minor units.
+ * state instead of calling Market_LoadOrderSpread. Amounts are read as Steam
+ * hundredths, the unit of itemordershistogram and the wallet info; that is only
+ * confirmed for two-decimal wallets, not yet against a JPY or KRW page.
  */
 export function parseListingOrderBook(html: string): ListingOrderBook | null {
   // The state is serialized inside a JS string, so quotes arrive escaped.

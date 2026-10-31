@@ -100,7 +100,7 @@ export function LogsPanel({
         </Label>
       </div>
 
-      <div className="grid max-h-[430px] gap-2 overflow-auto pr-1">
+      <div className="grid max-h-[430px] gap-2 overflow-auto pe-1">
         {filteredEvents.length === 0 ? (
           <EmptyState title={t.admin.logsPanel.emptyTitle}>
             {t.admin.logsPanel.emptyBody}

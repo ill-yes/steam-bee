@@ -31,7 +31,7 @@ export function StatusDot({
 export function StatusBadge({ status }: { status: AccountStatus }) {
   const { messages: t } = useI18n();
   return (
-    <Badge tone={statusTone(status)} className="pl-1.5">
+    <Badge tone={statusTone(status)} className="ps-1.5">
       <StatusDot status={status} />
       {statusLabel(status, t)}
     </Badge>
@@ -47,7 +47,7 @@ export function ActivityBadge({
   const { locale, messages: t } = useI18n();
   const activity = accountActivityStatus(account, t, locale);
   return (
-    <Badge tone={activity.tone} className="pl-1.5">
+    <Badge tone={activity.tone} className="ps-1.5">
       <StatusDot status={account.runtimeStatus} tone={activity.tone} />
       {activity.label}
     </Badge>

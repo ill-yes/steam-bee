@@ -160,7 +160,7 @@ function AccountFarmingPanel({
                 }
               >
                 {index > 0 && (
-                  <span aria-hidden="true" className="mr-2">
+                  <span aria-hidden="true" className="me-2">
                     ·
                   </span>
                 )}
@@ -279,7 +279,7 @@ function AccountFarmingPanel({
                 className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3"
                 aria-labelledby={`${id}-rules`}
               >
-                <h3 id={`${id}-rules`} className="mr-1 text-sm font-semibold">
+                <h3 id={`${id}-rules`} className="me-1 text-sm font-semibold">
                   {t.rules}
                 </h3>
                 <Badge>
@@ -317,7 +317,7 @@ function AccountFarmingPanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="ml-auto"
+                  className="ms-auto"
                   onClick={() => setRulesOpen(true)}
                 >
                   <Settings2 size={14} aria-hidden="true" />
