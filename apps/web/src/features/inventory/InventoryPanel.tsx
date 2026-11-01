@@ -96,7 +96,7 @@ function AccountInventoryPanel({
   const basketId = useId();
   const [localView, setLocalView] = useState<InventoryView>("inventory");
   const view = providedView ?? localView;
-  const hub = hubCopy(locale);
+  const hub = hubCopy(messages);
   const pageTitle =
     view === "listings"
       ? hub.listings

@@ -26,7 +26,7 @@ export function AnalyticsPanel({
   onDeleteGoal: (goal: PlaytimeGoal) => void;
 }) {
   const { messages: t, localeInfo, locale } = useI18n();
-  const c = automationCopy(locale);
+  const c = automationCopy(t);
   const duration = (ms: number) =>
     formatDurationMs(ms, t, localeInfo.dateLocale);
   const topGames = Array.isArray(analytics?.topGames) ? analytics.topGames : [];

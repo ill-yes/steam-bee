@@ -1,5 +1,9 @@
 import type { Messages } from "./types";
 import { operationsDe } from "../operations-copy";
+import {
+  automation as automationDe,
+  hub as hubDe,
+} from "../features/accounts/detail/copy/de";
 
 const messages = {
   common: {
@@ -528,6 +532,8 @@ const messages = {
     recentSessions: "Letzte Sessions",
   },
   operations: operationsDe,
+  hub: hubDe,
+  automation: automationDe,
   admin: {
     title: "Admin-Bereich",
     description:

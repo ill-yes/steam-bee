@@ -1,5 +1,9 @@
 import type { DeepPartial, Messages } from "./types";
 import { operationsHi } from "../operations-copy";
+import {
+  automation as automationHi,
+  hub as hubHi,
+} from "../features/accounts/detail/copy/hi";
 
 const messages = {
   common: {
@@ -517,6 +521,8 @@ const messages = {
     recentSessions: "हाल के सत्र",
   },
   operations: operationsHi,
+  hub: hubHi,
+  automation: automationHi,
   admin: {
     title: "प्रशासन क्षेत्र",
     description:

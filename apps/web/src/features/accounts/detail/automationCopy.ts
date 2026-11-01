@@ -1,4 +1,4 @@
-import type { LocaleCode } from "../../../i18n";
+import type { Messages } from "../../../i18n";
 
 const en = {
   presetsDescription:
@@ -51,56 +51,10 @@ const en = {
 
 type Copy = typeof en;
 
-const de: Copy = {
-  presetsDescription:
-    "Gespeicherte Spielauswahl mit Online-Status und Titel. Ein Klick lädt sie, Zeitpläne nutzen sie automatisch.",
-  saveCurrent: "Aktuelle Auswahl speichern",
-  saveCurrentHint: "{games} · {persona}{title}",
-  noTitle: " · kein Titel",
-  withTitle: " · Titel „{title}“",
-  runningNow: "Läuft gerade",
-  activeButton: "Aktiv",
-  gamesCount: "{count} Spiele",
-  gameCount: "1 Spiel",
-  usedBySchedules: "in {count} Zeitplänen",
-  usedBySchedule: "in 1 Zeitplan",
-  morePresetGames: "+{count}",
-  newPresetTitle: "Als Vorlage speichern",
-  newPresetDescription:
-    "Speichert die gerade zum Boosten ausgewählten Spiele, den Online-Status und den Steam-Titel.",
-  cancel: "Abbrechen",
-  schedulesDescription:
-    "Startet eine Vorlage zu festen Zeiten und pausiert danach wieder.",
-  newSchedule: "Neuer Zeitplan",
-  timezone: "Zeitzone",
-  thisWeek: "Diese Woche",
-  weekLabel: "Wochenplan der aktiven und ausgeschalteten Zeitpläne",
-  offSuffix: "aus",
-  nextStart: "nächster Start {time}",
-  noNextStart: "kein Start in den nächsten 7 Tagen",
-  skippedNext: "nächster Start übersprungen",
-  disabled: "ausgeschaltet",
-  everyDay: "täglich",
-  weekdaysShort: "Mo–Fr",
-  presetNamed: "Vorlage „{name}“",
-  toggleSchedule: "{name} ein- oder ausschalten",
-  upcoming: "Nächste Termine",
-  analyticsDescription:
-    "Wie lange SteamBee auf diesem Konto Spiele gemeldet hat.",
-  runningNowShort: "Läuft gerade",
-  notRunning: "Gerade nichts",
-  last7Days: "Letzte 7 Tage",
-  perDay: "Ø {value} pro Tag",
-  totalSessions: "Sessions",
-  allTime: "insgesamt",
-  playtimePerDay: "Spielzeit pro Tag",
-  playtimePerDayLabel: "Gemeldete Spielzeit pro Tag in den letzten 7 Tagen",
-  todayShort: "Heute",
-  goalProgress: "{current} von {target} h",
-  goalLeft: "noch {hours} h",
-  goalReached: "erreicht",
-};
+export type AutomationCopy = Copy;
+export { en as automationEn };
 
-export function automationCopy(locale: LocaleCode) {
-  return locale === "de" ? de : en;
+/** Presets, schedules and statistics copy; translations load with the locale. */
+export function automationCopy(messages: Messages): AutomationCopy {
+  return messages.automation;
 }

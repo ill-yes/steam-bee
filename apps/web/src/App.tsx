@@ -434,7 +434,7 @@ function MobileAccountPicker({
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.accountName} ·{" "}
-                {accountActivityStatus(account, t, locale).label}
+                {accountActivityStatus(account, t).label}
               </option>
             ))}
           </Select>

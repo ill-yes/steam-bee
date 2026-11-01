@@ -78,8 +78,8 @@ function AccountWorkspace({
   onRelogin,
 }: AccountDetailProps) {
   const { locale, messages: t } = useI18n();
-  const hub = hubCopy(locale);
-  const automation = automationCopy(locale);
+  const hub = hubCopy(t);
+  const automation = automationCopy(t);
   const o = t.operations;
   const {
     library,

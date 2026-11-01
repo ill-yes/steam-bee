@@ -129,7 +129,9 @@ describe("i18n messages", () => {
           if (
             base === other &&
             !allowedInvariantCopy.has(base) &&
-            !/^[-0-9.: h]+$/.test(base)
+            !/^[-0-9.: h]+$/.test(base) &&
+            // Templates like "+{count}" have no words to translate.
+            /\p{L}/u.test(base.replace(/\{\w+\}/g, ""))
           ) {
             identical.push(`${path.join(".")}: ${base}`);
           }

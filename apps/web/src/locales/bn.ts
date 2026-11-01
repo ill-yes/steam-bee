@@ -1,5 +1,9 @@
 import type { DeepPartial, Messages } from "./types";
 import { operationsBn } from "../operations-copy";
+import {
+  automation as automationBn,
+  hub as hubBn,
+} from "../features/accounts/detail/copy/bn";
 
 const messages = {
   common: {
@@ -516,6 +520,8 @@ const messages = {
     recentSessions: "সাম্প্রতিক সেশন",
   },
   operations: operationsBn,
+  hub: hubBn,
+  automation: automationBn,
   admin: {
     title: "অ্যাডমিন এলাকা",
     description:

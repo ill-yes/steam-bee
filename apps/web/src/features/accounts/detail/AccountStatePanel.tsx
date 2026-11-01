@@ -36,7 +36,7 @@ export function AccountStatePanel({
   onOpenLogs: () => void;
 }) {
   const { locale, messages: t, localeInfo } = useI18n();
-  const hub = hubCopy(locale);
+  const hub = hubCopy(t);
   const o = t.operations;
   const health = account.health;
   const activeCount =

@@ -1,4 +1,6 @@
 import { operationsEn } from "../operations-copy";
+import { automationEn } from "../features/accounts/detail/automationCopy";
+import { hubEn } from "../features/accounts/detail/hubCopy";
 
 export const en = {
   common: {
@@ -516,6 +518,8 @@ export const en = {
     recentSessions: "Recent sessions",
   },
   operations: operationsEn,
+  hub: hubEn,
+  automation: automationEn,
   admin: {
     title: "Admin area",
     description:

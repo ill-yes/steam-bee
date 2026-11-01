@@ -128,11 +128,11 @@ export function AccountRail({
               onClick={() => onSelect(account.id)}
               aria-label={interpolate(t.rail.accountAria, {
                 accountName: account.accountName,
-                status: accountActivityStatus(account, t, locale).label,
+                status: accountActivityStatus(account, t).label,
                 count: account.games.length,
               })}
               title={`${account.accountName} - ${
-                accountActivityStatus(account, t, locale).label
+                accountActivityStatus(account, t).label
               }`}
             >
               <span
@@ -143,7 +143,7 @@ export function AccountRail({
               >
                 <StatusDot
                   status={account.runtimeStatus}
-                  tone={accountActivityStatus(account, t, locale).tone}
+                  tone={accountActivityStatus(account, t).tone}
                 />
               </span>
               <AccountAvatar account={account} size="md" />
@@ -154,7 +154,7 @@ export function AccountRail({
                       {account.accountName}
                     </strong>
                     <small className="truncate text-xs text-[var(--muted)]">
-                      {accountActivityStatus(account, t, locale).label}
+                      {accountActivityStatus(account, t).label}
                     </small>
                   </span>
                   <span className="grid h-6 min-w-7 place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] px-2 text-xs font-bold text-[var(--muted-strong)]">

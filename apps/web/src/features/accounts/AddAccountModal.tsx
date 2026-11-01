@@ -21,7 +21,7 @@ export function AddAccountModal({
   reloginAccountName?: string | undefined;
 }) {
   const { locale, messages: t } = useI18n();
-  const copy = hubCopy(locale);
+  const copy = hubCopy(t);
   const flow = useAddAccountFlow({
     onClose,
     onDone,

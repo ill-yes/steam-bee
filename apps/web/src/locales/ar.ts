@@ -1,5 +1,9 @@
 import type { DeepPartial, Messages } from "./types";
 import { operationsAr } from "../operations-copy";
+import {
+  automation as automationAr,
+  hub as hubAr,
+} from "../features/accounts/detail/copy/ar";
 
 const messages = {
   common: {
@@ -509,6 +513,8 @@ const messages = {
     recentSessions: "الجلسات الأخيرة",
   },
   operations: operationsAr,
+  hub: hubAr,
+  automation: automationAr,
   admin: {
     title: "المنطقة الادارية",
     description:

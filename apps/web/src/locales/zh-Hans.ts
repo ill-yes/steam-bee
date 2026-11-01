@@ -1,5 +1,9 @@
 import type { DeepPartial, Messages } from "./types";
 import { operationsZhHans } from "../operations-copy";
+import {
+  automation as automationZhHans,
+  hub as hubZhHans,
+} from "../features/accounts/detail/copy/zh-Hans";
 
 const messages = {
   common: {
@@ -496,6 +500,8 @@ const messages = {
     recentSessions: "最近的会议",
   },
   operations: operationsZhHans,
+  hub: hubZhHans,
+  automation: automationZhHans,
   admin: {
     title: "管理区",
     description: "对访问、会话、帐户、日志和保存的SteamBee数据进行本地管理。",

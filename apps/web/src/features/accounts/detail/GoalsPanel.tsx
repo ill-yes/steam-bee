@@ -24,7 +24,7 @@ export function GoalsPanel({
 }) {
   const { messages: t, localeInfo, locale } = useI18n();
   const o = t.operations;
-  const c = automationCopy(locale);
+  const c = automationCopy(t);
   const [appId, setAppId] = useState("");
   const [targetHours, setTargetHours] = useState("");
   const targetMinutes = Math.round(Number(targetHours) * 60) || 0;

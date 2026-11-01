@@ -74,7 +74,7 @@ export function GameLibraryPanel({
       <ToolPageHeader
         icon={Gamepad2}
         titleId={`${id}-title`}
-        title={hubCopy(locale).library}
+        title={hubCopy(t).library}
         description={t.library.description}
         actions={
           <Button

@@ -1,5 +1,5 @@
 import type { Account } from "../../api";
-import type { LocaleCode, Messages } from "../../i18n";
+import type { Messages } from "../../i18n";
 import { statusLabel, statusTone } from "../../lib/status";
 import { hubCopy } from "./detail/hubCopy";
 
@@ -9,7 +9,6 @@ export type ActivityTone = ReturnType<typeof statusTone>;
 export function accountActivityStatus(
   account: Pick<Account, "runtimeStatus" | "activityMode">,
   messages: Messages,
-  locale: LocaleCode,
 ): { label: string; tone: ActivityTone } {
   if (account.runtimeStatus !== "boosting") {
     return {
@@ -17,7 +16,7 @@ export function accountActivityStatus(
       tone: statusTone(account.runtimeStatus),
     };
   }
-  const copy = hubCopy(locale);
+  const copy = hubCopy(messages);
   if (account.activityMode === "farming") {
     return { label: copy.activityFarming, tone: "info" };
   }

@@ -23,8 +23,8 @@ export function ActivityModeSwitch({
   disabled: boolean;
   onSelect: (mode: ActivityMode) => void;
 }) {
-  const { locale, localeInfo } = useI18n();
-  const copy = hubCopy(locale);
+  const { messages, localeInfo } = useI18n();
+  const copy = hubCopy(messages);
   const labelId = useId();
   const hintId = useId();
   const buttons = useRef<Partial<Record<ActivityMode, HTMLButtonElement>>>({});

@@ -157,7 +157,7 @@ export function SchedulePanel({
 }) {
   const { messages: t, localeInfo, locale } = useI18n();
   const o = t.operations;
-  const c = automationCopy(locale);
+  const c = automationCopy(t);
   const busy = Boolean(busyAction);
   const [creating, setCreating] = useState(false);
   const [now, setNow] = useState(Date.now);
