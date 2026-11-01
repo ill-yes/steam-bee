@@ -1,5 +1,9 @@
 import type { DeepPartial, Messages } from "./types";
 import { operationsEs } from "../operations-copy";
+import {
+  automation as automationEs,
+  hub as hubEs,
+} from "../features/accounts/detail/copy/es";
 
 const messages = {
   common: {
@@ -524,6 +528,8 @@ const messages = {
     recentSessions: "Sesiones recientes",
   },
   operations: operationsEs,
+  hub: hubEs,
+  automation: automationEs,
   admin: {
     title: "Área de administración",
     description:

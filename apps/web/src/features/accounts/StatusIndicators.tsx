@@ -45,7 +45,7 @@ export function ActivityBadge({
   account: Pick<Account, "runtimeStatus" | "activityMode">;
 }) {
   const { locale, messages: t } = useI18n();
-  const activity = accountActivityStatus(account, t, locale);
+  const activity = accountActivityStatus(account, t);
   return (
     <Badge tone={activity.tone} className="ps-1.5">
       <StatusDot status={account.runtimeStatus} tone={activity.tone} />

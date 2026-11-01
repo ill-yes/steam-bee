@@ -1,0 +1,147 @@
+import type { AutomationCopy } from "../automationCopy";
+import type { HubCopy } from "../hubCopy";
+
+export const hub: HubCopy = {
+  workspace: "Ruang kerja akun",
+  library: "Tingkatkan waktu main",
+  farming: "Farming kartu",
+  offers: "Gratis selamanya",
+  account: "Akun & keamanan",
+  activeGames: "Sedang dilaporkan ke Steam",
+  activeGamesShort: "Game aktif",
+  activeGamesScroll: "Game aktif; gulir ke samping untuk melihat lainnya",
+  noActiveGames: "Saat ini tidak ada game yang dilaporkan ke Steam.",
+  logsShort: "Log",
+  stopShort: "Putuskan",
+  disconnect: "Putuskan dari Steam",
+  activityBoosting: "Meningkatkan waktu main",
+  activityFarming: "Farming kartu",
+  activityOnline: "Online, tanpa game",
+  switchConfirm: "Ganti mode",
+  confirmSwitch:
+    "Hentikan farming kartu dan lanjutkan waktu main untuk pilihan manual yang tersimpan? Farming tidak akan dimulai ulang otomatis.",
+  switchApply:
+    "Farming kartu sedang aktif. Menerapkan pilihan manual ini menghentikan farming dan mengalihkan akun ke waktu main manual. Lanjutkan?",
+  switchSettings:
+    "Farming kartu sedang aktif. Mengubah pengaturan akun ini menghentikan farming dan kembali ke pilihan manual yang tersimpan. Lanjutkan?",
+  switchPreset:
+    "Farming kartu sedang aktif. Menerapkan prasetel ini menghentikan farming dan mengalihkan akun ke pilihan manual prasetel. Lanjutkan?",
+  farmingSelectionHint:
+    "Farming kartu sedang aktif. Ini pilihan manual Anda yang tersimpan. Menerapkannya menghentikan farming; berpindah tab tidak mengubah aktivitas saat ini.",
+  savedSelection: "Game manual tersimpan",
+  savedSelectionHint:
+    "Disimpan untuk waktu main manual; farming memakai game yang ditampilkan di atas.",
+  farmingStatusHint:
+    "Farming kartu mengatur game aktif di atas. Pilihan manual Anda tetap tersedia di Tingkatkan waktu main.",
+  navLabel: "Bagian akun",
+  navActivity: "Game",
+  navItems: "Item",
+  navDiscover: "Jelajahi",
+  navAccount: "Akun",
+  inventoryNav: "Inventaris",
+  listings: "Penawaran di pasar",
+  rules: "Aturan harga",
+  dropsCount: "{count} drop",
+  modeLabel: "Aktivitas yang dilaporkan ke Steam",
+  modeNone: "Tidak ada",
+  modeNoneOnline: "Online, tanpa game",
+  modeNoneOffline: "Tidak terhubung",
+  modeBoost: "Tingkatkan waktu main",
+  modeBoostGames: "{count} dari {limit} game",
+  modeBoostEmpty: "Pilih game terlebih dahulu",
+  modeFarm: "Farming kartu",
+  modeFarmDrops: "{drops} drop di {games} game",
+  modeFarmNoDrops: "Tidak ada drop kartu",
+  modeFarmUnknown: "Drop kartu belum diperiksa",
+  modeFarmUnavailable: "Buka farming kartu untuk memeriksa drop",
+  modeExplain:
+    "Steam hanya menyimpan satu daftar game berjalan per akun, jadi hanya satu mode yang berjalan sekaligus. Pilihan mode lainnya tetap tersimpan.",
+  confirmFarming:
+    "Beralih ke farming kartu? Waktu main untuk {count} game pilihan Anda berhenti; pilihannya tetap tersimpan. Saat semua drop terkumpul, akun dijeda.",
+  confirmFarmingIdle:
+    "Mulai farming kartu? Saat semua drop terkumpul, akun dijeda.",
+  farmingConfirm: "Mulai farming",
+  confirmIdle:
+    "Berhenti melaporkan game ke Steam? Akun tetap terhubung dan dijeda; pilihan Anda tetap tersimpan.",
+  idleConfirm: "Jeda",
+  reloginTitle: "Masuk lagi: {name}",
+  reloginDescription:
+    "Masuk dengan akun Steam yang sama. Pilihan, prasetel, dan pengaturan Anda tetap tersimpan.",
+  reloginBannerTitle: "Steam mengakhiri sesi masuk",
+  reloginBannerText:
+    "Ini terjadi setelah kata sandi diganti atau saat sesi kedaluwarsa. Masuk lagi sekali, lalu boost, farming, dan inventaris berjalan seperti biasa. Pilihan Anda tetap tersimpan.",
+  reloginQr: "Masuk lagi (kode QR)",
+  reloginPassword: "Dengan kata sandi",
+  steamMessage: "Kata Steam: {message}",
+  navAutomation: "Otomatisasi",
+  sectionSelect: "Bagian",
+  presets: "Prasetel",
+  schedules: "Jadwal",
+  analytics: "Statistik",
+  inventoryDescription:
+    "Item Steam Anda dikelompokkan per game dan set lencana. Pilih duplikat untuk keranjang jual.",
+  listingsDescription:
+    "Item yang sedang Anda tawarkan di Pasar Komunitas Steam.",
+  rulesDescription: "Cara SteamBee menghitung harga saat Anda menjual.",
+  accountDescription:
+    "Profil Steam, batas waktu main, dan status koneksi akun ini.",
+  stateTitle: "Status",
+  steamProfile: "Profil Steam",
+  dangerTitle: "Hapus akun",
+  dangerText: "Menghapus info masuk dan pengaturan akun ini di SteamBee.",
+  lastEvent: "Peristiwa terakhir",
+  noEvents: "Belum ada peristiwa",
+  activeGamesState: "Game aktif",
+  boostingSince: "Boost sejak",
+  visibility: "Visibilitas",
+};
+
+export const automation: AutomationCopy = {
+  presetsDescription:
+    "Pilihan game tersimpan dengan status online dan judul Steam. Satu klik memuatnya, dan jadwal memakainya otomatis.",
+  saveCurrent: "Simpan pilihan saat ini",
+  saveCurrentHint: "{games} · {persona}{title}",
+  noTitle: " · tanpa judul",
+  withTitle: " · judul “{title}”",
+  runningNow: "Sedang berjalan",
+  activeButton: "Aktif",
+  gamesCount: "{count} game",
+  gameCount: "Satu game",
+  usedBySchedules: "di {count} jadwal",
+  usedBySchedule: "di 1 jadwal",
+  morePresetGames: "+{count}",
+  newPresetTitle: "Simpan sebagai prasetel",
+  newPresetDescription:
+    "Menyimpan game yang sedang dipilih untuk boost, status online, dan judul Steam.",
+  cancel: "Batal",
+  schedulesDescription:
+    "Memulai prasetel pada waktu tetap lalu menjeda lagi sesudahnya.",
+  newSchedule: "Jadwal baru",
+  timezone: "Zona waktu",
+  thisWeek: "Minggu ini",
+  weekLabel: "Rencana mingguan jadwal yang aktif dan nonaktif",
+  offSuffix: "nonaktif",
+  nextStart: "mulai berikutnya {time}",
+  noNextStart: "tidak ada mulai dalam 7 hari ke depan",
+  skippedNext: "mulai berikutnya dilewati",
+  disabled: "dinonaktifkan",
+  everyDay: "setiap hari",
+  weekdaysShort: "Sen–Jum",
+  presetNamed: "Prasetel “{name}”",
+  toggleSchedule: "Aktifkan atau nonaktifkan {name}",
+  upcoming: "Jendela mendatang",
+  analyticsDescription: "Berapa lama SteamBee melaporkan game untuk akun ini.",
+  runningNowShort: "Sedang berjalan",
+  notRunning: "Tidak ada saat ini",
+  last7Days: "7 hari terakhir",
+  perDay: "Ø {value} per hari",
+  totalSessions: "Sesi",
+  allTime: "total",
+  playtimePerDay: "Waktu main per hari",
+  playtimePerDayLabel:
+    "Waktu main yang dilaporkan per hari selama 7 hari terakhir",
+  todayShort: "Hari ini",
+  goalProgress: "{current} dari {target} jam",
+  goalLeft: "sisa {hours} jam",
+  goalReached: "tercapai",
+};

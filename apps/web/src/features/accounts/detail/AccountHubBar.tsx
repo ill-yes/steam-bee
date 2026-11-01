@@ -44,7 +44,7 @@ export function AccountHubBar({
   onLogs: () => void;
 }) {
   const { locale, messages: t } = useI18n();
-  const copy = hubCopy(locale);
+  const copy = hubCopy(t);
   const mode: ActivityMode =
     account.activityMode ??
     (account.runtimeStatus === "boosting" ? "manual" : "idle");

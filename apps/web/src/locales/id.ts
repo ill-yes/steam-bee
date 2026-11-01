@@ -1,5 +1,9 @@
 import type { DeepPartial, Messages } from "./types";
 import { operationsId } from "../operations-copy";
+import {
+  automation as automationId,
+  hub as hubId,
+} from "../features/accounts/detail/copy/id";
 
 const messages = {
   common: {
@@ -517,6 +521,8 @@ const messages = {
     recentSessions: "Sesi terbaru",
   },
   operations: operationsId,
+  hub: hubId,
+  automation: automationId,
   admin: {
     title: "wilayah admin",
     description:

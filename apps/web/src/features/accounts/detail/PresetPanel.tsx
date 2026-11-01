@@ -48,7 +48,7 @@ export function PresetPanel({
   onDeletePreset: (preset: BoostPreset) => void;
 }) {
   const { messages: t, locale } = useI18n();
-  const c = automationCopy(locale);
+  const c = automationCopy(t);
   const [creating, setCreating] = useState(false);
   const busy = Boolean(busyAction);
   const title = customTitle.trim();

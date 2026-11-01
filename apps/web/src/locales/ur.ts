@@ -1,5 +1,9 @@
 import type { DeepPartial, Messages } from "./types";
 import { operationsUr } from "../operations-copy";
+import {
+  automation as automationUr,
+  hub as hubUr,
+} from "../features/accounts/detail/copy/ur";
 
 const messages = {
   common: {
@@ -513,6 +517,8 @@ const messages = {
     recentSessions: "حالیہ سیشنز",
   },
   operations: operationsUr,
+  hub: hubUr,
+  automation: automationUr,
   admin: {
     title: "ایڈمن ایریا",
     description:

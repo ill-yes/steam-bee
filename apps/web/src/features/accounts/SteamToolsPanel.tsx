@@ -88,7 +88,7 @@ function AccountSteamToolsPanel({
   onSwitchToFarming,
 }: Props) {
   const { locale, messages: t } = useI18n();
-  const copy = hubCopy(locale);
+  const copy = hubCopy(t);
   const id = useId();
   const [localTab, setLocalTab] = useState<AccountWorkspaceTab>("library");
   const activeTab = providedTab ?? localTab;

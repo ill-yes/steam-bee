@@ -1,0 +1,147 @@
+import type { AutomationCopy } from "../automationCopy";
+import type { HubCopy } from "../hubCopy";
+
+export const hub: HubCopy = {
+  workspace: "Konto-Arbeitsbereich",
+  library: "Spielzeit boosten",
+  farming: "Karten farmen",
+  offers: "Gratis zum Behalten",
+  account: "Konto & Sicherheit",
+  activeGames: "Gerade an Steam gemeldet",
+  activeGamesShort: "Aktive Spiele",
+  activeGamesScroll: "Aktive Spiele; für weitere seitlich scrollen",
+  noActiveGames: "Gerade werden keine Spiele an Steam gemeldet.",
+  logsShort: "Logs",
+  stopShort: "Trennen",
+  disconnect: "Von Steam trennen",
+  activityBoosting: "Spielzeit wird geboostet",
+  activityFarming: "Karten werden gefarmt",
+  activityOnline: "Online, ohne Spiel",
+  switchConfirm: "Modus wechseln",
+  confirmSwitch:
+    "Karten-Farming stoppen und die Spielzeit für deine gespeicherte manuelle Spielauswahl fortsetzen? Farming startet nicht automatisch neu.",
+  switchApply:
+    "Karten-Farming ist aktiv. Das Anwenden dieser manuellen Auswahl stoppt Farming und wechselt dieses Konto zur manuellen Spielzeit. Fortfahren?",
+  switchSettings:
+    "Karten-Farming ist aktiv. Das Ändern dieser Kontoeinstellungen stoppt Farming und setzt die gespeicherte manuelle Spielauswahl fort. Fortfahren?",
+  switchPreset:
+    "Karten-Farming ist aktiv. Das Anwenden dieser Vorlage stoppt Farming und wechselt dieses Konto zur manuellen Spielauswahl der Vorlage. Fortfahren?",
+  farmingSelectionHint:
+    "Karten-Farming ist aktiv. Hier siehst du deine gespeicherte manuelle Auswahl. Das Anwenden stoppt Farming; ein Tabwechsel ändert die laufende Aktivität nicht.",
+  savedSelection: "Gespeicherte manuelle Spiele",
+  savedSelectionHint:
+    "Für manuelle Spielzeit gespeichert; Farming verwendet die oben angezeigten Spiele.",
+  farmingStatusHint:
+    "Karten-Farming steuert die oben angezeigten aktiven Spiele. Deine gespeicherte manuelle Auswahl bleibt unter Spielzeit boosten verfügbar.",
+  navLabel: "Konto-Bereiche",
+  navActivity: "Spiele",
+  navItems: "Gegenstände",
+  navDiscover: "Entdecken",
+  navAccount: "Konto",
+  inventoryNav: "Inventar",
+  listings: "Marktangebote",
+  rules: "Preisregeln",
+  dropsCount: "{count} Drops",
+  modeLabel: "Was dieses Konto an Steam meldet",
+  modeNone: "Nichts",
+  modeNoneOnline: "Online, ohne Spiel",
+  modeNoneOffline: "Nicht verbunden",
+  modeBoost: "Spielzeit boosten",
+  modeBoostGames: "{count} von {limit} Spielen",
+  modeBoostEmpty: "Erst Spiele auswählen",
+  modeFarm: "Karten farmen",
+  modeFarmDrops: "{drops} Drops in {games} Spielen",
+  modeFarmNoDrops: "Keine Kartendrops gefunden",
+  modeFarmUnknown: "Kartendrops noch nicht geprüft",
+  modeFarmUnavailable: "Karten-Farming öffnen, um Drops zu prüfen",
+  modeExplain:
+    "Steam kennt pro Konto nur eine Liste laufender Spiele. Deshalb läuft immer genau ein Modus. Die Auswahl des anderen Modus bleibt gespeichert.",
+  confirmFarming:
+    "Zu Karten farmen wechseln? Die Spielzeit für deine {count} ausgewählten Spiele stoppt, die Auswahl bleibt gespeichert. Sind alle Drops eingesammelt, wird das Konto pausiert.",
+  confirmFarmingIdle:
+    "Karten farmen starten? Sind alle Drops eingesammelt, wird das Konto pausiert.",
+  farmingConfirm: "Farming starten",
+  confirmIdle:
+    "Keine Spiele mehr an Steam melden? Das Konto bleibt verbunden und pausiert, deine Auswahl bleibt gespeichert.",
+  idleConfirm: "Pausieren",
+  reloginTitle: "Neu anmelden: {name}",
+  reloginDescription:
+    "Melde dich mit demselben Steam-Konto an. Deine Auswahl, Vorlagen und Einstellungen bleiben erhalten.",
+  reloginBannerTitle: "Steam hat die Anmeldung beendet",
+  reloginBannerText:
+    "Das passiert nach einem Passwortwechsel oder wenn die Sitzung abläuft. Melde dich einmal neu an, danach laufen Boosten, Farming und Inventar wie vorher. Deine Auswahl bleibt erhalten.",
+  reloginQr: "Neu anmelden (QR-Code)",
+  reloginPassword: "Mit Passwort",
+  steamMessage: "Steam meldet: {message}",
+  navAutomation: "Automatik",
+  sectionSelect: "Bereich",
+  presets: "Vorlagen",
+  schedules: "Zeitpläne",
+  analytics: "Auswertung",
+  inventoryDescription:
+    "Deine Steam-Gegenstände nach Spiel und Kartenset. Wähle Duplikate für den Verkaufskorb.",
+  listingsDescription:
+    "Gegenstände, die du gerade auf dem Steam-Communitymarkt anbietest.",
+  rulesDescription: "So berechnet SteamBee den Preis, wenn du verkaufst.",
+  accountDescription:
+    "Steam-Profil, Spielzeit-Grenzen und der Verbindungszustand dieses Kontos.",
+  stateTitle: "Zustand",
+  steamProfile: "Steam-Profil",
+  dangerTitle: "Konto entfernen",
+  dangerText: "Löscht Anmeldung und Einstellungen dieses Kontos in SteamBee.",
+  lastEvent: "Letztes Ereignis",
+  noEvents: "Noch keine Ereignisse",
+  activeGamesState: "Aktive Spiele",
+  boostingSince: "Boostet seit",
+  visibility: "Sichtbarkeit",
+};
+
+export const automation: AutomationCopy = {
+  presetsDescription:
+    "Gespeicherte Spielauswahl mit Online-Status und Titel. Ein Klick lädt sie, Zeitpläne nutzen sie automatisch.",
+  saveCurrent: "Aktuelle Auswahl speichern",
+  saveCurrentHint: "{games} · {persona}{title}",
+  noTitle: " · kein Titel",
+  withTitle: " · Titel „{title}“",
+  runningNow: "Läuft gerade",
+  activeButton: "Aktiv",
+  gamesCount: "{count} Spiele",
+  gameCount: "1 Spiel",
+  usedBySchedules: "in {count} Zeitplänen",
+  usedBySchedule: "in 1 Zeitplan",
+  morePresetGames: "+{count}",
+  newPresetTitle: "Als Vorlage speichern",
+  newPresetDescription:
+    "Speichert die gerade zum Boosten ausgewählten Spiele, den Online-Status und den Steam-Titel.",
+  cancel: "Abbrechen",
+  schedulesDescription:
+    "Startet eine Vorlage zu festen Zeiten und pausiert danach wieder.",
+  newSchedule: "Neuer Zeitplan",
+  timezone: "Zeitzone",
+  thisWeek: "Diese Woche",
+  weekLabel: "Wochenplan der aktiven und ausgeschalteten Zeitpläne",
+  offSuffix: "aus",
+  nextStart: "nächster Start {time}",
+  noNextStart: "kein Start in den nächsten 7 Tagen",
+  skippedNext: "nächster Start übersprungen",
+  disabled: "ausgeschaltet",
+  everyDay: "täglich",
+  weekdaysShort: "Mo–Fr",
+  presetNamed: "Vorlage „{name}“",
+  toggleSchedule: "{name} ein- oder ausschalten",
+  upcoming: "Nächste Termine",
+  analyticsDescription:
+    "Wie lange SteamBee auf diesem Konto Spiele gemeldet hat.",
+  runningNowShort: "Läuft gerade",
+  notRunning: "Gerade nichts",
+  last7Days: "Letzte 7 Tage",
+  perDay: "Ø {value} pro Tag",
+  totalSessions: "Sessions",
+  allTime: "insgesamt",
+  playtimePerDay: "Spielzeit pro Tag",
+  playtimePerDayLabel: "Gemeldete Spielzeit pro Tag in den letzten 7 Tagen",
+  todayShort: "Heute",
+  goalProgress: "{current} von {target} h",
+  goalLeft: "noch {hours} h",
+  goalReached: "erreicht",
+};

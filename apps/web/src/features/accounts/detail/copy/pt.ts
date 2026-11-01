@@ -1,0 +1,147 @@
+import type { AutomationCopy } from "../automationCopy";
+import type { HubCopy } from "../hubCopy";
+
+export const hub: HubCopy = {
+  workspace: "Espaço da conta",
+  library: "Impulsionar tempo de jogo",
+  farming: "Farm de cartas",
+  offers: "Grátis para sempre",
+  account: "Conta e segurança",
+  activeGames: "Informados à Steam agora",
+  activeGamesShort: "Jogos ativos",
+  activeGamesScroll: "Jogos ativos; role na horizontal para ver mais",
+  noActiveGames: "Nenhum jogo está sendo informado à Steam agora.",
+  logsShort: "Registros",
+  stopShort: "Desconectar",
+  disconnect: "Desconectar da Steam",
+  activityBoosting: "Impulsionando tempo de jogo",
+  activityFarming: "Farmando cartas",
+  activityOnline: "Online, sem jogo",
+  switchConfirm: "Trocar modo",
+  confirmSwitch:
+    "Parar o farm de cartas e retomar o tempo de jogo da sua seleção manual salva? O farm não será reiniciado automaticamente.",
+  switchApply:
+    "O farm de cartas está ativo. Aplicar esta seleção manual para o farm e muda esta conta para tempo de jogo manual. Continuar?",
+  switchSettings:
+    "O farm de cartas está ativo. Alterar estas configurações da conta para o farm e volta para a seleção manual salva. Continuar?",
+  switchPreset:
+    "O farm de cartas está ativo. Aplicar esta predefinição para o farm e muda esta conta para a seleção manual da predefinição. Continuar?",
+  farmingSelectionHint:
+    "O farm de cartas está ativo. Esta é a sua seleção manual salva. Aplicá-la para o farm; trocar de aba não muda a atividade atual.",
+  savedSelection: "Jogos manuais salvos",
+  savedSelectionHint:
+    "Salvos para tempo de jogo manual; o farm usa os jogos mostrados acima.",
+  farmingStatusHint:
+    "O farm de cartas controla os jogos ativos mostrados acima. Sua seleção manual continua disponível em Impulsionar tempo de jogo.",
+  navLabel: "Seções da conta",
+  navActivity: "Jogos",
+  navItems: "Itens",
+  navDiscover: "Descobrir",
+  navAccount: "Conta",
+  inventoryNav: "Inventário",
+  listings: "Anúncios no mercado",
+  rules: "Regras de preço",
+  dropsCount: "{count} drops",
+  modeLabel: "Atividade informada à Steam",
+  modeNone: "Nada",
+  modeNoneOnline: "Online, sem jogo",
+  modeNoneOffline: "Não conectado",
+  modeBoost: "Impulsionar tempo de jogo",
+  modeBoostGames: "{count} de {limit} jogos",
+  modeBoostEmpty: "Escolha jogos primeiro",
+  modeFarm: "Farmar cartas",
+  modeFarmDrops: "{drops} drops em {games} jogos",
+  modeFarmNoDrops: "Nenhum drop de carta encontrado",
+  modeFarmUnknown: "Drops de cartas ainda não verificados",
+  modeFarmUnavailable: "Abra o farm de cartas para verificar os drops",
+  modeExplain:
+    "A Steam mantém uma única lista de jogos em execução por conta, então só um modo funciona por vez. A seleção do outro modo fica salva.",
+  confirmFarming:
+    "Mudar para o farm de cartas? O tempo de jogo dos seus {count} jogos selecionados para; a seleção fica salva. Quando todos os drops forem coletados, a conta é pausada.",
+  confirmFarmingIdle:
+    "Iniciar o farm de cartas? Quando todos os drops forem coletados, a conta é pausada.",
+  farmingConfirm: "Iniciar farm",
+  confirmIdle:
+    "Parar de informar jogos à Steam? A conta continua conectada e pausada; suas seleções ficam salvas.",
+  idleConfirm: "Pausar",
+  reloginTitle: "Entrar novamente: {name}",
+  reloginDescription:
+    "Entre com a mesma conta Steam. Suas seleções, predefinições e configurações ficam salvas.",
+  reloginBannerTitle: "A Steam encerrou o login",
+  reloginBannerText:
+    "Isso acontece após uma troca de senha ou quando a sessão expira. Entre novamente uma vez e o impulso, o farm e o inventário voltam a funcionar como antes. Suas seleções ficam salvas.",
+  reloginQr: "Entrar novamente (código QR)",
+  reloginPassword: "Com senha",
+  steamMessage: "A Steam diz: {message}",
+  navAutomation: "Automação",
+  sectionSelect: "Seção",
+  presets: "Predefinições",
+  schedules: "Agendamentos",
+  analytics: "Estatísticas",
+  inventoryDescription:
+    "Seus itens da Steam agrupados por jogo e conjunto de insígnia. Escolha duplicatas para a cesta de venda.",
+  listingsDescription:
+    "Itens que você está oferecendo agora no Mercado da Comunidade Steam.",
+  rulesDescription: "Como o SteamBee calcula o preço quando você vende.",
+  accountDescription:
+    "Perfil Steam, limites de tempo de jogo e estado da conexão desta conta.",
+  stateTitle: "Estado",
+  steamProfile: "Perfil Steam",
+  dangerTitle: "Remover conta",
+  dangerText: "Exclui o login e as configurações desta conta no SteamBee.",
+  lastEvent: "Último evento",
+  noEvents: "Nenhum evento ainda",
+  activeGamesState: "Jogos ativos",
+  boostingSince: "Impulsionando desde",
+  visibility: "Visibilidade",
+};
+
+export const automation: AutomationCopy = {
+  presetsDescription:
+    "Seleções de jogos salvas com status online e título da Steam. Um clique carrega uma, e os agendamentos as usam automaticamente.",
+  saveCurrent: "Salvar a seleção atual",
+  saveCurrentHint: "{games} · {persona}{title}",
+  noTitle: " · sem título",
+  withTitle: " · título “{title}”",
+  runningNow: "Em execução",
+  activeButton: "Ativo",
+  gamesCount: "{count} jogos",
+  gameCount: "1 jogo",
+  usedBySchedules: "em {count} agendamentos",
+  usedBySchedule: "em 1 agendamento",
+  morePresetGames: "+{count}",
+  newPresetTitle: "Salvar como predefinição",
+  newPresetDescription:
+    "Salva os jogos selecionados agora para impulsionar, o status online e o título da Steam.",
+  cancel: "Cancelar",
+  schedulesDescription:
+    "Inicia uma predefinição em horários fixos e pausa de novo depois.",
+  newSchedule: "Novo agendamento",
+  timezone: "Fuso horário",
+  thisWeek: "Esta semana",
+  weekLabel: "Plano semanal de agendamentos ativados e desativados",
+  offSuffix: "desativado",
+  nextStart: "próximo início {time}",
+  noNextStart: "nenhum início nos próximos 7 dias",
+  skippedNext: "próximo início pulado",
+  disabled: "desativado",
+  everyDay: "diariamente",
+  weekdaysShort: "seg–sex",
+  presetNamed: "Predefinição “{name}”",
+  toggleSchedule: "Ativar ou desativar {name}",
+  upcoming: "Próximas janelas",
+  analyticsDescription:
+    "Por quanto tempo o SteamBee informou jogos para esta conta.",
+  runningNowShort: "Em execução",
+  notRunning: "Nada agora",
+  last7Days: "Últimos 7 dias",
+  perDay: "Ø {value} por dia",
+  totalSessions: "Sessões",
+  allTime: "no total",
+  playtimePerDay: "Tempo de jogo por dia",
+  playtimePerDayLabel: "Tempo de jogo informado por dia nos últimos 7 dias",
+  todayShort: "Hoje",
+  goalProgress: "{current} de {target} h",
+  goalLeft: "faltam {hours} h",
+  goalReached: "alcançado",
+};

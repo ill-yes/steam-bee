@@ -22,7 +22,7 @@ export function AccountProfileSettings({
   onSaveSettings: () => Promise<boolean>;
 }) {
   const { locale, messages: t } = useI18n();
-  const hub = hubCopy(locale);
+  const hub = hubCopy(t);
   const personas = personaOptions(t);
 
   return (
@@ -88,7 +88,7 @@ export function AccountDangerZone({
   onDelete: () => void;
 }) {
   const { locale, messages: t } = useI18n();
-  const hub = hubCopy(locale);
+  const hub = hubCopy(t);
   return (
     <section className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--danger-line)] bg-[var(--surface)] p-4">
       <div className="min-w-0 flex-1">

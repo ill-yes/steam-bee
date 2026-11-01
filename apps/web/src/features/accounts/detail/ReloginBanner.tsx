@@ -11,8 +11,8 @@ export function ReloginBanner({
   steamMessage?: string | null | undefined;
   onRelogin: (mode: LoginMode) => void;
 }) {
-  const { locale } = useI18n();
-  const copy = hubCopy(locale);
+  const { messages } = useI18n();
+  const copy = hubCopy(messages);
   return (
     <div
       role="alert"
