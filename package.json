@@ -40,7 +40,7 @@
     "test": "pnpm release:test && pnpm compose:test && pnpm hygiene:test && pnpm package-manager:test && pnpm crash-recovery:test && pnpm contracts:build && pnpm -r test"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   }
