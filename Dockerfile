@@ -32,7 +32,7 @@ COPY packages/contracts/tsconfig.json packages/contracts/tsconfig.json
 COPY packages/contracts/src packages/contracts/src
 COPY LICENSE NOTICE COMMERCIAL-LICENSE.md ./
 RUN pnpm build
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @steam-bee/server deploy --prod --legacy /prod
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm --filter @steam-bee/server deploy --prod /prod
 RUN cp -R apps/web/dist /prod/public
 RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
