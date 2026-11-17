@@ -1,0 +1,15 @@
+diff --git a/lib/parse.js b/lib/parse.js
+index 29207512c60183b4bb9bf5112be3b9b5f4a9a9fd..5cfefbd520f5a07de9705df54b011db992812ae7 100644
+--- a/lib/parse.js
++++ b/lib/parse.js
+@@ -523,2 +523,10 @@ const parse = (input, options) => {
+   const extglobOpen = (type, value) => {
++    // SteamBee local mitigation for GHSA-fc5q-39xc-vjpf: do not compile
++    // unbounded repeated extglobs while upstream has no verified repair.
++    // Reject even when maxExtglobRecursion is disabled; rewriting nested
++    // wildcard expressions can preserve catastrophic regex backtracking.
++    if (type === 'plus' || type === 'star') {
++      throw new SyntaxError('Repeated extglobs are disabled by the SteamBee picomatch security patch');
++    }
++
+     const token = { ...EXTGLOB_CHARS[value], conditions: 1, inner: '' };

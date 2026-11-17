@@ -23,6 +23,7 @@
     "preinstall": "node scripts/check-package-manager.mjs",
     "package-manager:check": "node scripts/check-package-manager.mjs",
     "package-manager:test": "node --test scripts/check-package-manager.test.mjs",
+    "dependency-security:test": "node --test scripts/picomatch-security.test.mjs",
     "build": "pnpm -r build",
     "check": "pnpm package-manager:check && pnpm release:source:check && pnpm contracts:build && pnpm -r check",
     "compose:check": "node scripts/check-compose-parity.mjs",
@@ -37,7 +38,7 @@
     "release:plan": "node scripts/plan-release.mjs",
     "release:source:check": "node scripts/check-release-source.mjs",
     "release:test": "node --test scripts/release-metadata.test.mjs",
-    "test": "pnpm release:test && pnpm compose:test && pnpm hygiene:test && pnpm package-manager:test && pnpm crash-recovery:test && pnpm contracts:build && pnpm -r test"
+    "test": "pnpm dependency-security:test && pnpm release:test && pnpm compose:test && pnpm hygiene:test && pnpm package-manager:test && pnpm crash-recovery:test && pnpm contracts:build && pnpm -r test"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

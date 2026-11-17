@@ -16,6 +16,7 @@ overrides:
   steam-user@5.3.0>adm-zip: 0.6.1
 
 patchedDependencies:
+  picomatch@4.0.7: 351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2
   steam-user@5.3.0: af41553f2d92a7272ede78bef92cf00558aa5c2afd0f4cb58cdfddd476717e60
 
 importers:
@@ -2983,9 +2984,9 @@ snapshots:
     dependencies:
       reusify: 1.1.0
 
-  fdir@6.5.0(picomatch@4.0.7):
+  fdir@6.5.0(picomatch@4.0.7(patch_hash=351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2)):
     optionalDependencies:
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2)
 
   file-manager@2.0.1:
     dependencies:
@@ -3264,7 +3265,7 @@ snapshots:
 
   picocolors@1.1.1: {}
 
-  picomatch@4.0.7: {}
+  picomatch@4.0.7(patch_hash=351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2): {}
 
   pino-abstract-transport@3.0.0:
     dependencies:
@@ -3524,8 +3525,8 @@ snapshots:
 
   tinyglobby@0.2.17:
     dependencies:
-      fdir: 6.5.0(picomatch@4.0.7)
-      picomatch: 4.0.7
+      fdir: 6.5.0(picomatch@4.0.7(patch_hash=351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2))
+      picomatch: 4.0.7(patch_hash=351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2)
 
   tldts-core@7.4.19: {}
 
@@ -3585,7 +3586,7 @@ snapshots:
   vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15):
     dependencies:
       lightningcss: 1.33.0
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2)
       postcss: 8.5.31
       rolldown: 1.2.15
       tinyglobby: 0.2.17
@@ -3605,7 +3606,7 @@ snapshots:
       expect-type: 1.4.0
       magic-string: 1.4.3
       obug: 3.0.0
-      picomatch: 4.0.7
+      picomatch: 4.0.7(patch_hash=351f40dca2d12a7b4668740432d341c1c7966c411fc7786f613f19289896f2c2)
       std-env: 4.3.0
       tinybench: 6.2.2
       tinyexec: 1.3.1
