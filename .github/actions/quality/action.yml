@@ -32,7 +32,9 @@ runs:
 
     - name: Audit dependencies
       shell: bash
-      run: pnpm audit --audit-level=high
+      run: |
+        pnpm dependency-security:test
+        pnpm audit --audit-level=high
 
     - name: Check formatting
       shell: bash

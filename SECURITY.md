@@ -13,6 +13,29 @@ but does not replace HTTPS or network access controls.
 Security fixes target the latest stable release and the current `main` branch.
 Older releases may no longer receive fixes.
 
+## Build-Tool Dependency Mitigation
+
+As of November 17, 2026,
+[GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+has no verified upstream repair. SteamBee applies a local, hash-pinned patch to
+the genuine `picomatch@4.0.7` package used by its build and test tools. It rejects
+repeated `+(...)` and `*(...)` extglobs with `SyntaxError` before constructing
+their regular expressions. These patterns are deliberately unsupported by the
+patched tooling; this is a conservative mitigation, not a complete semantic
+upstream fix. The production dependency graph does not include picomatch.
+
+The version-based audit cannot recognize this local mitigation.
+`pnpm-workspace.yaml` therefore exempts **only GHSA-fc5q-39xc-vjpf**. CI must pass
+`pnpm dependency-security:test` before running `pnpm audit --audit-level=high`;
+the tests verify the installed patch for every tooling consumer and fail if it
+is absent. Registry failures and other high or critical advisories still fail
+the audit. The existing release-age, integrity and trust policies remain in
+force.
+
+When a verified upstream repair becomes available, remove the local patch and
+this advisory exception together, and update the regression tests against the
+repaired package before accepting the dependency update.
+
 ## Reporting a Vulnerability
 
 If you find a security issue, please do not publish exploit details publicly

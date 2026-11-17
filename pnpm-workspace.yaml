@@ -7,6 +7,12 @@ pmOnFail: ignore
 patchedDependencies:
   picomatch@4.0.7: patches/picomatch@4.0.7.patch
   steam-user@5.3.0: patches/steam-user@5.3.0.patch
+# The local picomatch patch rejects repeated extglobs. CI verifies the patch
+# before auditing; remove this exception together with the patch after a
+# verified upstream repair. See SECURITY.md.
+audit:
+  ignore:
+    - GHSA-fc5q-39xc-vjpf
 minimumReleaseAge: 1440
 minimumReleaseAgeIgnoreMissingTime: false
 trustPolicy: no-downgrade
