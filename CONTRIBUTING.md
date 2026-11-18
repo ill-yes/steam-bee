@@ -39,12 +39,17 @@ pnpm install
 pnpm format:check
 pnpm check
 pnpm test
+pnpm dependency-security:test
 pnpm audit --audit-level=high
 docker compose config
 docker compose -f compose.image.yml config
 pnpm compose:check
 pnpm unraid:check
 ```
+
+The dependency-security tests must pass before the audit. They verify the local
+picomatch mitigation associated with the single advisory exception documented
+in [SECURITY.md](SECURITY.md#build-tool-dependency-mitigation).
 
 For Docker changes, also run:
 

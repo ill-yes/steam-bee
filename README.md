@@ -44,47 +44,34 @@ These screenshots use synthetic demo accounts and fake SteamIDs.
 
 ## ✨ Features
 
-- One-time-token-protected admin setup with a cookie-based management UI.
-- Multiple own Steam accounts in one container.
-- QR login via `steam-session`.
-- One-time username/password + Steam Guard fallback without password
-  persistence.
-- Encrypted refresh-token storage in `/data`.
-- Library import with manual AppID fallback.
-- Start, pause, resume, and stop per account.
-- Persona state and optional custom game title.
-- Presets, a weekly schedule timeline, playtime statistics, session history,
-  and local logs.
-- Recovery health with last Steam contact, retry timing, error class, token
-  expiry, and library-snapshot age.
-- Automatic recovery when another Steam session temporarily owns the account:
-  two retries five minutes apart, then a 60-minute cooldown, repeated until
-  Steam reports the account free. A restart begins a fresh retry cycle.
-- Session safety limits with a fail-closed disconnect fallback; limits can
-  pause but never start a session, and daily/weekly limits use explicit UTC
-  calendar boundaries.
-- Seven-day schedule preview, overlap winners, skip-next, and pause-until.
-- Account groups with per-account bulk results for pause and stop only.
-- Local browser notifications and optional generic webhooks with private-network
-  target blocking, bounded retries, and redacted payloads.
-- Read-only playtime goals based on manually refreshed library snapshots.
-- Passphrase-encrypted recovery exports and a preflighted offline restore tool.
-- A single-instance lease that prevents two processes from operating the same
-  `/data` directory.
-- SSE status/log updates.
-- Temporary free-game offers with opt-in browser notifications and owned-game filtering.
-- An account hub for games, inventory, card farming, offers, and account safety.
-- Steam Community inventory shown as badge card sets with a sell basket,
-  wallet-bound pricing strategies, a market listings table that follows Steam
-  Mobile confirmations, confirmed bulk sales and cancellation, fee previews,
-  progress, and a stop control.
-- Optional two-phase card farming on a board of running, upcoming and skipped
-  games, with selectable farming order (including card value), pinned games,
-  license-based refund protection, resume after restarts, effective activity
-  tracking, and the existing safety controls.
-- Additional built-in themes and local font preferences, without custom backgrounds.
-- Docker Compose setup for a VPS, Unraid, or any generic Docker host.
-- Optional prebuilt image deployment through GitHub Container Registry.
+| Feature                           | What it does                                                                                                                                                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🛡️ **Admin setup**                | One-time-token-protected admin setup with a cookie-based management UI.                                                                                                                                                                                                       |
+| 👥 **Own accounts**               | Multiple own Steam accounts in one container.                                                                                                                                                                                                                                 |
+| 📱 **QR login**                   | QR login via `steam-session`.                                                                                                                                                                                                                                                 |
+| 🔑 **Credential fallback**        | One-time username/password + Steam Guard fallback without password persistence.                                                                                                                                                                                               |
+| 🔐 **Token storage**              | Encrypted refresh-token storage in `/data`.                                                                                                                                                                                                                                   |
+| 🎮 **Game library**               | Library import with manual AppID fallback.                                                                                                                                                                                                                                    |
+| ⏯️ **Session controls**           | Start, pause, resume, and stop per account.                                                                                                                                                                                                                                   |
+| 👤 **Steam presence**             | Persona state and optional custom game title.                                                                                                                                                                                                                                 |
+| 📅 **Planning and history**       | Presets, a weekly schedule timeline, playtime statistics, session history, and local logs.                                                                                                                                                                                    |
+| 🩺 **Recovery health**            | Recovery health with last Steam contact, retry timing, error class, token expiry, and library-snapshot age.                                                                                                                                                                   |
+| 🔄 **Session recovery**           | Automatic recovery when another Steam session temporarily owns the account: two retries five minutes apart, then a 60-minute cooldown, repeated until Steam reports the account free. A restart begins a fresh retry cycle.                                                   |
+| ⏱️ **Safety limits**              | Session safety limits with a fail-closed disconnect fallback; limits can pause but never start a session, and daily/weekly limits use explicit UTC calendar boundaries.                                                                                                       |
+| 🗓️ **Schedule preview**           | Seven-day schedule preview, overlap winners, skip-next, and pause-until.                                                                                                                                                                                                      |
+| 🗂️ **Account groups**             | Account groups with per-account bulk results for pause and stop only.                                                                                                                                                                                                         |
+| 🔔 **Notifications and webhooks** | Local browser notifications and optional generic webhooks with private-network target blocking, bounded retries, and redacted payloads.                                                                                                                                       |
+| 🎯 **Playtime goals**             | Read-only playtime goals based on manually refreshed library snapshots.                                                                                                                                                                                                       |
+| 💾 **Recovery exports**           | Passphrase-encrypted recovery exports and a preflighted offline restore tool.                                                                                                                                                                                                 |
+| 🔒 **Single-instance lease**      | A single-instance lease that prevents two processes from operating the same `/data` directory.                                                                                                                                                                                |
+| 📡 **Live updates**               | SSE status/log updates.                                                                                                                                                                                                                                                       |
+| 🎁 **Free-game offers**           | Temporary free-game offers with opt-in browser notifications and owned-game filtering.                                                                                                                                                                                        |
+| 🧭 **Account hub**                | An account hub for games, inventory, card farming, offers, and account safety.                                                                                                                                                                                                |
+| 🃏 **Inventory and market**       | Steam Community inventory shown as badge card sets with a sell basket, wallet-bound pricing strategies, a market listings table that follows Steam Mobile confirmations, confirmed bulk sales and cancellation, fee previews, progress, and a stop control.                   |
+| 🌾 **Card farming**               | Optional two-phase card farming on a board of running, upcoming and skipped games, with selectable farming order (including card value), pinned games, license-based refund protection, resume after restarts, effective activity tracking, and the existing safety controls. |
+| 🎨 **Appearance**                 | Additional built-in themes and local font preferences, without custom backgrounds.                                                                                                                                                                                            |
+| 🐳 **Docker Compose**             | Docker Compose setup for a VPS, Unraid, or any generic Docker host.                                                                                                                                                                                                           |
+| 📦 **Prebuilt image**             | Optional prebuilt image deployment through GitHub Container Registry.                                                                                                                                                                                                         |
 
 ## 🚀 Quick Start
 
