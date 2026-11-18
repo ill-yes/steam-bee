@@ -38,7 +38,7 @@ RUN cp LICENSE NOTICE COMMERCIAL-LICENSE.md /prod/
 
 FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS runtime
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends --only-upgrade libpcre2-8-0 perl-base \
+  && apt-get install -y --no-install-recommends --only-upgrade apt libapt-pkg7.0 libpcre2-8-0 perl-base zlib1g \
   && rm -rf \
   /var/lib/apt/lists/* \
   /usr/local/lib/node_modules/npm \
