@@ -124,8 +124,7 @@ const messages = {
   },
   addAccount: {
     title: "Steam खाता जोड़ें",
-    description:
-      "QR अनुशंसित है। क्रेडेंशियल्स का उपयोग केवल एक बार किया जाता है।",
+    description: "QR अनुशंसित है। क्रेडेंशियल्स का उपयोग केवल एक बार किया जाता है।",
     loginMode: "लॉगिन मोड",
     qrLogin: "QR लॉगिन करें",
     fallback: "फ़ॉलबैक",
@@ -178,8 +177,7 @@ const messages = {
     libraryBody:
       "कनेक्ट करने के बाद, SteamBee आपके गेम आयात करता है; आप अभी भी मैन्युअल रूप से AppIDs सेट कर सकते हैं।",
     clientsTitle: "अन्य Steam ग्राहक उपयोग योग्य बने रहते हैं",
-    clientsBody:
-      "यदि आप कहीं और खेलते हैं, तो SteamBee स्वचालित रूप से रुक जाता है।",
+    clientsBody: "यदि आप कहीं और खेलते हैं, तो SteamBee स्वचालित रूप से रुक जाता है।",
   },
   status: {
     personas: {
@@ -315,21 +313,18 @@ const messages = {
       online: "Steam सक्रिय गेम चयन के बिना जुड़ा हुआ है।",
       boosting: "SteamBee लागू गेम चयन की रिपोर्ट कर रहा है।",
       paused_manual: "रिपोर्ट किए गए गेम मैन्युअल रूप से रोक दिए गए थे।",
-      paused_other_session:
-        "बूस्टिंग रुकी हुई है क्योंकि कोई अन्य क्लाइंट खेल रहा है।",
+      paused_other_session: "बूस्टिंग रुकी हुई है क्योंकि कोई अन्य क्लाइंट खेल रहा है।",
       login_required: "सहेजे गए Steam लॉगिन को नवीनीकृत किया जाना चाहिए।",
       reconnecting: "SteamBee कनेक्शन बहाल कर रहा है।",
     },
     libraryEmpty: {
       connectingTitle: "Steam कनेक्ट हो रहा है.",
-      connectingBody:
-        "जैसे ही Steam ऑनलाइन होता है, स्वचालित आयात शुरू हो जाता है।",
+      connectingBody: "जैसे ही Steam ऑनलाइन होता है, स्वचालित आयात शुरू हो जाता है।",
       emptyTitle: "लाइब्रेरी अभी भी खाली है.",
       emptyBody:
         "स्वचालित आयात चल रहा है, Steam ने कोई ऐप नहीं लौटाया, या गेम सूची निजी है। AppIDs को मैन्युअल रूप से जोड़ा जा सकता है।",
       unavailableTitle: "लाइब्रेरी अनुपलब्ध.",
-      unavailableBody:
-        "लॉग में Steam कनेक्शन की जाँच करें और खाते को पुनः कनेक्ट करें।",
+      unavailableBody: "लॉग में Steam कनेक्शन की जाँच करें और खाते को पुनः कनेक्ट करें।",
       offlineTitle: "Steam अभी ऑनलाइन नहीं है।",
       offlineBody: "लॉगिन सहेजा गया. कनेक्ट प्रारंभ होता है Steam और फिर आयात।",
     },
@@ -388,11 +383,9 @@ const messages = {
     steamProfile: "Steam प्रोफ़ाइल",
     steamTitle: "Steam शीर्षक",
     saveDisplay: "प्रदर्शन सहेजें",
-    titleSlotHint:
-      "Steam शीर्षक 1 Steam स्लॉट का उपयोग करता है; अधिकतम. 31 खेल.",
+    titleSlotHint: "Steam शीर्षक 1 Steam स्लॉट का उपयोग करता है; अधिकतम. 31 खेल.",
     confirmDeleteAccount: "सचमुच खाता हटा दें और स्थानीय डेटा भूल जाएं?",
-    tooManyGamesWithTitle:
-      "एक कस्टम शीर्षक के साथ, अधिकतम {limit} गेम संभव हैं।",
+    tooManyGamesWithTitle: "एक कस्टम शीर्षक के साथ, अधिकतम {limit} गेम संभव हैं।",
     selectionApplied: "बूस्ट चयन लागू किया गया.",
     importRequiresOnline:
       "लाइब्रेरी को केवल SteamBee ऑनलाइन होने पर ही आयात किया जा सकता है।",
@@ -425,8 +418,7 @@ const messages = {
   },
   library: {
     title: "पुस्तकालय",
-    description:
-      "गेम्स खोजें और फ़िल्टर करें तथा उन्हें बूस्टिंग के लिए स्टेज करें।",
+    description: "गेम्स खोजें और फ़िल्टर करें तथा उन्हें बूस्टिंग के लिए स्टेज करें।",
     import: "आयात करें",
     importing: "आयात किया जा रहा है...",
     importUnavailable: "SteamBee ऑनलाइन होने पर उपलब्ध।",
@@ -485,8 +477,7 @@ const messages = {
     schedule: "अनुसूची",
     analytics: "विश्लेषिकी",
     boostPresets: "प्रीसेट बूस्ट करें",
-    presetsDescription:
-      "टेम्पलेट के रूप में चयन, दृश्यता और Steam शीर्षक सहेजता है।",
+    presetsDescription: "टेम्पलेट के रूप में चयन, दृश्यता और Steam शीर्षक सहेजता है।",
     presetPlaceholder: "जैसे निष्क्रिय शाम",
     presetNameAria: "पूर्व निर्धारित नाम",
     savePreset: "प्रीसेट सहेजें",
@@ -534,8 +525,7 @@ const messages = {
       automation: "स्वचालन",
       data: "डेटा",
     },
-    passwordChanged:
-      "पासवर्ड बदल गया. अन्य व्यवस्थापक सत्र साइन आउट कर दिए गए.",
+    passwordChanged: "पासवर्ड बदल गया. अन्य व्यवस्थापक सत्र साइन आउट कर दिए गए.",
     sessionLogoutTitle: "साइन आउट सत्र?",
     sessionLogoutBody:
       "यह व्यवस्थापक सत्र तुरंत अमान्य हो जाता है. वर्तमान सत्र सक्रिय रहता है.",
@@ -589,8 +579,7 @@ const messages = {
     cleanupAppsConfirm: "अप्रयुक्त को हटा दें",
     cleanupAppsSuccess: "अप्रयुक्त ऐप डेटा साफ़ किया गया।",
     loadFailedTitle: "व्यवस्थापक डेटा लोड नहीं हुआ",
-    loadFailedBody:
-      "संवाद पुनः लोड करें या स्थानीय सर्वर से कनेक्शन की जाँच करें।",
+    loadFailedBody: "संवाद पुनः लोड करें या स्थानीय सर्वर से कनेक्शन की जाँच करें।",
     summary: {
       accounts: "लेखा",
       activeGames: "{count} सक्रिय गेम",
@@ -612,8 +601,7 @@ const messages = {
       mismatch: "नये पासवर्ड मेल नहीं खाते.",
       changePassword: "पासवर्ड बदलें",
       sessionsTitle: "व्यवस्थापक सत्र",
-      sessionsDescription:
-        "सक्रिय ब्राउज़र या क्लाइंट जिनके पास इस उदाहरण तक पहुंच है।",
+      sessionsDescription: "सक्रिय ब्राउज़र या क्लाइंट जिनके पास इस उदाहरण तक पहुंच है।",
       logoutOthers: "दूसरों को साइन आउट करें",
       noSessionsTitle: "कोई सत्र नहीं",
       noSessionsBody: "कोई व्यवस्थापक सत्र नहीं मिला.",
@@ -624,11 +612,9 @@ const messages = {
     },
     accountsPanel: {
       title: "Steam खाते",
-      description:
-        "स्थानीय खाता डेटा और चल रहे सत्रों के लिए केंद्रीय नियंत्रण।",
+      description: "स्थानीय खाता डेटा और चल रहे सत्रों के लिए केंद्रीय नियंत्रण।",
       emptyTitle: "कोई हिसाब नहीं",
-      emptyBody:
-        "Steam खाते अभी भी सामान्य QR सहायक के माध्यम से जोड़े जाते हैं।",
+      emptyBody: "Steam खाते अभी भी सामान्य QR सहायक के माध्यम से जोड़े जाते हैं।",
       noSteamId: "कोई SteamID सहेजा नहीं गया",
       games: "खेल",
       library: "पुस्तकालय",
@@ -638,8 +624,7 @@ const messages = {
     },
     logsPanel: {
       title: "लॉग",
-      description:
-        "स्थानीय घटनाएँ. सूची अधिकतम नवीनतम 100 प्रविष्टियाँ दिखाती है।",
+      description: "स्थानीय घटनाएँ. सूची अधिकतम नवीनतम 100 प्रविष्टियाँ दिखाती है।",
       deleteOld: "पुराने लॉग हटाएँ",
       deleteLevel: "स्तर हटाएँ",
       level: "स्तर",
@@ -676,8 +661,7 @@ const messages = {
       appCacheSearch: "ऐप कैश खोजें",
       appCacheSearchPlaceholder: "नाम या AppID",
       appCacheNoResultsTitle: "कोई मेल खाती कैश प्रविष्टि नहीं",
-      appCacheNoResultsBody:
-        "लोड की गई कैश प्रविष्टियाँ देखने के लिए खोज बदलें।",
+      appCacheNoResultsBody: "लोड की गई कैश प्रविष्टियाँ देखने के लिए खोज बदलें।",
       appCacheLoadedStatus: "{total} में से {loaded} कैश प्रविष्टियाँ लोड हुईं",
       appCachePageStatus: "{total} परिणामों में {from}–{to}",
       previousPage: "पिछला",

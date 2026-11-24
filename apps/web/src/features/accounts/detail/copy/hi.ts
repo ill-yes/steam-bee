@@ -58,8 +58,7 @@ export const hub: HubCopy = {
     "Steam हर खाते के लिए चल रहे गेम की एक ही सूची रखता है, इसलिए एक समय में एक ही मोड चलता है। दूसरे मोड का चयन सहेजा रहता है।",
   confirmFarming:
     "कार्ड फ़ार्मिंग पर जाएँ? आपके {count} चुने गए गेम का खेल समय रुक जाएगा; चयन सहेजा रहेगा। सभी ड्रॉप मिलने पर खाता रुक जाता है।",
-  confirmFarmingIdle:
-    "कार्ड फ़ार्मिंग शुरू करें? सभी ड्रॉप मिलने पर खाता रुक जाता है।",
+  confirmFarmingIdle: "कार्ड फ़ार्मिंग शुरू करें? सभी ड्रॉप मिलने पर खाता रुक जाता है।",
   farmingConfirm: "फ़ार्मिंग शुरू करें",
   confirmIdle:
     "Steam को गेम बताना बंद करें? खाता कनेक्ट और रुका रहेगा; आपके चयन सहेजे रहेंगे।",
@@ -80,11 +79,9 @@ export const hub: HubCopy = {
   analytics: "आँकड़े",
   inventoryDescription:
     "आपके Steam आइटम गेम और बैज सेट के अनुसार समूहित। बिक्री टोकरी के लिए डुप्लिकेट चुनें।",
-  listingsDescription:
-    "वे आइटम जिन्हें आप अभी Steam कम्युनिटी मार्केट पर बेच रहे हैं।",
+  listingsDescription: "वे आइटम जिन्हें आप अभी Steam कम्युनिटी मार्केट पर बेच रहे हैं।",
   rulesDescription: "बेचते समय SteamBee कीमत कैसे तय करता है।",
-  accountDescription:
-    "इस खाते का Steam प्रोफ़ाइल, खेल समय सीमाएँ और कनेक्शन स्थिति।",
+  accountDescription: "इस खाते का Steam प्रोफ़ाइल, खेल समय सीमाएँ और कनेक्शन स्थिति।",
   stateTitle: "स्थिति",
   steamProfile: "Steam प्रोफ़ाइल",
   dangerTitle: "खाता हटाएँ",
@@ -114,8 +111,7 @@ export const automation: AutomationCopy = {
   newPresetDescription:
     "बूस्टिंग के लिए अभी चुने गए गेम, ऑनलाइन स्थिति और Steam शीर्षक सहेजता है।",
   cancel: "रद्द करें",
-  schedulesDescription:
-    "तय समय पर प्रीसेट शुरू करता है और उसके बाद फिर रोक देता है।",
+  schedulesDescription: "तय समय पर प्रीसेट शुरू करता है और उसके बाद फिर रोक देता है।",
   newSchedule: "नया शेड्यूल",
   timezone: "समय क्षेत्र",
   thisWeek: "इस सप्ताह",
