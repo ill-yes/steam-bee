@@ -20,7 +20,7 @@
     "@fastify/cors": "^11.4.3",
     "@fastify/helmet": "^13.2.0",
     "@fastify/rate-limit": "^11.2.2",
-    "@fastify/static": "^10.1.11",
+    "@fastify/static": "^10.1.12",
     "@node-rs/argon2": "^2.2.2",
     "@steam-bee/contracts": "workspace:*",
     "better-sqlite3": "^13.2.0",
@@ -35,6 +35,6 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/steam-user": "^5.1.1",
     "tsx": "^4.23.15",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.1"
   }
 }
